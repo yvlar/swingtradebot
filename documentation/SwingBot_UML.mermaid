@@ -1,0 +1,235 @@
+classDiagram
+
+%% ─── INTERFACES (abstractions) ───────────────────────────────────────────────
+
+class ILogger {
+    <<interface>>
+    +info(msg) void
+    +warn(msg) void
+    +error(msg) void
+    +debug(msg) void
+}
+
+class IDataFeed {
+    <<interface>>
+    +getBars(symbol, days) vector~Bar~
+    +getLatestPrice(symbol) optional~double~
+    +isMarketOpen() bool
+}
+
+class IBroker {
+    <<interface>>
+    +submitBuy(symbol, qty) optional~Order~
+    +submitSell(symbol, qty) optional~Order~
+    +getPosition(symbol) optional~Position~
+    +getAccount() Account
+}
+
+class IStrategy {
+    <<interface>>
+    +evaluate(bars) Signal
+    +name() string
+}
+
+class IRiskManager {
+    <<interface>>
+    +positionSize(capital, price, sl, risk) int
+    +isTradeAllowed(account, position) bool
+    +checkExitConditions(...) optional~string~
+}
+
+class IIndicator {
+    <<interface>>
+    +compute(prices) vector~double~
+    +name() string
+}
+
+%% ─── MODÈLES ─────────────────────────────────────────────────────────────────
+
+class Bar {
+    +string date
+    +double open
+    +double high
+    +double low
+    +double close
+    +long volume
+}
+
+class Signal {
+    +SignalType type
+    +string symbol
+    +double price
+    +string reason
+    +isBuy() bool
+    +isSell() bool
+}
+
+class Order {
+    +string symbol
+    +OrderSide side
+    +int quantity
+    +OrderStatus status
+}
+
+class Position {
+    +string symbol
+    +int shares
+    +double avgPrice
+    +double unrealizedPnl
+}
+
+class Account {
+    +double cash
+    +double equity
+    +string status
+}
+
+class BotState {
+    +bool inPosition
+    +double buyPrice
+    +double peakPrice
+    +int holdDays
+}
+
+class SwingConfig {
+    +string symbol
+    +int emaFast
+    +int emaSlow
+    +int rsiPeriod
+    +double rsiBuyMax
+    +double rsiSellMin
+    +double stopLossPct
+    +double takeProfitPct
+    +double trailingStopPct
+    +int minHoldDays
+}
+
+%% ─── INDICATEURS ─────────────────────────────────────────────────────────────
+
+class EMA {
+    -int period
+    +compute(prices) vector~double~
+    +name() string
+}
+
+class RSI {
+    -int period
+    +compute(prices) vector~double~
+    +name() string
+}
+
+class CrossoverDetector {
+    <<utility>>
+    +detect(fast, slow)$ Cross
+}
+
+%% ─── STRATÉGIE ───────────────────────────────────────────────────────────────
+
+class SwingStrategy {
+    -SwingConfig config
+    -IIndicator emaFast
+    -IIndicator emaSlow
+    -IIndicator rsi
+    +evaluate(bars) Signal
+    +name() string
+    +create(config)$ SwingStrategy
+}
+
+%% ─── RISK MANAGER ────────────────────────────────────────────────────────────
+
+class RiskManager {
+    -double maxCapitalUsagePct
+    +positionSize(...) int
+    +isTradeAllowed(...) bool
+    +checkExitConditions(...) optional~string~
+}
+
+%% ─── LOGGERS ─────────────────────────────────────────────────────────────────
+
+class ConsoleLogger {
+    +info(msg) void
+    +warn(msg) void
+    +error(msg) void
+}
+
+class FileLogger {
+    -ofstream file
+    +info(msg) void
+    +warn(msg) void
+    +error(msg) void
+}
+
+class CompositeLogger {
+    -vector~ILogger~ loggers
+    +addLogger(logger) void
+    +info(msg) void
+}
+
+class NullLogger {
+    +info(msg) void
+    +warn(msg) void
+    +error(msg) void
+}
+
+%% ─── MOCKS ───────────────────────────────────────────────────────────────────
+
+class MockDataFeed {
+    -vector~Bar~ bars
+    -bool marketOpen
+    +setBars(bars) void
+    +setMarketOpen(bool) void
+    +buildTrend(...)$ vector~Bar~
+}
+
+class MockBroker {
+    -Account account
+    -optional~Position~ position
+    +buyCount() int
+    +sellCount() int
+}
+
+%% ─── BOT PRINCIPAL ───────────────────────────────────────────────────────────
+
+class TradingBot {
+    -IDataFeed dataFeed
+    -IBroker broker
+    -IStrategy strategy
+    -IRiskManager riskManager
+    -ILogger logger
+    -BotState state
+    +runOnce() void
+    +run(intervalSec) void
+    +stop() void
+    +setState(state) void
+}
+
+%% ─── RELATIONS ───────────────────────────────────────────────────────────────
+
+IIndicator  <|.. EMA
+IIndicator  <|.. RSI
+IStrategy   <|.. SwingStrategy
+IRiskManager <|.. RiskManager
+ILogger     <|.. ConsoleLogger
+ILogger     <|.. FileLogger
+ILogger     <|.. CompositeLogger
+ILogger     <|.. NullLogger
+IDataFeed   <|.. MockDataFeed
+IBroker     <|.. MockBroker
+
+TradingBot o-- IDataFeed
+TradingBot o-- IBroker
+TradingBot o-- IStrategy
+TradingBot o-- IRiskManager
+TradingBot o-- ILogger
+TradingBot *-- BotState
+
+SwingStrategy o-- IIndicator
+SwingStrategy *-- SwingConfig
+
+IDataFeed ..> Bar : retourne
+IBroker   ..> Order : retourne
+IBroker   ..> Position : retourne
+IBroker   ..> Account : retourne
+IStrategy ..> Signal : retourne
+
+CompositeLogger o-- ILogger

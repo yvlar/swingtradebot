@@ -1,0 +1,21 @@
+# ninja log v6
+1	52	7948785545632961	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-mkdir	88e97317ada8eb38
+1	52	7948785545632961	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-mkdir	88e97317ada8eb38
+53	995	7948785555049951	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-download	836925f6f2324f65
+53	995	7948785555049951	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-download	836925f6f2324f65
+995	1040	7948785555495408	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-update	3e0de66b5f2336b0
+995	1040	7948785555495408	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-update	3e0de66b5f2336b0
+1040	1082	7948785555931005	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-patch	3a37a0c525b495cb
+1040	1082	7948785555931005	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-patch	3a37a0c525b495cb
+1082	1126	7948785556361776	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-configure	f4edae3e565def8c
+1082	1126	7948785556361776	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-configure	f4edae3e565def8c
+1126	1171	7948785556811947	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-build	39b6fbf34e06d113
+1126	1171	7948785556811947	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-build	39b6fbf34e06d113
+1171	1214	7948785557247543	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-install	fdbd064f628648a3
+1171	1214	7948785557247543	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-install	fdbd064f628648a3
+1214	1257	7948785557683047	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-test	c1cdd1c947c295df
+1214	1257	7948785557683047	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-test	c1cdd1c947c295df
+1257	1315	7948785558258290	CMakeFiles/googletest-populate-complete	ba10b903690ecdc9
+1257	1315	7948785558258290	googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-done	ba10b903690ecdc9
+1257	1315	7948785558258290	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/CMakeFiles/googletest-populate-complete	ba10b903690ecdc9
+1257	1315	7948785558258290	C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/googletest-populate-prefix/src/googletest-populate-stamp/googletest-populate-done	ba10b903690ecdc9
