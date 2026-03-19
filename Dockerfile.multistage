@@ -1,0 +1,48 @@
+# ============================================================
+#  Dockerfile  —  Multi-stage : build + tests + runtime
+# ============================================================
+FROM ubuntu:24.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential cmake ninja-build git \
+    curl zip unzip tar pkg-config \
+    libssl-dev libcurl4-openssl-dev \
+    sqlite3 libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# vcpkg
+RUN git clone https://github.com/microsoft/vcpkg /vcpkg && \
+    /vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+RUN /vcpkg/vcpkg install \
+    boost-beast boost-asio boost-system \
+    nlohmann-json sqlite3 curl gtest
+
+# ── Stage builder (compile tout) ──────────────────────────
+FROM base AS builder
+
+WORKDIR /app
+COPY . .
+
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \
+    -G Ninja && \
+    cmake --build build -j$(nproc)
+
+# ── Stage runtime (bot seul, image légère) ────────────────
+FROM ubuntu:24.04 AS runtime
+
+RUN apt-get update && apt-get install -y \
+    libssl3 libcurl4 libsqlite3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /app/build/swing_bot .
+COPY --from=builder /vcpkg/installed/x64-linux/lib/*.so* /usr/local/lib/
+RUN ldconfig
+
+EXPOSE 9001
+CMD ["./swing_bot"]

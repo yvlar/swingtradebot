@@ -1,0 +1,49 @@
+# ============================================================
+#  Dockerfile.dev  —  Environnement de développement
+#  Basé sur ton Dockerfile de production, sans COPY ni build.
+#  Le code est monté via volume → modifications instantanées.
+# ============================================================
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ── Outils système + ICU pour curl ────────────────────────
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
+    curl \
+    zip \
+    unzip \
+    tar \
+    pkg-config \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    sqlite3 \
+    libsqlite3-dev \
+    libicu-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── vcpkg ─────────────────────────────────────────────────
+RUN git clone https://github.com/microsoft/vcpkg /vcpkg && \
+    /vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+ENV VCPKG_ROOT=/vcpkg
+ENV PATH="$VCPKG_ROOT:$PATH"
+
+# ── Dépendances C++ via vcpkg ─────────────────────────────
+RUN /vcpkg/vcpkg install \
+    boost-beast \
+    boost-asio \
+    boost-system \
+    nlohmann-json \
+    sqlite3 \
+    gtest
+
+# ── Dossier de travail (code monté via volume) ────────────
+WORKDIR /app
+
+# Pas de COPY ici — le code source est monté via docker-compose
+# Reste en vie pour les commandes interactives
+CMD ["sleep", "infinity"]

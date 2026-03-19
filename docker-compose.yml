@@ -1,0 +1,34 @@
+# ============================================================
+#  docker-compose.yml  —  Bot C++ + accès dashboard
+# ============================================================
+services:
+
+  # ── Bot C++ ───────────────────────────────────────────
+  swing_bot:
+    build: .
+    container_name: swing_bot
+    ports:
+      - "9001:9001"       # WebSocket → dashboard React
+    volumes:
+      - ./data:/app/data  # swingbot.db persisté sur l'hôte
+    environment:
+      - BOT_MODE=paper
+      - BOT_DRY_RUN=true
+    restart: unless-stopped
+
+  # ── Tests (s'arrête après exécution) ──────────────────
+  unit_tests:
+    build:
+      context: .
+      target: builder     # utilise le stage intermédiaire
+    container_name: unit_tests
+    command: ./build/unit_tests --gtest_color=yes
+    profiles: ["test"]    # lancé seulement avec --profile test
+
+  integration_tests:
+    build:
+      context: .
+      target: builder
+    container_name: integration_tests
+    command: ./build/integration_tests --gtest_color=yes
+    profiles: ["test"]

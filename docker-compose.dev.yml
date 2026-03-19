@@ -1,0 +1,33 @@
+# ============================================================
+#  docker-compose.dev.yml  —  Environnement de développement
+#
+#  Usage :
+#    .\dev.ps1 start    → build l'image + configure CMake
+#    .\dev.ps1 build    → compilation incrémentale (~5s)
+#    .\dev.ps1 test     → tous les tests
+#    .\dev.ps1 unit     → tests unitaires seulement
+#    .\dev.ps1 integ    → tests d'intégration seulement
+#    .\dev.ps1 shell    → bash interactif
+#    .\dev.ps1 stop     → arrête le conteneur
+# ============================================================
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: swing_bot_dev
+    volumes:
+      # Code source Windows monté en temps réel dans le conteneur
+      - .:/app
+      # Volume séparé pour le dossier build
+      # → évite d'écraser le build Linux avec des artefacts Windows
+      - swing_build:/app/build
+    working_dir: /app
+    command: sleep infinity
+    ports:
+      - "9001:9001"
+    environment:
+      - TERM=xterm-256color
+
+volumes:
+  swing_build:

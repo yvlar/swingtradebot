@@ -1,0 +1,78 @@
+# ============================================================
+#  .gitignore — SwingBot C++ + Python
+# ============================================================
+
+# ── Build C++ ─────────────────────────────────────────────
+build/
+cmake-build-debug/
+cmake-build-release/
+cmake-build-*/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+
+# ── CMake ─────────────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+_deps/
+compile_commands.json
+.cmake/
+
+# ── CLion ─────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ── Base de données SQLite ────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+build_log*.txt
+
+# ── Données CSV (trop lourdes pour git) ───────────────────
+*.csv
+!tests/**/*.csv
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+.env
+.venv/
+venv/
+
+# ── Clés API — ne jamais committer ────────────────────────
+.env
+.env.*
+secrets.yaml
+config.local.*
+*api_key*
+*api_secret*
+
+# ── Docker volumes locaux ─────────────────────────────────
+.docker/
+
+# ── Windows ───────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── macOS ─────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+
+# ── VSCode ────────────────────────────────────────────────
+.vscode/

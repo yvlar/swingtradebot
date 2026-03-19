@@ -1,68 +1,98 @@
 cmake_minimum_required(VERSION 3.20)
-project(SwingBot VERSION 1.0 LANGUAGES CXX)
+project(SwingBot VERSION 2.0 LANGUAGES CXX)
 
-# ─── Windows/MinGW fix ────────────────────────────────────────────────────────
-if(WIN32 AND MINGW)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
-endif()
-
-# ─── Standard C++20 ───────────────────────────────────────────────────────────
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ─── Includes ─────────────────────────────────────────────────────────────────
-include_directories(${PROJECT_SOURCE_DIR}/include)
+# ── Dépendances vcpkg ─────────────────────────────────────
+find_package(Boost         REQUIRED COMPONENTS system)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(CURL          REQUIRED)
+find_package(GTest         CONFIG REQUIRED)
 
-# ─── Exécutable principal ─────────────────────────────────────────────────────
-add_executable(SwingBot main.cpp)
-target_include_directories(SwingBot PRIVATE ${PROJECT_SOURCE_DIR}/include)
-
-# ─── Google Test ──────────────────────────────────────────────────────────────
-include(FetchContent)
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+# ── Sources bot (headers-only + ws_server.cpp) ────────────
+file(GLOB_RECURSE BOT_SOURCES
+        "${CMAKE_SOURCE_DIR}/include/core/ws_server.cpp"
 )
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+
+# ── Includes communs ──────────────────────────────────────
+set(COMMON_INCLUDES
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/include/bot
+        ${CMAKE_SOURCE_DIR}/include/brokers
+        ${CMAKE_SOURCE_DIR}/include/core
+        ${CMAKE_SOURCE_DIR}/include/indicators
+        ${CMAKE_SOURCE_DIR}/include/strategies
+        ${CMAKE_SOURCE_DIR}/include/backtest
+        ${CMAKE_SOURCE_DIR}/include/models
+        ${Boost_INCLUDE_DIRS}
+)
+
+# ── Liens communs ─────────────────────────────────────────
+set(COMMON_LIBS
+        Boost::system
+        nlohmann_json::nlohmann_json
+        unofficial::sqlite3::sqlite3
+        CURL::libcurl
+        $<$<PLATFORM_ID:Windows>:ws2_32>
+        $<$<PLATFORM_ID:Windows>:mswsock>
+        $<$<PLATFORM_ID:Linux>:pthread>
+)
+
+set(GTEST_LIBS GTest::gtest GTest::gtest_main)
+
+# ════════════════════════════════════════════════════════════
+#  EXÉCUTABLE PRINCIPAL
+# ════════════════════════════════════════════════════════════
+add_executable(swing_bot
+        main_ibkr.cpp
+        ${BOT_SOURCES}
+)
+target_include_directories(swing_bot PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(swing_bot PRIVATE ${COMMON_LIBS})
+
+# ════════════════════════════════════════════════════════════
+#  TESTS UNITAIRES
+#  gtest_discover_tests → chaque test = processus séparé = 100% indépendant
+# ════════════════════════════════════════════════════════════
 enable_testing()
 
-# ─── Tests unitaires (si le fichier existe) ───────────────────────────────────
-set(UNIT_TEST_FILE ${PROJECT_SOURCE_DIR}/tests/unit/test_unit.cpp)
-if(EXISTS ${UNIT_TEST_FILE})
-    add_executable(unit_tests ${UNIT_TEST_FILE})
-    target_link_libraries(unit_tests GTest::gtest_main)
-    target_include_directories(unit_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
-    include(GoogleTest)
-    gtest_discover_tests(unit_tests)
-    message(STATUS "✅ Tests unitaires activés")
-else()
-    message(WARNING "⚠️  tests/unit/test_unit.cpp introuvable — crée le fichier")
-endif()
+add_executable(unit_tests
+        tests/unit/test_bot_state_unit.cpp
+        tests/unit/test_db_logger_unit.cpp
+        tests/unit/test_watchdog_unit.cpp
+        tests/unit/test_ws_server_unit.cpp
+        tests/unit/test_swing_strategy_unit.cpp
+        ${BOT_SOURCES}
+)
+target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(unit_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
 
-# ─── Tests d'intégration (si le fichier existe) ───────────────────────────────
-set(INTEG_TEST_FILE ${PROJECT_SOURCE_DIR}/tests/integration/test_integration.cpp)
-if(EXISTS ${INTEG_TEST_FILE})
-    add_executable(integration_tests ${INTEG_TEST_FILE})
-    target_link_libraries(integration_tests GTest::gtest_main)
-    target_include_directories(integration_tests PRIVATE ${PROJECT_SOURCE_DIR}/include)
-    include(GoogleTest)
-    gtest_discover_tests(integration_tests)
-    message(STATUS "✅ Tests d'intégration activés")
-else()
-    message(WARNING "⚠️  tests/integration/test_integration.cpp introuvable — crée le fichier")
-endif()
+include(GoogleTest)
+gtest_discover_tests(unit_tests
+        TEST_PREFIX "Unit."
+        PROPERTIES TIMEOUT 15
+)
 
-# ─── Résumé ───────────────────────────────────────────────────────────────────
-message(STATUS "")
-message(STATUS "══════════════════════════════════════")
-message(STATUS "  SwingBot — Build Configuration     ")
-message(STATUS "══════════════════════════════════════")
-message(STATUS "  Compilateur : ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "  Build type  : ${CMAKE_BUILD_TYPE}")
-message(STATUS "  Sources dir : ${PROJECT_SOURCE_DIR}")
-message(STATUS "══════════════════════════════════════")
-message(STATUS "")
+# ════════════════════════════════════════════════════════════
+#  TESTS D'INTÉGRATION
+#  gtest_discover_tests → chaque test = processus séparé = 100% indépendant
+#  WsServer : port=0 + actual_port() → port unique garanti par processus
+# ════════════════════════════════════════════════════════════
+add_executable(integration_tests
+        tests/integration/test_bot_state_integration.cpp
+        tests/integration/test_db_logger_integration.cpp
+        tests/integration/test_watchdog_integration.cpp
+        tests/integration/test_ws_server_integration.cpp
+        tests/integration/test_swing_strategy_integration.cpp
+        ${BOT_SOURCES}
+)
+target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
+
+gtest_discover_tests(integration_tests
+        TEST_PREFIX "Integration."
+        PROPERTIES TIMEOUT 30
+)
