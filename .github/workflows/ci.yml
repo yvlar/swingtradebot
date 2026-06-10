@@ -1,0 +1,50 @@
+# Pipeline CI — build Linux (paquets système, fallback D11) + ctest à chaque
+# push et pull request (item 22, ROADMAP.md). Garde-fou de fond contre :
+#   - le CMakeLists vcpkg-only (D11) — on builde ici SANS vcpkg ;
+#   - tout test rouge mergé sans être vu (dérive D20) ;
+#   - un header qui ne compile que par inclusion transitive (D17).
+# Reproduit exactement la recette documentée dans prompt-executer-sprint.md.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build Linux + ctest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # L'update est obligatoire : un index apt périmé donne des 404
+      # (leçon Sprint 3).
+      - name: Installer les dépendances système
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev \
+            libcurl4-openssl-dev \
+            libsqlite3-dev \
+            libgtest-dev googletest \
+            cmake ninja-build g++
+
+      - name: Configurer (CMake + Ninja, sans vcpkg)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      # Décompte publié à chaque run : rend « État des tests » de la ROADMAP
+      # auto-vérifiable (remède de fond à la dérive D20).
+      - name: Lister les tests (décompte)
+        working-directory: build
+        run: ctest -N
+
+      - name: Lancer toute la suite
+        working-directory: build
+        run: ctest --output-on-failure -j4
