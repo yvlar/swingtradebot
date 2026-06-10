@@ -22,6 +22,7 @@
 #include "core/db_logger.h"
 #include "core/state_store.h"
 #include "core/watchdog.h"
+#include "core/curl_global.h"
 
 #include <iostream>
 #include <csignal>
@@ -48,6 +49,10 @@ static bool hasFlag(int argc, char* argv[], const std::string& flag) {
 }
 
 int main(int argc, char* argv[]) {
+    // Init libcurl pour tout le processus, avant tout thread et tout
+    // objet réseau (feeds, brokers, watchdog) — voir core/curl_global.h
+    CurlGlobal curlGlobal;
+
     bool liveMode  = hasFlag(argc, argv, "--live");
     std::string accountId = getArg(argc, argv, "--account");
     std::string gatewayUrl = "https://localhost:5000"; // toujours localhost

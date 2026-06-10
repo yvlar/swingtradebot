@@ -57,12 +57,12 @@ public:
     explicit Watchdog(AlertConfig cfg, BotState& state)
         : cfg_(std::move(cfg)), state_(state)
     {
-        curl_global_init(CURL_GLOBAL_DEFAULT);
+        // L'init globale de libcurl est faite une seule fois au main
+        // via CurlGlobal (core/curl_global.h) — jamais ici (item 7)
     }
 
     ~Watchdog() {
         stop();
-        curl_global_cleanup();
     }
 
     // Appeler dans le thread principal du bot — indique que le bot est vivant

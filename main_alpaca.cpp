@@ -22,6 +22,7 @@
 #include "core/ws_server.h"
 #include "core/db_logger.h"
 #include "core/watchdog.h"
+#include "core/curl_global.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -41,6 +42,9 @@ static std::string getEnv(const std::string& key, const std::string& def = "") {
 }
 
 int main(int argc, char* argv[]) {
+    // Init libcurl pour tout le processus, avant tout thread et tout
+    // objet réseau (feeds, brokers, watchdog) — voir core/curl_global.h
+    CurlGlobal curlGlobal;
 
     // ── Mode paper ou live ────────────────────────────────
     bool liveMode = false;

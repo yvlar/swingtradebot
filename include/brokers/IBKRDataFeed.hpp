@@ -47,10 +47,9 @@ public:
         : gatewayUrl_(std::move(gatewayUrl))
         , verifySsl_ (verifySsl)  // false requis avec le cert auto-signé du gateway
     {
-        curl_global_init(CURL_GLOBAL_DEFAULT);
+        // L'init globale de libcurl est faite une seule fois au main
+        // via CurlGlobal (core/curl_global.h) — jamais ici (item 7)
     }
-
-    ~IBKRDataFeed() { curl_global_cleanup(); }
 
     // ── IDataFeed ─────────────────────────────────────────────
 

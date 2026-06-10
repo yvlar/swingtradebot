@@ -38,10 +38,9 @@ public:
             ? "https://paper-api.alpaca.markets"
             : "https://api.alpaca.markets")
     {
-        curl_global_init(CURL_GLOBAL_DEFAULT);
+        // L'init globale de libcurl est faite une seule fois au main
+        // via CurlGlobal (core/curl_global.h) — jamais ici (item 7)
     }
-
-    ~AlpacaDataFeed() { curl_global_cleanup(); }
 
     // ── IDataFeed ─────────────────────────────────────────────
 

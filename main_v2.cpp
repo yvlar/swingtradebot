@@ -5,6 +5,7 @@
 #include "core/ws_server.h"
 #include "core/db_logger.h"
 #include "core/watchdog.h"
+#include "core/curl_global.h"
 
 #include <iostream>
 #include <thread>
@@ -119,6 +120,10 @@ void run_cycle() {
 
 // ─── main ─────────────────────────────────────────────────
 int main() {
+    // Init libcurl pour tout le processus, avant tout thread et tout
+    // objet réseau (watchdog) — voir core/curl_global.h
+    CurlGlobal curlGlobal;
+
     std::signal(SIGINT,  on_signal);
     std::signal(SIGTERM, on_signal);
 
