@@ -14,8 +14,25 @@
 | FinTech      | 66        | 38                           |
 | Production   | 58        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 4)
-- **Sprint courant** : Sprint 5 — Durcissement production
+- **Dernière mise à jour** : 2026-06-10 (méta-audit « analyse complète » — ajout des Sprints 6-9)
+- **Sprint courant** : Sprint 5 — Durcissement production (puis 6-9 : rentabilité)
+
+> ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
+> Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
+> capacité à gagner de l'argent. Le golden de non-régression (item 17) le dit
+> noir sur blanc : sur QQQ.csv (~2018→2026), la stratégie rend **+9,67 %** quand
+> **Buy & Hold rend +238,55 %** — un **alpha de −229 points**. Le bot transforme un
+> des plus grands marchés haussiers de l'histoire en quasi-stagnation, en restant
+> en cash l'essentiel du temps (7 trades en ~5 ans). De plus, **la config qui tourne
+> en production (`main_ibkr.cpp:104-114`) n'est PAS celle validée par le golden** —
+> le live trade des paramètres jamais backtestés (voir D21). Tant que ce n'est pas
+> corrigé, « le but est de faire de l'argent » n'est pas servi. C'est l'objet des
+> **Sprints 6-9** (voir le méta-audit ci-dessous). Une 5e dimension est ajoutée au
+> tableau de bord :
+>
+> | Dimension     | Note /100 | Justification |
+> |---------------|-----------|---------------|
+> | **Rentabilité** | **15**  | Alpha −229 pts vs B&H ; aucune validation hors-échantillon ; config prod ≠ config testée. Le seul chiffre prouvé est une sous-performance massive. |
 - **État des tests** : 350/350 verts (303 unitaires + 47 intégration). Décompte
   recalé sur la sortie réelle de `ctest` : le « 198 » documenté à la clôture du
   Sprint 3 ignorait un lot de couverture des fondations mergé hors cycle (commit
@@ -200,6 +217,133 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 
 ---
 
+# 🧭 MÉTA-AUDIT « Analyse complète » (2026-06-10)
+
+> Audit transverse demandé hors cycle, sous deux angles distincts : **ingénieur
+> logiciel** et **swing trader expérimenté**. But explicite : *faire de l'argent*.
+> Les Sprints 1-5 ont rendu le moteur **sûr et correct** (note FinTech 66, Production 58).
+> Le verdict de ce méta-audit est sans appel : **la sûreté est résolue, la rentabilité
+> ne l'est pas du tout.** Le bot, tel quel, perd contre le simple fait de détenir QQQ.
+> Les solutions deviennent les **Sprints 6-9** ci-dessous.
+
+## A. Défauts vus par l'ingénieur logiciel (+ solutions)
+
+> Le gros de la dette d'ingénierie « dangereuse » est déjà traité (Sprints 1-5).
+> Restent surtout des défauts qui faussent la **mesure** de la performance ou qui
+> font diverger **prod ↔ backtest** — donc directement liés à « faire de l'argent ».
+
+| # | Défaut (ingénieur) | Réf. | Solution → Sprint |
+|---|--------------------|------|-------------------|
+| E1 | **La config de prod n'est pas celle qui est backtestée.** `main_ibkr.cpp:104-114` câble EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 ; le golden valide les **défauts** de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live tourne sur des paramètres **jamais validés**. | `main_ibkr.cpp:104` vs `SwingStrategy.hpp:11` | Externaliser la config (JSON validé) + golden sur la config de prod → **Sprint 6.1 / 9.1** (D21) |
+| E2 | **Coûts de transaction irréalistes.** PaperBroker exécute au close, **zéro slippage**, commission seule (`PaperBroker.hpp:29-31`). Un backtest optimiste surévalue tout edge ; en prod les fills IBKR sont au marché. | `PaperBroker.hpp:31,47,73` | Modèle slippage + spread paramétrable → **Sprint 6.2** (D22) |
+| E3 | **Rendement total faussé : `Close` au lieu de `Adj Close`** → dividendes QQQ ignorés, pour la stratégie ET le Buy & Hold. | `CsvDataFeed.hpp:115` | Total-return (Adj Close / réinvestissement) → **Sprint 6.3** (D7) |
+| E4 | **Aucun harnais d'optimisation / validation.** Les paramètres sont des nombres magiques ; pas de split in-sample/out-of-sample, pas de walk-forward, pas de Monte-Carlo. Impossible de savoir si un réglage **généralise** ou s'il est sur-ajusté. | (absence) | Harnais walk-forward + grille + bootstrap → **Sprint 7** (D24) |
+| E5 | **Fenêtre de lookback codée en dur.** `getBars(symbol, 60)` en prod vs `emaSlow+30=51` au backtest : la taille de fenêtre influe sur le seed SMA des EMA, donc sur les **signaux**. Prod et backtest peuvent diverger silencieusement. | `TradingBot.hpp:62` | Lookback configurable, unifié → **Sprint 9.2** (D19) |
+| E6 | **Barre du jour incomplète en prod.** La boucle tourne toutes les 60 min sur des barres **journalières** : la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (look-ahead/flap absent du backtest). | `main_ibkr.cpp:196`, `TradingBot.hpp:62` | N'évaluer que sur barres clôturées → **Sprint 9.3** (D25) |
+| E7 | **Les indicateurs jettent high/low.** `IIndicator::compute(vector<double> closes)` ne reçoit que les clôtures alors que `Bar` porte O/H/L/C/V → ATR dégradé (clôture-à-clôture), vrai true-range et VWAP corrects inaccessibles. | `Interfaces.hpp:66`, `Models.hpp:9` | `compute(vector<Bar>)` → **Sprint 8.x prérequis** (D18) |
+| E8 | **Calendrier de marché faux 8 mois/an** (UTC-5 fixe, ignore l'heure d'été). | `IBKRDataFeed.hpp:201` | UTC + DST → **Sprint 5.20 / 9.3** |
+| E9 | **Trades jamais persistés en prod** (table `trades` vide, dashboard sans positions). | `main_ibkr.cpp` (pas d'appel `record_trade`) | Câblage logging → **Sprint 5.21** |
+| E10 | **Pas de CI** : rien ne garde la prod alignée sur les tests verts à chaque push. | (absence) | GitHub Actions → **Sprint 5.22** |
+
+## B. Défauts vus par le swing trader (+ solutions)
+
+> C'est ici que se joue « faire de l'argent ». Chaque défaut est jugé à l'aune d'une
+> seule question : *est-ce que ça coûte du rendement net, après coûts, vs détenir QQQ ?*
+
+| # | Défaut (swing trader) | Preuve / Réf. | Solution → Sprint |
+|---|------------------------|---------------|-------------------|
+| T1 | **Le take-profit fixe ampute les gagnants.** Une stratégie de tendance gagne sur les **queues** (laisser courir). Plafonner à +10 % (+15 % en prod) coupe les meilleures positions ; le ratio gain/risque réel s'effondre. | `RiskManager.hpp:81`, `SwingConfig.takeProfitPct` | Supprimer/assouplir le TP, sortie au trailing/structure → **Sprint 8.2** (D26) |
+| T2 | **Vente sur RSI > 70 = sortir de la tendance au pire moment.** Sur QQQ, un RSI > 70 en marché haussier est historiquement un signal de **force**, pas de retournement. Vendre à chaque fois laisse d'énormes gains sur la table. | `SwingStrategy.hpp:109`, `rsiSellMin` | Filtre de régime : ne pas vendre sur RSI en tendance haussière de fond → **Sprint 8.4** (D26) |
+| T3 | **Filtre d'entrée contradictoire.** Exiger un croisement **haussier** (momentum ↑) ET `RSI < 55` (peu de momentum) s'auto-annule : très peu d'entrées (7 en 5 ans) et on rate justement les **breakouts** forts où se fait l'argent. | `SwingStrategy.hpp:96-99` | Entrée sur la force (breakout/pente), pas la faiblesse → **Sprint 8.3** (D26) |
+| T4 | **Cash drag massif / long-only mono-actif.** Hors position l'essentiel du temps, jamais investi sur un actif qui monte structurellement → l'alpha est −229 pts. Pas de re-entrée, pas de rotation, pas de couverture. | golden : 7 trades, +9,67 % vs +238,55 % | Filtre de régime « rester avec la tendance » + réduire le temps en cash → **Sprint 8.1 / 8.5** |
+| T5 | **Aucun filtre de régime macro.** Un croisement EMA whipsaw en range et arrive en retard en tendance. Pas de filtre long terme (ex. prix > SMA200) pour rester investi en tendance haussière et couper les entrées à contre-tendance. | `SwingStrategy.hpp:65-122` | Filtre SMA200 / pente → **Sprint 8.1** (D26) |
+| T6 | **Validé sur un seul régime, un seul actif, sans hors-échantillon.** QQQ ~2018-2026 est quasi exclusivement haussier ; aucune robustesse en marché baissier/range, aucun OOS, aucun multi-actif. Edge non démontré. | golden mono-fichier | Walk-forward + multi-actifs + Monte-Carlo → **Sprint 7** (D24) |
+| T7 | **Objectif de performance non défini.** « Faire de l'argent » doit être **alpha net vs Buy & Hold** (et drawdown maîtrisé), pas « retour positif ». Le rapport ne tranche pas explicitement « bat-on QQQ ? ». | `BackTester.hpp` (rapport) | Métriques cibles : CAGR, alpha net, Sortino, Calmar, % temps investi → **Sprint 6.4** (D23) |
+| T8 | **Coûts/dividendes ignorés faussent la décision.** Sans slippage ni Adj Close, on peut « valider » un edge qui n'existe pas net de frais et hors dividendes réinvestis. | E2, E3 | cf. Sprint 6.2 / 6.3 |
+
+---
+
+# 🟣 SPRINT 6 — Vérité du backtest & réalisme (rentabilité, fondations)
+
+> **On ne peut pas améliorer ce qu'on mesure mal.** Avant toute refonte de stratégie,
+> le backtest doit dire la vérité : config réelle, coûts réels, dividendes, et une
+> métrique d'objectif explicite. Dépendances : 6.2/6.3 modifient le golden (item 17) —
+> figer un **nouveau golden** documenté dans le même commit. 6.1 est le plus urgent
+> (un éventuel money-loser tourne en prod aujourd'hui).
+
+- [ ] **6.1** (D21) Backtester la **config de production** (`main_ibkr.cpp:104-114`) et
+  figer un 2e golden. **Acceptation** : un test affiche côte à côte golden défaut vs
+  golden prod ; si la config prod sous-performe la config défaut, ouvrir une
+  **Décision requise** (aligner la prod sur la config validée, ou continuer à valider
+  la config prod). Aucune config non backtestée ne doit pouvoir partir en live.
+- [ ] **6.2** (D22) Modèle de coûts réaliste dans `PaperBroker` (`PaperBroker.hpp:47,73`) :
+  slippage paramétrable (bps) + demi-spread, en plus de la commission. **Acceptation** :
+  test rouge (mêmes trades, capital final inférieur slippage > 0) ; nouveau golden figé.
+- [ ] **6.3** (D7) Rendement total : utiliser `Adj Close` (`CsvDataFeed.hpp:115`) pour la
+  stratégie ET le Buy & Hold (dividendes réinvestis). **Acceptation** : B&H recalculé,
+  documenté ; golden mis à jour avec justification du delta.
+- [ ] **6.4** (D23) Métriques d'objectif dans `BacktestResult` : CAGR, **alpha net vs B&H**,
+  Sortino, Calmar, % de temps investi, et un verdict booléen « bat B&H net de coûts ».
+  **Acceptation** : tests unitaires des formules sur séries synthétiques.
+
+# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge)
+
+> Aucune confiance dans un paramètre sans validation hors-échantillon. Ce sprint
+> construit l'outillage qui permettra de juger toute modif du Sprint 8 **honnêtement**.
+> Dépend du Sprint 6 (coûts/métriques justes).
+
+- [ ] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv (fenêtres
+  glissantes). **Acceptation** : rapport IS vs OOS ; un edge qui ne tient qu'en IS est
+  signalé comme sur-ajusté.
+- [ ] **7.2** Optimiseur de grille de paramètres avec **sélection robuste** (plateau de
+  performance, pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres.
+- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de drawdown
+  (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du retour.
+- [ ] **7.4** **Multi-actifs** : charger plusieurs CSV (ex. SPY, IWM, MDY) pour tester la
+  généralisation hors QQQ. **Acceptation** : la stratégie est évaluée sur ≥ 3 actifs.
+
+# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent)
+
+> Le sprint qui doit **transformer −229 pts d'alpha en alpha positif (ou neutre à moindre
+> drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**, jamais en IS.
+> Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour des stops/VWAP corrects.
+
+- [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
+  disponibles) ; vrai ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour,
+  DayTradeStrategy migrée.
+- [ ] **8.1** (D26) **Filtre de régime** : n'ouvrir long que si tendance de fond haussière
+  (ex. prix > SMA200 / pente positive). **Acceptation OOS** : participation aux tendances ↑,
+  whipsaws de range ↓ ; alpha net OOS > version actuelle.
+- [ ] **8.2** (D26) **Laisser courir les gagnants** : retirer/assouplir le take-profit fixe
+  (`RiskManager.hpp:81`), sortie pilotée par trailing/structure. **Acceptation OOS** :
+  gain moyen des gagnants ↑ sans dégrader le profit factor net.
+- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-99`) : entrer
+  sur la force (breakout/momentum), pas exiger `RSI < 55`. **Acceptation OOS** : nombre de
+  trades et exposition ↑, expectancy nette ≥ 0.
+- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** (gate par 8.1).
+- [ ] **8.5** **Réduire le cash drag** : re-entrée / rester investi tant que le régime tient.
+  **Acceptation OOS** : % de temps investi ↑, alpha net ↑.
+
+> **Definition of Done du Sprint 8** (en plus de la DoD standard) : la stratégie retenue
+> **bat le Buy & Hold net de coûts en out-of-sample** OU le sous-performe de moins de X %
+> avec un drawdown sensiblement réduit (cible chiffrée à arbitrer — **Décision requise**).
+> Sinon le sprint conclut « pas d'edge démontré » et on ne déploie PAS — c'est un résultat
+> valide (ne jamais mettre d'argent réel sur un edge non prouvé).
+
+# 🟣 SPRINT 9 — Mise en production de la stratégie validée
+
+> Ne s'ouvre qu'après un edge OOS démontré (Sprint 8). Sinon, la prod reste en paper.
+
+- [ ] **9.1** Externaliser la config (fichier JSON **validé** au démarrage) ; fin de la dérive
+  prod ≠ backtest (E1/D21). **Acceptation** : la config de prod EST chargée par le golden.
+- [ ] **9.2** (D19) Lookback configurable unifié prod/backtest (`TradingBot.hpp:62`).
+- [ ] **9.3** (item 20 + E6/D25) Calendrier de marché correct (UTC/DST) + n'évaluer que sur
+  **barres clôturées** (pas la barre du jour en formation).
+- [ ] **9.4** Procédure de **re-calibration walk-forward** documentée (cadence, critère de
+  reprise des paramètres) — pour que l'edge ne se dégrade pas en silence.
+
+---
+
 ## Découvertes (Phase 0, 2026-06-10)
 
 | # | Gravité | Constat | Affectation |
@@ -224,6 +368,12 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D18 | 🟡 | (Sprint 3) L'ATR de l'item 13 est une **approximation clôture-à-clôture** : `IIndicator<double>` ne reçoit que la série des clôtures, pas les high/low — le vrai true range est inaccessible via cette interface. Décision produit : enrichir l'interface (compute sur `vector<Bar>`) ou assumer l'approximation (documentée dans DayIndicators.hpp) | Backlog (décision produit, requis avant tout usage réel de DayTradeStrategy) |
 | D19 | 🟢 | (Sprint 3) `TradingBot::runOnce` code en dur `getBars(symbol, 60)` (TradingBot.hpp:62) alors que le backtest sert une fenêtre de emaSlow+30=51 barres via ReplayDataFeed — la taille de fenêtre influence le seed SMA des EMA, donc les signaux. Bénin tant que les feeds prod renvoient ≥51 barres, mais un `lookback` configurable (RiskConfig ?) unifierait prod et backtest | Sprint 5 (à câbler avec l'item 20, calendrier/données) |
 | D20 | 🟢 | (Sprint 4) Dérive ROADMAP ↔ dépôt : un lot « couverture des fondations » (commit `15eb711`, +~2528 lignes : brokers IBKR/Alpaca, PaperBroker, CsvDataFeed, métriques backtest, Logger, indicateurs) a été mergé hors du cycle `prompt-executer-sprint`. Le décompte de tests du tableau de bord (198) ne le reflétait pas (réel : 344 avant ce sprint). Aucune perte — la couverture est légitime et verte — mais le tableau de bord a menti pendant un sprint. **Garde-fou ajouté** : `prompt-executer-sprint.md` étape 2 exige désormais de recaler « État des tests » sur la sortie réelle de `ctest -N` et de signaler toute dérive ; `prompt-mise-a-jour-roadmap.md` rappelle d'absorber au changelog tout commit mergé hors cycle. La CI (item 22) reste le vrai remède de fond | Corrigé (workflow amendé ce sprint) |
+| D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:104-114` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | Sprint 6 (6.1) puis Sprint 9 (9.1) |
+| D22 | 🟠 | (Méta-audit) Backtest optimiste : `PaperBroker` exécute au close **sans slippage**, commission seule (`PaperBroker.hpp:29-31,47,73`). Tout edge mesuré est surévalué ; en prod les fills IBKR sont au marché. Un edge marginal peut être négatif net de slippage/spread | Sprint 6 (6.2) |
+| D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | Sprint 6 (6.4) |
+| D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
+| D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
+| D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 
 ## Changelog
 
