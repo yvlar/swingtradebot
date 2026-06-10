@@ -27,6 +27,8 @@ struct AlertConfig {
     // Watchdog timing
     int  heartbeat_interval_sec = 60;   // bot doit signaler vie toutes les N sec
     int  max_silence_sec        = 180;  // alerte si silence > N sec (3× heartbeat)
+    int  alert_timeout_sec      = 10;   // timeout curl des envois d'alerte (le
+                                        // watchdog ne doit jamais se geler lui-même)
 
     // Email (SMTP via libcurl)
     bool        email_enabled  = false;
@@ -64,8 +66,10 @@ public:
     }
 
     // Appeler dans le thread principal du bot — indique que le bot est vivant
+    // Thread-safe : last_heartbeat_ est atomique (lu par le thread watchdog)
     void heartbeat() {
-        last_heartbeat_ = std::chrono::steady_clock::now();
+        last_heartbeat_.store(std::chrono::steady_clock::now(),
+                              std::memory_order_relaxed);
         consecutive_failures_ = 0;
     }
 
@@ -94,8 +98,9 @@ private:
     std::atomic<int>  consecutive_failures_{0};
     std::function<void(const std::string&)> alert_cb_;
 
-    std::chrono::steady_clock::time_point last_heartbeat_
-        = std::chrono::steady_clock::now();
+    // Atomique : écrit par le thread principal (heartbeat), lu par loop_()
+    std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_{
+        std::chrono::steady_clock::now()};
 
     void loop_() {
         while (running_) {
@@ -104,7 +109,8 @@ private:
 
             auto now     = std::chrono::steady_clock::now();
             auto silence = std::chrono::duration_cast<std::chrono::seconds>(
-                               now - last_heartbeat_).count();
+                               now - last_heartbeat_.load(
+                                   std::memory_order_relaxed)).count();
 
             if (silence > cfg_.max_silence_sec) {
                 consecutive_failures_++;
@@ -130,12 +136,16 @@ private:
     std::string build_alert_msg_(long silence_sec) const {
         std::ostringstream ss;
         ss << "🚨 SWING BOT ALERTE\n"
-           << "Silence: " << silence_sec << "s (max=" << cfg_.max_silence_sec << "s)\n"
-           << "Mode: "    << state_.mode << "\n"
-           << "Cycle: #"  << state_.cycle << "\n"
-           << "Equity: $" << state_.equity << "\n"
-           << "Positions: " << state_.positions.size() << " ouvertes\n"
-           << "Tentative #" << consecutive_failures_.load();
+           << "Silence: " << silence_sec << "s (max=" << cfg_.max_silence_sec << "s)\n";
+        {
+            // BotState est partagé avec le thread principal → lecture sous lock
+            std::lock_guard<std::mutex> lk(state_.mtx);
+            ss << "Mode: "    << state_.mode << "\n"
+               << "Cycle: #"  << state_.cycle << "\n"
+               << "Equity: $" << state_.equity << "\n"
+               << "Positions: " << state_.positions.size() << " ouvertes\n";
+        }
+        ss << "Tentative #" << consecutive_failures_.load();
         return ss.str();
     }
 
@@ -185,6 +195,8 @@ private:
         curl_easy_setopt(curl, CURLOPT_READDATA,   &ud);
         curl_easy_setopt(curl, CURLOPT_UPLOAD,     1L);
         curl_easy_setopt(curl, CURLOPT_VERBOSE,    0L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT,    static_cast<long>(cfg_.alert_timeout_sec));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, static_cast<long>(cfg_.alert_timeout_sec));
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK)
@@ -218,6 +230,8 @@ private:
         curl_easy_setopt(curl, CURLOPT_PASSWORD,    cfg_.twilio_token.c_str());
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS,  post.c_str());
         curl_easy_setopt(curl, CURLOPT_VERBOSE,     0L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT,     static_cast<long>(cfg_.alert_timeout_sec));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, static_cast<long>(cfg_.alert_timeout_sec));
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK)
@@ -244,6 +258,8 @@ private:
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE,    0L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT,    static_cast<long>(cfg_.alert_timeout_sec));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, static_cast<long>(cfg_.alert_timeout_sec));
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK)
