@@ -129,8 +129,11 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   **Acceptation** : TradingBot.hpp n'inclut plus strategies/ ; tests verts inchangés.
 - [ ] **13.** `DayTradeStrategy.hpp:4` inclut `indicators/DayIndicators.hpp` **qui
   n'existe pas** (ATR, VWAP, VolumeOscillator manquants — le fichier ne compile que parce
-  que rien ne l'inclut) → créer ces indicateurs + tests, OU supprimer le fichier.
-  **Décision requise de l'utilisateur — posée à la clôture du Sprint 2, en attente.**
+  que rien ne l'inclut). **Décision utilisateur (clôture Sprint 2) : CRÉER les
+  indicateurs** — implémenter ATR, VWAP, VolumeOscillator (IIndicator<T>, tests
+  dans `test_indicators_unit.cpp` ou fichier dédié) et rendre DayTradeStrategy
+  compilable (inclus par au moins un TU de test pour ne plus jamais casser en
+  silence).
 - [ ] **14.** Hygiène : `main.cpp:1` inclut `"backtest/Backtester.hpp"` vs fichier réel
   `BackTester.hpp` (casse Linux — reconfirmé au Sprint 2 par `g++ -fsyntax-only`) ;
   `cmake-build-debug/` et `.idea/` encore commités (le `.gitignore` corrigé au Sprint 1
