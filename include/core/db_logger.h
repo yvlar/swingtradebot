@@ -137,6 +137,30 @@ public:
         return arr.dump();
     }
 
+    std::string logs_json(int limit = 100) {
+        std::lock_guard<std::mutex> lk(mtx_);
+        const char* sql =
+            "SELECT ts, level, msg FROM logs ORDER BY rowid DESC LIMIT ?;";
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return "[]";
+        sqlite3_bind_int(stmt, 1, limit);
+        nlohmann::json arr = nlohmann::json::array();
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            auto col_str = [&](int i) -> std::string {
+                auto p = sqlite3_column_text(stmt, i);
+                return p ? (const char*)p : "";
+            };
+            arr.push_back({
+                {"ts",    col_str(0)},
+                {"level", col_str(1)},
+                {"msg",   col_str(2)},
+            });
+        }
+        sqlite3_finalize(stmt);
+        std::reverse(arr.begin(), arr.end());
+        return arr.dump();
+    }
+
     std::string trades_json(int limit = 50) {
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql =

@@ -20,6 +20,7 @@
 #include "core/bot_state.h"
 #include "core/ws_server.h"
 #include "core/db_logger.h"
+#include "core/db_log_sink.h"
 #include "core/state_store.h"
 #include "core/watchdog.h"
 #include "core/curl_global.h"
@@ -141,7 +142,10 @@ int main(int argc, char* argv[]) {
     auto broker   = std::make_shared<trading::IBKRBroker>(accountId, gatewayUrl);
     auto strategy = trading::SwingStrategy::create(cfg);
     auto riskMgr  = std::make_shared<trading::RiskManager>();
-    auto logger   = std::make_shared<trading::ConsoleLogger>();
+    // Journalisation unifiée (item 21) : console + persistance SQLite (table logs)
+    auto logger   = std::make_shared<trading::CompositeLogger>();
+    logger->addLogger(std::make_shared<trading::ConsoleLogger>());
+    logger->addLogger(std::make_shared<trading::DbLogSink>(db));
     // Persistance de l'état de position : survit aux redémarrages
     // (réconciliée avec la position broker à chaque cycle)
     auto stateStore = std::make_shared<trading::SqliteStateStore>("swingbot_ibkr_state.db");
@@ -159,6 +163,31 @@ int main(int argc, char* argv[]) {
     // ── Bot principal ─────────────────────────────────────────
     trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr, logger, stateStore);
     bot.setConfig(cfg);
+
+    // Persistance des trades + dashboard (item 21) : record_trade à l'entrée,
+    // close_trade à la sortie ; positions[] alimenté pour le flux WebSocket
+    // (jusqu'ici la table `trades` restait vide et le dashboard sans positions).
+    bot.setTradeObserver([&](const trading::TradeEvent& ev) {
+        if (ev.kind == trading::TradeEvent::Kind::ENTRY) {
+            double sl = ev.price * (1.0 - cfg.stopLossPct);
+            double tp = ev.price * (1.0 + cfg.takeProfitPct);
+            db.record_trade(ev.symbol, "BUY", ev.qty, ev.price, sl, tp, "open");
+            std::lock_guard<std::mutex> lk(botState.mtx);
+            PositionData pd;
+            pd.symbol        = ev.symbol;
+            pd.side          = "long";
+            pd.qty           = ev.qty;
+            pd.avg_entry     = ev.price;
+            pd.stop_loss     = sl;
+            pd.take_profit   = tp;
+            pd.current_price = ev.price;
+            botState.positions = {pd};
+        } else {  // EXIT
+            db.close_trade(ev.symbol, ev.price, ev.pnl);
+            std::lock_guard<std::mutex> lk(botState.mtx);
+            botState.positions.clear();
+        }
+    });
 
     std::signal(SIGINT,  on_signal);
     std::signal(SIGTERM, on_signal);

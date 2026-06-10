@@ -9,6 +9,20 @@
 
 namespace trading {
 
+// ─── TradeEvent — événement de trade émis par le moteur (item 21) ────────────
+// Permet au composition root de persister les trades (DbLogger) et d'alimenter
+// le dashboard SANS coupler TradingBot à ces dépendances. Émis UNIQUEMENT sur
+// un fill confirmé (entrée ou sortie), au prix et quantité réels d'exécution.
+struct TradeEvent {
+    enum class Kind { ENTRY, EXIT };
+    Kind        kind;
+    std::string symbol;
+    int         qty    = 0;
+    double      price  = 0.0;    // prix de fill
+    double      pnl    = 0.0;    // renseigné pour EXIT (net du buyPrice)
+    std::string reason;          // "signal" / "stop-loss (...)" / "take-profit (...)"…
+};
+
 // ─── TradingBot ───────────────────────────────────────────────────────────────
 // (BotState vit dans models/Models.hpp, persisté via IStateStore)
 // Orchestrateur principal. Dépend UNIQUEMENT des interfaces (DIP).
@@ -151,6 +165,9 @@ public:
                     else         consecutiveLosses_ = 0;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
+                    if (tradeObserver_)
+                        tradeObserver_({TradeEvent::Kind::EXIT, riskCfg_.symbol,
+                                        fillQty, fillPrice, pnl, reason});
                     state_ = BotState{};  // reset
                     saveState_();
                 } else {
@@ -200,6 +217,9 @@ public:
                 state_.holdDays    = 0;
                 state_.lastBarDate = bars.back().date;  // jour d'entrée = jour 0
                 saveState_();
+                if (tradeObserver_)
+                    tradeObserver_({TradeEvent::Kind::ENTRY, riskCfg_.symbol,
+                                    fillQty, fillPrice, 0.0, "signal"});
                 logger_->info("🟢 ACHAT │ " + std::to_string(fillQty) +
                               " parts × $" + std::to_string(static_cast<int>(fillPrice)));
             } else if (order.has_value() && order->status == OrderStatus::PENDING) {
@@ -248,6 +268,12 @@ public:
         exitObserver_ = std::move(obs);
     }
 
+    // Observateur de trades (item 21) : notifié sur chaque fill confirmé
+    // (entrée/sortie). Le composition root y branche DbLogger + dashboard.
+    void setTradeObserver(std::function<void(const TradeEvent&)> obs) {
+        tradeObserver_ = std::move(obs);
+    }
+
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
     std::shared_ptr<IBroker>      broker_;
@@ -261,6 +287,7 @@ private:
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
     std::function<void(const std::string&)> exitObserver_;
+    std::function<void(const TradeEvent&)>  tradeObserver_;
 
     // État du kill-switch (item 18). En mémoire : remis à zéro au redémarrage —
     // acceptable pour une boucle de 60 min (les stops, eux, sont persistés). La

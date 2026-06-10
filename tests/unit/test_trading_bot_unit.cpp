@@ -543,6 +543,50 @@ TEST(TradingBotUnit, LosingSellIncrementsThenWinningResetsConsecutiveLosses) {
     EXPECT_EQ(h.bot->consecutiveLosses(), 0);   // remis à zéro par le gain
 }
 
+// ════════════════════════════════════════════════════════════
+//  Sprint 5 item 21 — observateur de trades (entrée / sortie)
+// ════════════════════════════════════════════════════════════
+
+// L'observateur reçoit ENTRY puis EXIT, aux prix/quantités de FILL réels
+TEST(TradingBotUnit, TradeObserverFiresOnEntryAndExitWithFillDetails) {
+    BotHarness h(420.0, "2024-03-01");
+    std::vector<TradeEvent> events;
+    h.bot->setTradeObserver([&](const TradeEvent& e) { events.push_back(e); });
+
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setFillPrice(415.0);
+    h.bot->runOnce();                            // entrée, fill @415
+
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].kind,   TradeEvent::Kind::ENTRY);
+    EXPECT_EQ(events[0].symbol, "QQQ");
+    EXPECT_EQ(events[0].qty,    9);
+    EXPECT_DOUBLE_EQ(events[0].price, 415.0);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setFillPrice(380.0);
+    h.setLastBar(380.0, "2024-03-04");           // -8,4 % → stop-loss
+    h.bot->runOnce();
+
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[1].kind, TradeEvent::Kind::EXIT);
+    EXPECT_DOUBLE_EQ(events[1].price, 380.0);
+    EXPECT_DOUBLE_EQ(events[1].pnl, (380.0 - 415.0) * 9);  // P&L au prix de fill
+    EXPECT_NE(events[1].reason.find("stop-loss"), std::string::npos);
+}
+
+// Un ordre non exécuté (REJECTED) n'émet AUCUN événement de trade
+TEST(TradingBotUnit, TradeObserverSilentOnRejectedOrder) {
+    BotHarness h(420.0, "2024-03-01");
+    int count = 0;
+    h.bot->setTradeObserver([&](const TradeEvent&) { count++; });
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+
+    h.bot->runOnce();
+    EXPECT_EQ(count, 0);
+}
+
 // Compteur d'ordres/jour : compte achats + ventes, remis à zéro au jour suivant
 TEST(TradingBotUnit, OrdersTodayCountsSubmittedOrdersAndResetsNextDay) {
     BotHarness h(420.0, "2024-03-01");
