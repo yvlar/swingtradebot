@@ -214,9 +214,12 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   sont **jamais appelés** dans `main_ibkr.cpp` (table `trades` vide, dashboard sans
   positions — `botState.positions` jamais alimenté). Unifier les deux systèmes de logging
   (`trading::ILogger` ↔ `DbLogger`).
-- [ ] **22.** (ajouté à la rétro Sprint 1) Pipeline CI GitHub Actions : build Linux
-  (paquets système, fallback D11) + `ctest` sur chaque push — aurait attrapé le
-  CMakeLists vcpkg-only, le gitignore mort et tout test rouge avant merge.
+- [x] **22.** (ajouté à la rétro Sprint 1) Pipeline CI GitHub Actions → `0156f97`
+  `.github/workflows/ci.yml` : build Linux sans vcpkg (paquets système, fallback D11)
+  + `ctest` à chaque push et pull request, publie `ctest -N` (décompte auto-vérifiable,
+  remède de fond à D20). Recette validée sur build propre (367/367 verts). Attrape
+  désormais automatiquement : CMakeLists vcpkg-only (D11), test rouge mergé sans revue
+  (D20), header compilant par inclusion transitive (D17).
 
 ---
 
