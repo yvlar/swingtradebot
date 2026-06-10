@@ -9,16 +9,15 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 82        | 68                           |
-| Qualité      | 88        | 60                           |
-| FinTech      | 76        | 38                           |
+| Architecture | 83        | 68                           |
+| Qualité      | 89        | 60                           |
+| FinTech      | 80        | 38                           |
 | Production   | 70        | 35                           |
 
 - **Dernière mise à jour** : 2026-06-10 (consolidation Sprints 5 + 6 sur cette branche)
-- **Sprint courant** : Sprint 7 — Harnais de validation (7.1 ✅ ; reste 7.2 optimiseur,
-  7.3 Monte-Carlo, 7.4 multi-actifs — ce dernier bloqué par le même manque de données
-  que D28). Sprint 5 (durcissement ✅) et Sprint 6 (vérité du backtest ✅) clos ;
-  reliquat de l'item 19 (stop résident broker) replié en Sprint 9.5.
+- **Sprint courant** : Sprint 8 — Refonte de la stratégie (capter la tendance). Sprints
+  5/6/7 clos (7.4 multi-actifs reporté, données manquantes — D31). Le harnais du Sprint 7
+  jugera chaque changement EN OOS. Reliquat item 19 (stop résident) replié en Sprint 9.5.
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -37,8 +36,8 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **25** (15 à l'audit, 22 après 6.1) | La mesure est désormais honnête (Sprint 6 clos) : config prod quantifiée (+36,50 %, +36,14 % avec slippage 5 bps), CAGR 4,47 %/an, **investi 29 % du temps** (cash drag T4 chiffré), verdict `beatsBuyHold=NON` figé par test. Reste l'essentiel : aucun edge démontré (pas d'OOS — Sprint 7), stratégie à refondre (Sprint 8), et données non total-return (D28). |
-- **État des tests** : 396/396 verts (344 unitaires + 52 intégration, après 7.1),
+> | **Rentabilité** | **28** (15 audit, 22 après 6.1, 25 après S6) | Mesure honnête (S6) + **preuve OOS** (S7) : la stratégie n'a **aucun edge directionnel hors-échantillon** (walk-forward : 1/4 segment bat le B&H, le baissier), et l'optimisation des paramètres ne le crée pas (D30). Le bootstrap montre des trades robustes mais un cash drag décisif. On SAIT maintenant quoi corriger (structure, Sprint 8) et on a l'outil pour juger. Le +3 récompense la certitude, pas un gain de rendement — celui-ci viendra (ou non) du Sprint 8. |
+- **État des tests** : 412/412 verts (356 unitaires + 56 intégration, après Sprint 7),
   recalé sur `ctest -N`. La CI GitHub Actions (item 22) vérifie ce décompte à chaque push.
   Rappel D20 : le « 198 » de la clôture Sprint 3 ignorait un lot de fondations mergé
   hors cycle (`15eb711`) — d'où le recalage systématique.
@@ -309,13 +308,17 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   inexistants). **Verdict figé : beatsBuyHold = NON** — c'est le booléen que les
   Sprints 7-8 doivent renverser.
 
-# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) — EN COURS
+# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) ✅ (clos le 2026-06-10 ; 7.4 reporté)
 
 > Aucune confiance dans un paramètre sans validation hors-échantillon. Ce sprint
 > construit l'outillage qui permettra de juger toute modif du Sprint 8 **honnêtement**.
 > Dépend du Sprint 6 (coûts/métriques justes). **Note D28** : QQQ.csv n'étant pas
 > total-return, l'écart au B&H est sous-estimé — tout verdict OOS « la stratégie perd »
 > est donc conservateur (décision utilisateur : construire le harnais malgré D28).
+> **Bilan** : 7.1-7.3 livrés ; 7.4 (multi-actifs) reporté faute de données (un seul CSV
+> synthétique — même blocage que D28, voir D31). Le harnais a tranché : **aucun edge
+> directionnel OOS**, et l'optimisation des paramètres ne le crée pas — c'est la
+> structure de la stratégie qu'il faut refondre (Sprint 8).
 
 - [x] **7.1** (D24) Split IS/OOS + **walk-forward** roulant → `0df2117`
   `include/backtest/WalkForward.hpp` (split ancré + N segments) sur `Backtester::runOn(bars)`
@@ -325,12 +328,25 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   segments → **1/4 seulement bat B&H, et c'est le segment BAISSIER** (la stratégie
   gagne en restant en cash, pas en captant la hausse). **Aucun edge directionnel hors
   échantillon** — c'est le verdict que le Sprint 8 doit renverser ICI (voir D30).
-- [ ] **7.2** Optimiseur de grille de paramètres avec **sélection robuste** (plateau de
-  performance, pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres.
-- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de drawdown
-  (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du retour.
-- [ ] **7.4** **Multi-actifs** : charger plusieurs CSV (ex. SPY, IWM, MDY) pour tester la
-  généralisation hors QQQ. **Acceptation** : la stratégie est évaluée sur ≥ 3 actifs.
+- [x] **7.2** Optimiseur de grille à **sélection robuste** → `6ab0bda`
+  `include/backtest/GridOptimizer.hpp` : balaie emaFast × emaSlow (score = Sharpe),
+  `selectBest` (pic) vs `selectRobust` (plateau = moyenne de voisinage 3×3). Logique de
+  sélection pure et testée (un pic isolé 0,99 perd contre un plateau ~0,6). 5 tests
+  unitaires + 2 d'intégration. **Démonstration figée** : pic IS EMA 9/21 (Sharpe 2,02),
+  plateau EMA 13/20 — **évalués en OOS, perdent quand même** (+6,75 % vs B&H +41,5 %).
+  Confirme que tuner les paramètres ne sauve pas la structure.
+- [x] **7.3** **Monte-Carlo / bootstrap** des trades → `9554fef`
+  `include/backtest/MonteCarlo.hpp` : ré-échantillonnage avec remise (déterministe),
+  percentiles p5/p50/p95 du retour ET du drawdown + P(perte) ; `tradeReturns` relatifs
+  à l'équité (pas au sizing). 8 tests unitaires + 1 d'intégration. **Distribution figée
+  (config prod, 5000 chemins)** : retour p5 +29,8 % / p50 +43,6 % / p95 +56,2 %, maxDD
+  p95 ~1 %, P(perte) 0 %. Leçon : les TRADES sont robustes, mais le p95 reste très sous
+  le B&H → c'est le cash drag le problème, pas la qualité des trades.
+- [ ] **7.4** (D31) **Multi-actifs** : charger plusieurs CSV (SPY, IWM, MDY…) pour tester
+  la généralisation hors QQQ. **REPORTÉ** : un seul dataset disponible (QQQ.csv,
+  synthétique) et réseau verrouillé sur les fournisseurs → même blocage que D28. À
+  reprendre dès qu'un jeu de données multi-actifs est fourni. Le code (`WalkForward`,
+  `Backtester`) accepte déjà des barres arbitraires — il ne manque QUE les données.
 
 # 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent)
 
@@ -435,6 +451,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D29 | 🟡 | (Sprint 5) Les compteurs du kill-switch (equity de début de jour, ordres/jour, pertes consécutives — TradingBot.hpp) sont **en mémoire** : un redémarrage en cours de journée les remet à zéro, affaiblissant la coupure (drawdown journalier réévalué depuis l'equity du redémarrage, série de pertes oubliée). Acceptable pour une boucle de 60 min, mais à persister (via `IStateStore`, à côté de l'état de position) pour une protection robuste | Sprint 9.5 (migration de schéma de l'item 19) |
+| D31 | 🟠 | (Sprint 7, item 7.4) **Pas de données multi-actifs ni total-return.** Un seul CSV (QQQ.csv, synthétique jusqu'en 2026, Close==Adj Close — cf. D28) ; réseau verrouillé sur les fournisseurs (Yahoo `unauthorized`, Stooq mort). Bloque 7.4 (généralisation hors QQQ) et la résolution propre de D28. Le code (`WalkForward`/`Backtester`/`CsvDataFeed(FromBars)`) accepte déjà des barres arbitraires : il ne manque QUE les fichiers. Action DONNÉES : l'utilisateur fournit SPY/IWM/MDY réellement ajustés | Sprint 8 (généralisation) / prérequis fourni par l'utilisateur |
 | D30 | 🔴 | (Sprint 7, item 7.1) **L'edge ne tient pas en out-of-sample.** Walk-forward de la config prod sur QQQ.csv : split 70/30 → OOS +6,56 % vs B&H +39,39 % ; 4 segments roulants → 1/4 seulement bat le B&H, et c'est le segment BAISSIER 2020-10→2022-07 (B&H −7,44 %). La stratégie « gagne » uniquement en étant hors marché pendant les baisses ; dans les 3 segments haussiers elle laisse 50-80 pts sur la table. C'est un **overlay défensif de réduction de risque, pas un générateur d'alpha** — confirmation OOS de D26. Tant que ce verdict n'est pas renversé (Sprint 8), ne PAS engager d'argent réel en visant un rendement supérieur à QQQ | Sprint 8 (à renverser ICI, en OOS) |
 
 ## Changelog
@@ -629,7 +646,80 @@ Calmar 2,2687, **investi 29,10 %**, **beatsBuyHold = NON**.
 +5 champs ; `printReport` +5 lignes ; nouveau `include/config/ProdConfig.hpp`.
 Aucun changement dans le moteur de trading lui-même.
 
+### Consolidation des branches Sprint 5 ⨝ Sprint 6 (2026-06-10)
+
+Deux sessions ont avancé en parallèle depuis la clôture du Sprint 4 : l'une le
+Sprint 5 (durcissement prod), l'autre le méta-audit + Sprint 6 (vérité du
+backtest). Merge de `prompt-executer-sprint-0hneps` dans la branche d'analyse,
+conflits résolus : CI unifiée (une seule), collision **D21** (config prod vs
+compteurs kill-switch) → la seconde renumérotée **D29**, collision de
+numérotation « Sprint 6 » → le stop résident broker devient **Sprint 9.5**.
+387/387 verts après merge (mes 367 + leurs 20).
+
+### Sprint 7 — Harnais de validation (2026-06-10)
+
+**Commits** (ordre chronologique) :
+- `0df2117` feat(backtest) : harnais walk-forward IS/OOS (7.1)
+- `6ab0bda` feat(backtest) : optimiseur de grille à sélection robuste (7.2)
+- `9554fef` feat(backtest) : Monte-Carlo bootstrap des trades (7.3)
+
+**Tests** : 387 → **412** (25 ajoutés). WalkForward 7+2, GridOptimizer 5+2,
+MonteCarlo 8+1 (unitaires + intégration). Tous les goldens existants **inchangés**
+(le refactor `run()`→`runOn()` délègue à l'identique).
+
+**Nouveaux fichiers** : `include/backtest/WalkForward.hpp`, `GridOptimizer.hpp`,
+`MonteCarlo.hpp` + 3 fichiers de tests unitaires + 3 d'intégration.
+**Interfaces** : `Backtester::runOn(bars)` (run() y délègue), `CsvDataFeed(vector<Bar>,
+FromBars)`. Aucun changement du moteur de trading.
+
+**Artefacts de décision figés** (config prod, comm 0,1 % + slippage 5 bps) :
+- OOS 70/30 : **+6,56 % vs B&H +39,39 %** (perd) — D30.
+- Walk-forward 4 segments : **1/4 bat le B&H**, le baissier.
+- Optimisation EMA : pic IS 9/21 et plateau 13/20 **perdent en OOS** (+6,75 %).
+- Monte-Carlo 5000 chemins : retour p5/p50/p95 = +29,8 / +43,6 / +56,2 %,
+  maxDD p95 ~1 %, P(perte) 0 % — trades robustes, cash drag décisif.
+
+**Reporté** : 7.4 multi-actifs (D31, données manquantes).
+
 ## Rétrospectives
+
+### Sprint 7 — Harnais de validation (2026-06-10)
+
+**1. Découpage** : ordre 7.1→7.2→7.3 juste — 7.1 a fourni la primitive `runOn(bars)`
+que 7.2 (grille) et 7.3 (bootstrap) ont réutilisée. La séparation logique pure
+(sélection robuste, percentiles) ⟂ évaluation par le moteur a permis un vrai TDD
+(matrices et vecteurs fabriqués pour le rouge, intégration pour les chiffres réels).
+Bonne décision utilisateur de finir le Sprint 7 avant le 8 : le harnais existe AVANT
+qu'on touche à la stratégie, donc chaque changement du Sprint 8 sera jugé en OOS dès
+le premier commit — pas d'auto-illusion in-sample possible.
+
+**2. Suffisance des prompts** : aucune improvisation de workflow. Deux ajustements
+techniques détectés par les chiffres (et non par les tests) : (a) la sélection robuste
+choisit une cellule de bord du plateau (effet de voisinage tronqué) — le test a été
+recadré sur « appartient au plateau » plutôt que « cellule exacte », ce qui est la
+vraie propriété voulue ; (b) le bootstrap composait le rendement SUR POSITION (p50
+208 % absurde) au lieu du rendement relatif à l'équité — corrigé avant de figer. Leçon :
+imprimer la valeur réelle AVANT de figer un golden attrape les erreurs de modèle qu'un
+test vert ne voit pas.
+
+**3. À détecter plus tôt** : (a) le défaut de modèle du bootstrap (sur-position vs
+équité) aurait dû être anticipé à la conception — garde-fou ajouté : tout chiffre de
+sortie passe par une sanity-check « ordre de grandeur cohérent avec le backtest » avant
+gel. (b) D31 (données mono-actif) était connu dès D28 ; 7.4 aurait dû être marqué
+« bloqué » dès l'ouverture du sprint plutôt qu'en clôture.
+
+**4. Notes** (précédent 82/88/76/70 + Rentabilité 25) :
+- **Architecture 83** (+1) : `runOn(bars)` ouvre proprement le moteur au rejeu de
+  sous-fenêtres sans dupliquer de logique ; les 3 outils de validation se composent sur
+  les mêmes abstractions. Petit gain structurel.
+- **Qualité 89** (+1) : +25 tests, dont des unités de logique pure (sélection, percentiles)
+  faciles à raisonner ; goldens inchangés prouvés. Plafond : pas de test E2E du `main`.
+- **FinTech 80** (+4) : le projet a enfin une **chaîne de validation hors-échantillon**
+  (walk-forward + optimisation robuste + Monte-Carlo) — exigence FinTech non négociable
+  avant de risquer de l'argent. Le verdict est négatif, mais l'OUTIL pour juger existe.
+- **Production 70** (=) : rien de déployé n'a changé (outillage d'analyse).
+- **Rentabilité 28** (+3) : aucun gain de rendement (pas le but), mais la question
+  « a-t-on un edge ? » a une réponse PROUVÉE (non, pas en OOS) et un cap clair (Sprint 8).
 
 ### Sprint 6 — Vérité du backtest & réalisme (2026-06-10)
 
