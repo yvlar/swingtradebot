@@ -1,11 +1,17 @@
 #pragma once
 // ============================================================
 //  db_logger.h  —  Persistance SQLite (logs + trades + equity)
+//
+//  Sprint 2, item 9 (+ D2) : chaque sqlite3_prepare_v2 et
+//  sqlite3_step est vérifié — un échec est consigné sur stderr
+//  et la méthode retourne false (écritures) ou "[]" (lectures),
+//  sans jamais toucher un statement invalide.
 // ============================================================
 #include <sqlite3.h>
 #include <string>
 #include <stdexcept>
 #include <mutex>
+#include <iostream>
 #include "bot_state.h"
 
 class DbLogger {
@@ -19,19 +25,18 @@ public:
 
     ~DbLogger() { if (db_) sqlite3_close(db_); }
 
-    void log(const LogEntry& e) {
+    bool log(const LogEntry& e) {
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql = "INSERT INTO logs(ts, level, msg) VALUES(?,?,?);";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return false;
         sqlite3_bind_text(stmt, 1, e.ts.c_str(),    -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, e.level.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 3, e.msg.c_str(),   -1, SQLITE_STATIC);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+        return step_done_(stmt);
     }
 
-    void record_trade(const std::string& symbol,
+    bool record_trade(const std::string& symbol,
                       const std::string& side,
                       int qty,
                       double entry,
@@ -42,8 +47,8 @@ public:
         const char* sql =
             "INSERT INTO trades(symbol,side,qty,entry,sl,tp,status,opened_at)"
             " VALUES(?,?,?,?,?,?,?,datetime('now'));";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return false;
         sqlite3_bind_text  (stmt, 1, symbol.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_text  (stmt, 2, side.c_str(),   -1, SQLITE_STATIC);
         sqlite3_bind_int   (stmt, 3, qty);
@@ -51,14 +56,13 @@ public:
         sqlite3_bind_double(stmt, 5, sl);
         sqlite3_bind_double(stmt, 6, tp);
         sqlite3_bind_text  (stmt, 7, status.c_str(), -1, SQLITE_STATIC);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+        return step_done_(stmt);
     }
 
     // FIX : utilise un sous-select au lieu de ORDER BY dans UPDATE
     // (SQLite sans SQLITE_ENABLE_UPDATE_DELETE_LIMIT ne supporte pas
     //  ORDER BY / LIMIT dans les requêtes UPDATE)
-    void close_trade(const std::string& symbol,
+    bool close_trade(const std::string& symbol,
                      double exit_price,
                      double pnl) {
         std::lock_guard<std::mutex> lk(mtx_);
@@ -70,37 +74,35 @@ public:
             "   WHERE symbol=? AND status='open'"
             "   ORDER BY rowid DESC LIMIT 1"
             ");";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return false;
         sqlite3_bind_double(stmt, 1, exit_price);
         sqlite3_bind_double(stmt, 2, pnl);
         sqlite3_bind_text  (stmt, 3, symbol.c_str(), -1, SQLITE_STATIC);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+        return step_done_(stmt);
     }
 
-    void snapshot_equity(double equity, double pnl, int cycle) {
+    bool snapshot_equity(double equity, double pnl, int cycle) {
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql =
             "INSERT INTO equity_curve(ts, equity, pnl, cycle)"
             " VALUES(datetime('now'),?,?,?);";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return false;
         sqlite3_bind_double(stmt, 1, equity);
         sqlite3_bind_double(stmt, 2, pnl);
         sqlite3_bind_int   (stmt, 3, cycle);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+        return step_done_(stmt);
     }
 
-    void record_signal(const SignalData& s, int cycle) {
+    bool record_signal(const SignalData& s, int cycle) {
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql =
             "INSERT INTO signals(ts, symbol, direction, score, rsi,"
             " entry, atr, sl, tp, cycle)"
             " VALUES(datetime('now'),?,?,?,?,?,?,?,?,?);";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return false;
         sqlite3_bind_text  (stmt, 1, s.symbol.c_str(),    -1, SQLITE_STATIC);
         sqlite3_bind_text  (stmt, 2, s.direction.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int   (stmt, 3, s.score);
@@ -110,8 +112,7 @@ public:
         sqlite3_bind_double(stmt, 7, s.stop_loss);
         sqlite3_bind_double(stmt, 8, s.take_profit);
         sqlite3_bind_int   (stmt, 9, cycle);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+        return step_done_(stmt);
     }
 
     std::string equity_history_json(int limit = 100) {
@@ -119,8 +120,8 @@ public:
         const char* sql =
             "SELECT ts, equity, pnl, cycle FROM equity_curve"
             " ORDER BY rowid DESC LIMIT ?;";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return "[]";
         sqlite3_bind_int(stmt, 1, limit);
         json arr = json::array();
         while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -142,8 +143,8 @@ public:
             "SELECT symbol,side,qty,entry,exit_price,sl,tp,pnl,status,"
             " opened_at,closed_at FROM trades"
             " ORDER BY rowid DESC LIMIT ?;";
-        sqlite3_stmt* stmt;
-        sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+        sqlite3_stmt* stmt = prepare_(sql);
+        if (!stmt) return "[]";
         sqlite3_bind_int(stmt, 1, limit);
         json arr = json::array();
         while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -172,6 +173,25 @@ public:
 private:
     sqlite3*   db_ = nullptr;
     std::mutex mtx_;
+
+    // Prépare une requête ; nullptr si échec (consigné, jamais d'UB — D2)
+    sqlite3_stmt* prepare_(const char* sql) {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            std::cerr << "[DbLogger] prepare: " << sqlite3_errmsg(db_) << "\n";
+            return nullptr;
+        }
+        return stmt;
+    }
+
+    // Exécute et finalise un statement d'écriture ; false si échec
+    bool step_done_(sqlite3_stmt* stmt) {
+        bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+        if (!ok)
+            std::cerr << "[DbLogger] step: " << sqlite3_errmsg(db_) << "\n";
+        sqlite3_finalize(stmt);
+        return ok;
+    }
 
     void exec_(const std::string& sql) {
         char* err = nullptr;

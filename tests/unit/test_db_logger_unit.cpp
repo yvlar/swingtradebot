@@ -139,3 +139,51 @@ TEST_F(DbLoggerUnit, RecordMultipleSignalsNoThrow) {
     db_->record_signal({"SPY","SHORT",2,71.0,520.00,3.10,526.20,507.60}, 1);
     SUCCEED();
 }
+
+// ── Robustesse SQLite (Sprint 2, item 9 + D2) ─────────────
+// Avant le fix : sqlite3_stmt* stmt non initialisé — si prepare échouait
+// (table absente, DB corrompue…), bind/step/finalize s'exécutaient sur un
+// pointeur indéterminé = UB/crash. Chaque prepare/step doit être vérifié.
+
+namespace {
+// Supprime les tables derrière le dos du DbLogger (connexion séparée)
+// → tous les sqlite3_prepare_v2 suivants échouent
+void dropAllTables(const std::string& path) {
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &raw), SQLITE_OK);
+    char* err = nullptr;
+    sqlite3_exec(raw,
+        "DROP TABLE logs; DROP TABLE trades;"
+        "DROP TABLE equity_curve; DROP TABLE signals;",
+        nullptr, nullptr, &err);
+    sqlite3_free(err);
+    sqlite3_close(raw);
+}
+} // namespace
+
+TEST_F(DbLoggerUnit, WritesAfterPrepareFailureReturnFalseWithoutCrash) {
+    dropAllTables(db_path_);
+
+    EXPECT_FALSE(db_->log({"INFO", "msg", "00:00:00"}));
+    EXPECT_FALSE(db_->record_trade("QQQ", "long", 10, 472.30, 466.60, 483.70));
+    EXPECT_FALSE(db_->close_trade("QQQ", 483.70, 114.0));
+    EXPECT_FALSE(db_->snapshot_equity(10000.0, 0.0, 1));
+    EXPECT_FALSE(db_->record_signal(
+        {"QQQ", "LONG", 3, 28.5, 472.30, 2.85, 466.60, 483.70}, 1));
+}
+
+TEST_F(DbLoggerUnit, QueriesAfterPrepareFailureReturnEmptyArrayWithoutCrash) {
+    dropAllTables(db_path_);
+
+    EXPECT_EQ(db_->trades_json(), "[]");
+    EXPECT_EQ(db_->equity_history_json(), "[]");
+}
+
+TEST_F(DbLoggerUnit, SuccessfulWritesReturnTrue) {
+    EXPECT_TRUE(db_->log({"INFO", "msg", "00:00:00"}));
+    EXPECT_TRUE(db_->record_trade("QQQ", "long", 10, 472.30, 466.60, 483.70));
+    EXPECT_TRUE(db_->close_trade("QQQ", 483.70, 114.0));
+    EXPECT_TRUE(db_->snapshot_equity(10000.0, 0.0, 1));
+    EXPECT_TRUE(db_->record_signal(
+        {"QQQ", "LONG", 3, 28.5, 472.30, 2.85, 466.60, 483.70}, 1));
+}
