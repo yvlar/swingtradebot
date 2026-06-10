@@ -14,12 +14,13 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
+#include <ctime>
 
 using json = nlohmann::json;
 
 namespace trading {
 
-class IBKRBroker final : public IBroker {
+class IBKRBroker : public IBroker {   // non-final : les tests substituent request()
 public:
     explicit IBKRBroker(std::string accountId,
                         std::string gatewayUrl = "https://localhost:5000")
@@ -112,6 +113,12 @@ private:
     std::string gatewayUrl_;
 
     // ── Soumission d'ordre ────────────────────────────────────
+    // Flux de confirmation IBKR : quand le Gateway pose une question
+    // (suppression de message), la réponse de /iserver/reply CONTIENT le
+    // résultat de l'ordre initial. Il ne faut JAMAIS re-poster l'ordre
+    // (l'ancien code le faisait → risque de double exécution réelle).
+    static constexpr int kMaxConfirmRounds = 5;
+
     std::optional<Order> submitOrder(const std::string& symbol,
                                       int qty, const std::string& side) {
         std::string conid = resolveConid(symbol);
@@ -120,6 +127,7 @@ private:
         orderBody.push_back({
             {"conid",       std::stoi(conid)},
             {"secType",     conid + ":STK"},
+            {"cOID",        makeClientOrderId(symbol, side)},  // idempotence
             {"orderType",   "MKT"},           // market order
             {"side",        side},
             {"quantity",    qty},
@@ -136,39 +144,60 @@ private:
             );
             auto j = json::parse(resp);
 
-            // IBKR peut retourner une liste d'ordres ou une demande de confirmation
-            if (j.is_array() && !j.empty()) {
-                // Vérifie si IBKR demande une confirmation supplémentaire
-                if (j[0].contains("messageIds")) {
-                    confirmOrder(j[0]["messageIds"]);
-                    // Re-soumet après confirmation
-                    resp = post(
-                        "/v1/api/iserver/account/" + accountId_ + "/orders",
-                        body.dump()
-                    );
-                    j = json::parse(resp);
-                }
+            // Consomme les éventuelles questions de confirmation en chaîne :
+            // chaque acquittement renvoie soit une nouvelle question, soit
+            // le résultat final de l'ordre.
+            for (int round = 0; round < kMaxConfirmRounds; ++round) {
+                if (!j.is_array() || j.empty()) break;
+                std::string replyId = extractReplyId(j[0]);
+                if (replyId.empty()) break;   // plus de question → résultat final
 
-                if (j.is_array() && !j.empty()) {
-                    return parseOrderResponse(j[0], symbol, qty, side);
-                }
+                json confirmBody = {{"confirmed", true}};
+                auto replyResp = post("/v1/api/iserver/reply/" + replyId,
+                                      confirmBody.dump());
+                j = json::parse(replyResp);
             }
+
+            if (j.is_array() && !j.empty()
+                && extractReplyId(j[0]).empty()      // toutes les questions résolues
+                && !j[0].contains("error")) {
+                return parseOrderResponse(j[0], symbol, qty, side);
+            }
+            lastError_ = "Confirmations IBKR non résolues ou réponse en erreur";
         } catch (const std::exception& e) {
             lastError_ = e.what();
         }
         return std::nullopt;
     }
 
-    // ── Confirmation automatique des ordres IBKR ─────────────
-    // IBKR envoie parfois des messages de confirmation à acquitter
-    void confirmOrder(const json& messageIds) {
-        for (const auto& msgId : messageIds) {
-            try {
-                json confirmBody = {{"confirmed", true}};
-                post("/v1/api/iserver/reply/" + msgId.get<std::string>(),
-                     confirmBody.dump());
-            } catch (...) {}
-        }
+    // ── Extraction de l'identifiant de confirmation ───────────
+    // Le Gateway signale une question via {"id", "message":[…]} (format
+    // courant) ou {"messageIds":[…]} (format historique). "" si aucune.
+    static std::string extractReplyId(const json& j0) {
+        if (j0.contains("messageIds") && j0["messageIds"].is_array()
+            && !j0["messageIds"].empty())
+            return j0["messageIds"][0].get<std::string>();
+        if (j0.contains("id") && j0.contains("message"))
+            return j0.value("id", "");
+        return "";
+    }
+
+    // ── Identifiant client idempotent ─────────────────────────
+    // Un seul ordre par (symbole, side, heure UTC) : IBKR rejette les cOID
+    // dupliqués, ce qui bloque les doublons en cas de retry — granularité
+    // alignée sur le cycle de 60 min du bot.
+    static std::string makeClientOrderId(const std::string& symbol,
+                                         const std::string& side) {
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm, &t);
+#else
+        gmtime_r(&t, &tm);
+#endif
+        char buf[16];
+        std::strftime(buf, sizeof(buf), "%Y%m%d%H", &tm);
+        return "swingbot-" + symbol + "-" + side + "-" + buf;
     }
 
     // ── Parsing de la réponse d'ordre ─────────────────────────
@@ -210,9 +239,12 @@ private:
         return request("POST", gatewayUrl_ + path, body);
     }
 
-    std::string request(const std::string& method,
-                        const std::string& url,
-                        const std::string& body) {
+protected:
+    // HTTP bas niveau — virtuel pour permettre la substitution dans les
+    // tests unitaires (aucun accès réseau)
+    virtual std::string request(const std::string& method,
+                                const std::string& url,
+                                const std::string& body) {
         CURL* curl = curl_easy_init();
         if (!curl) throw std::runtime_error("curl_easy_init failed");
 
