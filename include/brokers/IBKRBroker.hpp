@@ -9,8 +9,8 @@
 //  pour les nouveaux utilisateurs → on gère ça automatiquement.
 // ============================================================
 #include "core/Interfaces.hpp"
+#include "core/HttpClient.hpp"
 #include "brokers/IBKRDataFeed.hpp"  // pour KNOWN_CONIDS
-#include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
@@ -26,6 +26,7 @@ public:
                         std::string gatewayUrl = "https://localhost:5000")
         : accountId_ (std::move(accountId))
         , gatewayUrl_(std::move(gatewayUrl))
+        , http_      (gatewayClientConfig())
     {}
 
     // ── IBroker ───────────────────────────────────────────────
@@ -40,19 +41,22 @@ public:
         return submitOrder(symbol, qty, "SELL");
     }
 
-    std::optional<Position> getPosition(const std::string& symbol) override {
-        std::string conid = resolveConid(symbol);
-        std::string url   = gatewayUrl_
-            + "/v1/api/portfolio/" + accountId_
-            + "/position/" + conid;
+    // Ok(nullopt) = le gateway confirme l'absence de position ;
+    // Err = panne réseau/parsing : la position est INCONNUE (item 10)
+    Result<std::optional<Position>> getPosition(const std::string& symbol) override {
+        using R = Result<std::optional<Position>>;
         try {
+            std::string conid = resolveConid(symbol);
+            std::string url   = gatewayUrl_
+                + "/v1/api/portfolio/" + accountId_
+                + "/position/" + conid;
             auto resp = get(url);
             auto j    = json::parse(resp);
-            if (!j.is_array() || j.empty()) return std::nullopt;
+            if (!j.is_array() || j.empty()) return R::Ok(std::nullopt);
 
             const auto& p = j[0];
             int shares = static_cast<int>(p.value("position", 0.0));
-            if (shares <= 0) return std::nullopt;
+            if (shares <= 0) return R::Ok(std::nullopt);
 
             Position pos;
             pos.symbol        = symbol;
@@ -60,9 +64,10 @@ public:
             pos.avgPrice      = p.value("avgCost",       0.0);
             pos.marketValue   = p.value("mktValue",      0.0);
             pos.unrealizedPnl = p.value("unrealizedPnl", 0.0);
-            return pos;
-        } catch (...) {
-            return std::nullopt;
+            return R::Ok(pos);
+        } catch (const std::exception& e) {
+            lastError_ = e.what();
+            return R::Err(std::string("IBKR getPosition: ") + e.what());
         }
     }
 
@@ -87,20 +92,12 @@ public:
     // ── Utilitaires ───────────────────────────────────────────
 
     // Récupère le premier accountId disponible (utile si tu ne connais pas ton ID)
+    // HttpClient lance sur erreur transport/HTTP — le code retour curl n'est
+    // plus ignoré (découverte D10)
     static std::string fetchFirstAccountId(
             const std::string& gatewayUrl = "https://localhost:5000") {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("curl_easy_init failed");
-
-        std::string response;
-        curl_easy_setopt(curl, CURLOPT_URL,
-            (gatewayUrl + "/v1/api/portfolio/accounts").c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-        curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
+        HttpClient http(gatewayClientConfig());
+        auto response = http.get(gatewayUrl + "/v1/api/portfolio/accounts");
 
         auto j = json::parse(response);
         if (j.is_array() && !j.empty())
@@ -108,9 +105,21 @@ public:
         throw std::runtime_error("Aucun compte trouvé dans le CP Gateway");
     }
 
+    // Dernier message d'erreur (découverte D10 : écrit mais jamais exposé)
+    const std::string& lastError() const { return lastError_; }
+
 private:
     std::string accountId_;
     std::string gatewayUrl_;
+    HttpClient  http_;
+
+    // Config HTTP du CP Gateway : cert auto-signé → pas de vérif SSL
+    static HttpClientConfig gatewayClientConfig() {
+        HttpClientConfig cfg;
+        cfg.verify_ssl  = false;
+        cfg.timeout_sec = 15;
+        return cfg;
+    }
 
     // ── Soumission d'ordre ────────────────────────────────────
     // Flux de confirmation IBKR : quand le Gateway pose une question
@@ -241,43 +250,13 @@ private:
 
 protected:
     // HTTP bas niveau — virtuel pour permettre la substitution dans les
-    // tests unitaires (aucun accès réseau)
+    // tests unitaires (aucun accès réseau). Délègue au HttpClient commun :
+    // vérification du code HTTP + retry/backoff (item 8).
     virtual std::string request(const std::string& method,
                                 const std::string& url,
                                 const std::string& body) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("curl_easy_init failed");
-
-        std::string response;
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT,        15L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // cert auto-signé
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
-        if (method == "POST") {
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-        }
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
-            throw std::runtime_error(std::string("HTTP ") + method
-                                     + ": " + curl_easy_strerror(res));
-        return response;
-    }
-
-    static size_t writeCallback(void* data, size_t size,
-                                 size_t nmemb, std::string* out) {
-        out->append(static_cast<char*>(data), size * nmemb);
-        return size * nmemb;
+        return http_.request(method, url, body,
+                             {"Content-Type: application/json"});
     }
 };
 

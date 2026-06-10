@@ -1,5 +1,6 @@
 #pragma once
 #include "models/Models.hpp"
+#include "models/Result.hpp"
 #include <vector>
 #include <optional>
 #include <functional>
@@ -20,18 +21,22 @@ public:
 
 // ─── IDataFeed ────────────────────────────────────────────────────────────────
 // Source de données marché (Alpaca, Yahoo, mock pour tests)
+// Canal d'erreur (item 10) : Err = panne réseau/parsing — distinct d'une
+// réponse vide légitime (Ok avec vecteur vide / nullopt)
 class IDataFeed {
 public:
     virtual ~IDataFeed() = default;
 
     // Récupère les barres journalières pour un symbole
-    virtual std::vector<Bar> getBars(
+    // Ok(vide) = pas de donnée disponible ; Err = panne
+    virtual Result<std::vector<Bar>> getBars(
         const std::string& symbol,
         int                days
     ) = 0;
 
     // Prix actuel en temps réel
-    virtual std::optional<double> getLatestPrice(const std::string& symbol) = 0;
+    // Ok(nullopt) = pas de prix disponible ; Err = panne
+    virtual Result<std::optional<double>> getLatestPrice(const std::string& symbol) = 0;
 
     // Vérifie si le marché est ouvert
     virtual bool isMarketOpen() = 0;
@@ -45,7 +50,11 @@ public:
 
     virtual std::optional<Order>    submitBuy (const std::string& symbol, int qty) = 0;
     virtual std::optional<Order>    submitSell(const std::string& symbol, int qty) = 0;
-    virtual std::optional<Position> getPosition(const std::string& symbol) = 0;
+
+    // Ok(nullopt) = le broker confirme qu'AUCUNE position n'existe ;
+    // Err = panne : on ne sait pas — ne JAMAIS réconcilier sur ce cas (item 10)
+    virtual Result<std::optional<Position>> getPosition(const std::string& symbol) = 0;
+
     virtual Account                 getAccount() = 0;
 };
 

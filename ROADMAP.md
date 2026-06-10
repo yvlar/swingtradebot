@@ -9,16 +9,17 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 71        | 68                           |
-| Qualité      | 70        | 60                           |
-| FinTech      | 58        | 38                           |
-| Production   | 42        | 35                           |
+| Architecture | 74        | 68                           |
+| Qualité      | 76        | 60                           |
+| FinTech      | 63        | 38                           |
+| Production   | 55        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 1)
-- **Sprint courant** : Sprint 2 — Fiabilité / concurrence
-- **État des tests** : 155/155 verts (110 baseline + 45 ajoutés au Sprint 1)
+- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 2)
+- **Sprint courant** : Sprint 3 — Architecture (+ item 17 remonté du Sprint 4)
+- **État des tests** : 179/179 verts (155 après Sprint 1 + 24 ajoutés au Sprint 2)
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
-  sur Linux avec paquets système depuis le fallback SQLite3 (voir Découverte D11)
+  sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
+  la liste apt dans `prompt-executer-sprint.md`)
 
 ## Audit Phase 0 — statut des constats (2026-06-10)
 
@@ -74,79 +75,92 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 - [x] **Avancé de l'item 14 : `.gitignore`** → `52f9c95` — le fichier `gitignore` sans
   point n'ignorait rien ; renommé après que `build/` a failli être committé (D13).
 
-## 🟠 SPRINT 2 — Fiabilité / concurrence (sprint courant)
+## 🟠 SPRINT 2 — Fiabilité / concurrence ✅ (clos le 2026-06-10)
 
-- [ ] **6.** Data race UB : `Watchdog::last_heartbeat_` non atomique, écrit thread
-  principal (watchdog.h:68), lu thread watchdog (watchdog.h:107). + `build_alert_msg_`
-  lit `BotState` sans lock (watchdog.h:134-137). + alertes SMTP/SMS/webhook **sans
-  `CURLOPT_TIMEOUT`** (watchdog.h:149-256) : le watchdog peut se geler lui-même.
-  **Acceptation** : `last_heartbeat_` atomique (epoch ns ou time_point atomique) ;
-  lecture de BotState sous `state_.mtx` ; CURLOPT_TIMEOUT sur les 3 canaux d'alerte ;
-  tests Watchdog existants verts (ils couvrent déjà heartbeat/silence).
-- [ ] **7.** `curl_global_init/cleanup` dans les ctors/dtors de 4 classes
-  (IBKRDataFeed.hpp:50, AlpacaBroker.hpp:35, AlpacaDataFeed.hpp:41, watchdog.h:58)
-  → init une seule fois (RAII au main). Aggravant : main_ibkr.cpp:70-82 détruit un
-  `IBKRDataFeed` temporaire en début de programme.
-  **Acceptation** : un seul `curl_global_init` par processus (guard RAII, ex.
-  `CurlGlobal` dans core/), plus aucun appel dans les ctors/dtors des 4 classes.
-- [ ] **8.** Client HTTP dupliqué 4× (`request()`/`writeCallback`) → extraire un
-  `HttpClient` commun ; vérifier les codes HTTP ; retry + backoff exponentiel ; gérer
-  le 429. **Contrainte** : préserver le seam de test de IBKRBroker (request() virtuel
-  introduit au Sprint 1) — l'injection du HttpClient peut le remplacer proprement.
-- [ ] **9.** Codes retour `sqlite3_prepare_v2`/`sqlite3_step` ignorés partout
-  (db_logger.h) — aggravé par D2 : `stmt` non initialisé → UB si prepare échoue.
-  **Acceptation** : chaque prepare/step vérifié (modèle : core/state_store.h fait déjà
-  les vérifications) ; test « DB en lecture seule / requête invalide ne crashe pas ».
-- [ ] **10.** `std::optional`/vecteur vide = à la fois « erreur réseau » et « pas de
-  donnée » dans `IDataFeed`/`IBroker` → introduire un canal d'erreur (`Result<T>` maison
-  ou `tl::expected`) pour distinguer panne et état vide. **Priorité montée d'un cran
-  depuis le Sprint 1** : la réconciliation de l'item 1 réinitialise l'état quand
-  `getPosition()`→nullopt — auto-réparant mais bruyant si le nullopt vient d'une panne
-  réseau ; un canal d'erreur permettra de NE PAS réconcilier sur erreur.
-- [ ] **D4.** `Session::send` (ws_server.cpp:54-62) lance `async_write` sans file
-  d'attente → deux broadcasts rapprochés = écritures concurrentes sur le même stream
-  WebSocket (UB Beast). Ajouter une queue d'écriture par session.
+- [x] **6. Data races Watchdog + alertes sans timeout** → `9142571`
+  `last_heartbeat_` devenu `std::atomic<time_point>` ; `build_alert_msg_` lit
+  `BotState` sous `state_.mtx` ; `CURLOPT_TIMEOUT`+`CONNECTTIMEOUT`
+  (`AlertConfig::alert_timeout_sec`, 10 s) sur les 3 canaux d'alerte.
+  Tests : DefaultAlertTimeoutPositive + stress concurrent (et suite existante verte).
+- [x] **7. `curl_global_init` unique (RAII)** → `404a08a`
+  Nouveau `core/curl_global.h` (`CurlGlobal`, compteur d'instances) ; plus aucun
+  init/cleanup dans les ctors/dtors des 4 classes ; instancié en tête des 3 mains.
+  Nouvelle suite CurlGlobalUnit (4 tests).
+- [x] **8. `HttpClient` commun (codes HTTP, retry/backoff, 429)** → `73a48d3`
+  `core/HttpClient.hpp` remplace les 4 copies request()/writeCallback ; statut HTTP
+  vérifié ; retry + backoff exponentiel sur transport/429/5xx ; 4xx définitif sans
+  retry ; seam request() d'IBKRBroker préservé (délègue au HttpClient) ; D10 réglé
+  (fetchFirstAccountId vérifie les erreurs, lastError() exposé).
+  Nouvelle suite HttpClientUnit (9 tests, scriptés sans réseau).
+- [x] **9. Codes retour SQLite vérifiés dans DbLogger (+ D2)** → `9008e49`
+  Helpers prepare_()/step_done_() sur le modèle de state_store.h ; écritures → bool,
+  lectures dégradent en `[]` ; plus d'UB sur stmt non initialisé. Tests rouges sur
+  tables supprimées derrière le dos du logger.
+- [x] **10. Canal d'erreur `Result<T>`** → `b0f394f`
+  `models/Result.hpp` ; `getBars`/`getLatestPrice`/`getPosition` retournent
+  Result (Ok vide/nullopt = certitude « rien », Err = panne) ; `runOnce` saute le
+  cycle sur Err SANS réconcilier ni trader ; `HttpError` porte le statut (Alpaca
+  404 → Ok(nullopt)) ; mocks avec injection de panne. 5 tests TradingBot.
+- [x] **D4. File d'écriture WebSocket par session** → `7627801`
+  `Session::send` poste sur l'executor ; deque → une seule async_write en vol.
+  Test rouge RapidBroadcastsAllDeliveredInOrder (abortait : assertion Beast).
 
-## 🟡 SPRINT 3 — Architecture
+## 🟡 SPRINT 3 — Architecture (sprint courant)
+
+> **Ordre imposé** : l'item 17 (remonté du Sprint 4) se fait AVANT l'item 11 —
+> le refactor du backtester doit être validé par le golden. L'item 13 attend la
+> **décision utilisateur** ; s'il n'y a pas de réponse au moment de l'exécution,
+> le sauter et le reporter.
+
+- [ ] **17.** (remonté du Sprint 4 — dépendance de l'item 11) Test de non-régression
+  du backtest : valeurs golden figées sur `QQQ.csv` (total return, nb trades, max DD)
+  pour détecter toute dérive. **Acceptation** : test d'intégration qui exécute
+  `Backtester::run()` sur `QQQ.csv` et compare aux valeurs figées (tolérance
+  serrée) ; valeurs consignées dans le changelog.
 
 - [ ] **11.** Le backtest ne teste pas le code de prod : `Backtester::run()` réimplémente
   sorties + sizing inline (BackTester.hpp:60-195 ; le `RiskManager rm` ligne 78 n'est
   jamais utilisé) → faire tourner le backtest sur `TradingBot::runOnce` + `PaperBroker` +
   `RiskManager` réels, supprimer la logique dupliquée (+ D6 : stratégie recréée à chaque
-  barre).
+  barre). **Dépendance** : item 17 d'abord (golden vert avant ET après le refactor).
 - [ ] **12.** Découpler `TradingBot` de `SwingConfig` (TradingBot.hpp:3 inclut la
   stratégie concrète juste pour sa config) → extraire un `RiskConfig` injecté dans le
   bot ; les paramètres stratégie restent dans la stratégie.
+  **Acceptation** : TradingBot.hpp n'inclut plus strategies/ ; tests verts inchangés.
 - [ ] **13.** `DayTradeStrategy.hpp:4` inclut `indicators/DayIndicators.hpp` **qui
   n'existe pas** (ATR, VWAP, VolumeOscillator manquants — le fichier ne compile que parce
-  que rien ne l'inclut) → créer ces indicateurs + tests, OU supprimer le fichier.
-  **Décision requise de l'utilisateur — à poser avant le Sprint 3.**
+  que rien ne l'inclut). **Décision utilisateur (clôture Sprint 2) : CRÉER les
+  indicateurs** — implémenter ATR, VWAP, VolumeOscillator (IIndicator<T>, tests
+  dans `test_indicators_unit.cpp` ou fichier dédié) et rendre DayTradeStrategy
+  compilable (inclus par au moins un TU de test pour ne plus jamais casser en
+  silence).
 - [ ] **14.** Hygiène : `main.cpp:1` inclut `"backtest/Backtester.hpp"` vs fichier réel
-  `BackTester.hpp` (casse Linux) ; `gitignore` sans point initial → rien d'ignoré,
-  `cmake-build-debug/` et `.idea/` commités ; double `#pragma once` dans
-  AlpacaBroker.hpp:1,13 ; `QQQv1.csv` non référencé (D12).
+  `BackTester.hpp` (casse Linux — reconfirmé au Sprint 2 par `g++ -fsyntax-only`) ;
+  `cmake-build-debug/` et `.idea/` encore commités (le `.gitignore` corrigé au Sprint 1
+  n'efface pas l'historique du cache git) ; double `#pragma once` dans
+  AlpacaBroker.hpp:1,13 ; `QQQv1.csv` non référencé (D12) ; D8 (`volatile bool
+  g_running`, main_ibkr.cpp:34) ; D9 (`using json` global, bot_state.h:18) ;
+  D16 (`getLatestPrice` sans consommateur).
 
 ## 🟢 SPRINT 4 — Tests du moteur
 
-- [ ] **15.** Compléter `test_trading_bot_unit.cpp` (démarré au Sprint 1) : matrice
-  complète runOnce × {achat, vente, rejet, feed vide, marché fermé, désync, restart}.
+- [ ] **15.** Compléter `test_trading_bot_unit.cpp` (démarré aux Sprints 1-2) : matrice
+  complète runOnce × {achat, vente, rejet, feed vide, marché fermé, désync, restart,
+  panne réseau}.
 - [ ] **16.** Compléter `test_risk_manager_unit.cpp` (démarré au Sprint 1 : sizing) :
   priorités de sortie, bornes. + `test_indicators_unit.cpp` : EMA (seed SMA),
   RSI ∈ [0,100], cas plat 0/0→50, CrossoverDetector + warmup.
-- [ ] **17.** Test de non-régression du backtest : valeurs golden figées sur `QQQ.csv`
-  (total return, nb trades, max DD) pour détecter toute dérive future. **À faire avant
-  le Sprint 3 item 11** (le refactor du backtester doit être validé par le golden —
-  attention : les fixes Sprint 1 items 3/5 changent légitimement le comportement, donc
-  figer les valeurs APRÈS Sprint 1).
 
 ## 🔵 SPRINT 5 — Durcissement production
 
 - [ ] **18.** Kill-switch dans `IRiskManager` : drawdown journalier max, pertes
   consécutives max, plafond d'ordres/jour.
 - [ ] **19.** Stops côté broker (ordre stop résident) en complément du stop logiciel
-  (réduit aussi le risque de double-vente sur ordre PENDING, cf. note item 2).
+  (réduit aussi le risque de double-vente sur ordre PENDING, cf. note item 2 et D14).
+  + D15 : donner un `client_order_id` idempotent aux ordres Alpaca (le retry du
+  HttpClient peut re-poster un POST /v2/orders).
 - [ ] **20.** Calendrier de marché : `isUsMarketHours` est en UTC-5 fixe
-  (IBKRDataFeed.hpp:211), faux 8 mois/an (EDT) ; horodatages unifiés en UTC.
+  (IBKRDataFeed.hpp:219), faux 8 mois/an (EDT) ; horodatages unifiés en UTC.
 - [ ] **21.** Câbler la persistance des trades en prod : `record_trade`/`close_trade` ne
   sont **jamais appelés** dans `main_ibkr.cpp` (table `trades` vide, dashboard sans
   positions — `botState.positions` jamais alimenté). Unifier les deux systèmes de logging
@@ -175,6 +189,8 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D12 | 🟢 | `QQQv1.csv` non référencé par le code (donnée morte) | Sprint 3 (item 14) |
 | D13 | ✅ | (Sprint 1) Le `gitignore` sans point a fait committer `build/` par accident pendant le sprint (commit amendé) — preuve vivante de l'item 14 | Corrigé (`52f9c95`) |
 | D14 | 🟡 | (Sprint 1) Risque résiduel : vente PENDING avec position encore visible au cycle suivant → re-tentative de vente possible. Mitigé par le cOID horaire (1 ordre/side/heure) ; les stops côté broker (item 19) réduiront encore ce risque | Sprint 5 (item 19, noté) |
+| D15 | 🟠 | (Sprint 2) Le retry du HttpClient (item 8) peut re-poster un ordre déjà reçu par le serveur. IBKR est protégé par le cOID idempotent (Sprint 1, item 4) ; **AlpacaBroker n'envoie aucun `client_order_id`** → double-ordre possible sur retry. Sans impact sur la cible compilée (main_ibkr), mais à corriger avant tout usage Alpaca | Sprint 5 (item 19) |
+| D16 | 🟢 | (Sprint 2) `IDataFeed::getLatestPrice` n'a aucun consommateur (aucun appel hors implémentations) — converti à `Result` par cohérence, mais c'est une méthode d'interface morte : la supprimer ou la consommer | Sprint 3 (item 14) |
 
 ## Changelog
 
@@ -210,7 +226,76 @@ configurables, seuls les FILLED touchent la position simulée).
 **DoD** : rebuild propre 0 warning ; 155/155 verts ; chaque bug avec test rouge préalable ;
 pas de golden backtest encore (item 17 — à figer AVANT le refactor du backtester).
 
+### Sprint 2 — Fiabilité / concurrence (2026-06-10)
+
+**Commits** (ordre chronologique) :
+- `9142571` fix(watchdog) : heartbeat atomique, BotState sous lock, timeout curl (item 6)
+- `404a08a` fix(core) : init libcurl unique par processus, garde RAII CurlGlobal (item 7)
+- `73a48d3` refactor(http) : HttpClient commun, codes vérifiés, retry/backoff/429 (item 8 + D10)
+- `9008e49` fix(db) : codes retour SQLite vérifiés, plus d'UB sur prepare échoué (item 9 + D2)
+- `b0f394f` feat(core) : canal d'erreur Result<T>, panne ≠ donnée vide (item 10)
+- `7627801` fix(ws) : file d'écriture par session WebSocket (D4)
+
+**Tests** : 155 → 179 (24 ajoutés). Nouvelles suites : `CurlGlobalUnit` (4),
+`HttpClientUnit` (9). Étendues : `WatchdogUnit` (+2), `DbLoggerUnit` (+3),
+`TradingBotUnit` (+5 pannes réseau), `WsServerIntegration` (+1 stress rouge→vert,
+abortait sur assertion Beast avant le fix D4).
+
+**Nouveaux fichiers** : `include/core/curl_global.h`, `include/core/HttpClient.hpp`,
+`include/models/Result.hpp`, 2 fichiers de tests unitaires.
+**Interfaces modifiées** : `IDataFeed::getBars` → `Result<vector<Bar>>`,
+`IDataFeed::getLatestPrice` → `Result<optional<double>>`, `IBroker::getPosition` →
+`Result<optional<Position>>` ; 5 méthodes d'écriture de `DbLogger` retournent `bool`.
+Les composition roots non compilés (main_alpaca, main_v2) restent compatibles
+(vérifiés par `g++ -fsyntax-only`) ; main.cpp ne compile toujours pas (item 14, casse).
+
+**DoD** : rebuild propre 0 warning ; 179/179 verts ; sprint entièrement réalisé sur
+Linux/paquets système (fallback D11 validé de bout en bout) ; pas de golden encore
+(item 17, remonté en tête du Sprint 3).
+
 ## Rétrospectives
+
+### Sprint 2 — Fiabilité / concurrence (2026-06-10)
+
+**1. Découpage** : bon calibre (6 items, ordre 6→7→8→9→10→D4 sans dépendance ratée —
+l'item 8 devait précéder le 10, et c'est ce qui s'est passé : `HttpError` du
+HttpClient a servi au mapping 404→Ok(nullopt) d'Alpaca). L'item 10 était le plus
+gros (3 interfaces, 6 implémentations, mocks, bot) mais tenait dans le sprint sans
+découpage. Remontée de l'item 17 en tête du Sprint 3 actée : la note « à faire avant
+l'item 11 » était enterrée dans le Sprint 4 — un ordre implicite entre sprints est
+une dépendance ratée en puissance.
+
+**2. Suffisance des prompts** : une improvisation d'infrastructure — l'environnement
+Linux nu a demandé d'identifier la liste apt (boost-system, nlohmann, curl-dev,
+gtest) avant la baseline. Corrigé dans ce commit : `prompt-executer-sprint.md` liste
+désormais les paquets. À noter aussi : pour deux items (6, 7), le « test rouge »
+était impossible au sens strict (data race = UB non déterministe) — le prompt dit
+bien « idéalement », l'esprit a été respecté via tests de compilation rouges
+(nouvelle API) + stress tests ; pour D4 en revanche, le test rouge a réellement
+aborté (assertion Beast), preuve nette.
+
+**3. À détecter plus tôt** : (a) D15 (retry HTTP vs idempotence des ordres Alpaca)
+aurait dû être identifié À LA CONCEPTION de l'item 8 — le retry d'un POST d'ordre
+est un risque financier, pas un détail technique ; garde-fou ajouté : l'en-tête de
+HttpClient.hpp documente le contrat (« l'idempotence est garantie en amont ») et
+D15 est affecté au Sprint 5. (b) Le golden backtest (17) manque toujours — tout le
+Sprint 2 a modifié des chemins de code sans filet sur le comportement de trading
+global ; c'est la première tâche du Sprint 3. (c) La CI (item 22) reste le garde-fou
+le moins cher non installé.
+
+**4. Notes** (précédent 71/70/58/42) :
+- **Architecture 74** (+3) : `Result<T>` assainit le contrat des interfaces,
+  `HttpClient`/`CurlGlobal` suppriment 4 duplications et une responsabilité mal
+  placée. Restent les gros écarts du Sprint 3 (backtest ≠ prod, couplage SwingConfig).
+- **Qualité 76** (+6) : +24 tests ciblés (dont injection de pannes réseau et stress
+  WebSocket), 3 familles d'UB éliminées (data race watchdog, stmt SQLite, écritures
+  Beast concurrentes). Manquent : indicateurs purs, golden.
+- **FinTech 63** (+5) : une panne réseau ne désactive plus les stops d'une position
+  réelle (item 10) et ne gèle plus le watchdog (item 6) ; retry/429 proprement gérés.
+  Pour dépasser 70 : kill-switch (18), stops broker (19), calendrier (20).
+- **Production 55** (+13) : plus aucun UB connu dans la couche opérationnelle,
+  libcurl initialisé une fois, SQLite robuste aux échecs, dashboard stable sous
+  rafale. Manquent : CI (22), persistance des trades en prod (21), calendrier (20).
 
 ### Sprint 1 — Sécurité financière (2026-06-10)
 

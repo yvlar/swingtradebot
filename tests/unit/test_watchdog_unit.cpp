@@ -77,3 +77,33 @@ TEST_F(WatchdogUnit, OnAlertCallbackRegistered) {
     bool set = false;
     EXPECT_NO_THROW(wd.on_alert([&](const std::string&){ set = true; }));
 }
+
+// ── Concurrence (Sprint 2, item 6) ────────────────────────
+
+// Le timeout curl des alertes doit exister et être strictement positif :
+// sans lui, un envoi SMTP/SMS/webhook bloqué gèlerait le watchdog lui-même.
+TEST_F(WatchdogUnit, DefaultAlertTimeoutPositive) {
+    AlertConfig c;
+    EXPECT_GT(c.alert_timeout_sec, 0);
+}
+
+// Stress : heartbeats martelés depuis le thread principal pendant que le
+// thread watchdog lit last_heartbeat_ et BotState. Avant le fix (item 6),
+// ces accès étaient des data races (UB) — détectables sous TSan.
+// Le bot étant vivant en continu, aucune alerte ne doit partir.
+TEST_F(WatchdogUnit, ConcurrentHeartbeatsWhileMonitoringNoAlert) {
+    std::atomic<int> alerts{0};
+    Watchdog wd(cfg_, state_);
+    wd.on_alert([&](const std::string&){ alerts++; });
+    wd.start();
+
+    auto deadline = std::chrono::steady_clock::now() + 1500ms;
+    while (std::chrono::steady_clock::now() < deadline) {
+        wd.heartbeat();
+        // Écritures concurrentes sur BotState pendant que loop_() peut le lire
+        state_.push_log("INFO", "tick");
+        std::this_thread::sleep_for(5ms);
+    }
+    wd.stop();
+    EXPECT_EQ(alerts.load(), 0);
+}

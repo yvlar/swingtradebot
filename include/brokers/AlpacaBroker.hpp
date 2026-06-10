@@ -12,7 +12,7 @@
 // ============================================================
 #pragma once
 #include "core/Interfaces.hpp"
-#include <curl/curl.h>
+#include "core/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
@@ -32,10 +32,9 @@ public:
             ? "https://paper-api.alpaca.markets"
             : "https://api.alpaca.markets")
     {
-        curl_global_init(CURL_GLOBAL_DEFAULT);
+        // L'init globale de libcurl est faite une seule fois au main
+        // via CurlGlobal (core/curl_global.h) — jamais ici (item 7)
     }
-
-    ~AlpacaBroker() { curl_global_cleanup(); }
 
     // ── IBroker ───────────────────────────────────────────────
 
@@ -84,7 +83,10 @@ public:
     }
 
     // Récupère la position ouverte pour un symbole
-    std::optional<Position> getPosition(const std::string& symbol) override {
+    // Ok(nullopt) = Alpaca confirme l'absence de position (404) ;
+    // Err = panne réseau/parsing : la position est INCONNUE (item 10)
+    Result<std::optional<Position>> getPosition(const std::string& symbol) override {
+        using R = Result<std::optional<Position>>;
         try {
             auto resp = get("/v2/positions/" + symbol);
             auto j    = json::parse(resp);
@@ -95,10 +97,16 @@ public:
             p.avgPrice      = std::stod(j.value("avg_entry_price", "0"));
             p.marketValue   = std::stod(j.value("market_value",    "0"));
             p.unrealizedPnl = std::stod(j.value("unrealized_pl",   "0"));
-            return p.shares > 0 ? std::optional<Position>(p) : std::nullopt;
-        } catch (...) {
-            // 404 = pas de position ouverte pour ce symbole
-            return std::nullopt;
+            if (p.shares > 0) return R::Ok(p);
+            return R::Ok(std::nullopt);
+        } catch (const HttpError& e) {
+            // 404 = réponse certaine : pas de position ouverte pour ce symbole
+            if (e.status() == 404) return R::Ok(std::nullopt);
+            lastError_ = e.what();
+            return R::Err(std::string("Alpaca getPosition: ") + e.what());
+        } catch (const std::exception& e) {
+            lastError_ = e.what();
+            return R::Err(std::string("Alpaca getPosition: ") + e.what());
         }
     }
 
@@ -138,6 +146,7 @@ private:
     std::string apiSecret_;
     std::string baseUrl_;
     std::string lastError_;
+    HttpClient  http_;
 
     // ── Parsing ───────────────────────────────────────────────
     static Order parseOrder(const json& j) {
@@ -179,42 +188,18 @@ private:
         request("DELETE", path, "");
     }
 
+    // HTTP via le client commun : code HTTP vérifié, retry + backoff,
+    // 429 géré (item 8)
     std::string request(const std::string& method,
                         const std::string& path,
                         const std::string& body) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("curl_easy_init failed");
+        std::string response = http_.request(method, baseUrl_ + path, body, {
+            "APCA-API-KEY-ID: "     + apiKey_,
+            "APCA-API-SECRET-KEY: " + apiSecret_,
+            "Content-Type: application/json",
+        });
 
-        std::string url = baseUrl_ + path;
-        std::string response;
-
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, ("APCA-API-KEY-ID: "    + apiKey_).c_str());
-        headers = curl_slist_append(headers, ("APCA-API-SECRET-KEY: " + apiSecret_).c_str());
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT,        15L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-
-        if (method == "POST") {
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-        } else if (method == "DELETE") {
-            curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-        }
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
-            throw std::runtime_error(std::string("HTTP ") + method
-                                     + " failed: " + curl_easy_strerror(res));
-
-        // Erreur Alpaca (code HTTP 4xx/5xx)
+        // Erreur applicative Alpaca dans un corps 2xx
         auto j = json::parse(response, nullptr, false);
         if (!j.is_discarded() && j.contains("code") && j.contains("message"))
             throw std::runtime_error("Alpaca error "
@@ -222,12 +207,6 @@ private:
                 + ": " + j["message"].get<std::string>());
 
         return response;
-    }
-
-    static size_t writeCallback(void* data, size_t size,
-                                 size_t nmemb, std::string* out) {
-        out->append(static_cast<char*>(data), size * nmemb);
-        return size * nmemb;
     }
 };
 

@@ -12,6 +12,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -30,7 +31,9 @@ using tcp       = net::ip::tcp;
 class Session : public std::enable_shared_from_this<Session> {
     ws::stream<beast::tcp_stream> ws_;
     beast::flat_buffer            buf_;
-    std::mutex                    write_mtx_;
+    // File d'écriture (D4) : une seule async_write en vol à la fois —
+    // manipulée exclusivement sur l'executor de la session (via net::post)
+    std::deque<std::shared_ptr<std::string>> write_queue_;
     std::atomic<bool>             closing_{false};
     std::function<void(Session*)> on_close_;
     std::string                   initial_msg_; // envoyé après handshake
@@ -51,14 +54,15 @@ public:
                 &Session::on_accept, shared_from_this()));
     }
 
+    // Thread-safe : poste sur l'executor de la session — la file y est
+    // manipulée séquentiellement, jamais deux async_write concurrentes (D4)
     void send(const std::string& msg) {
-        std::lock_guard<std::mutex> lk(write_mtx_);
         if (closing_) return;
         auto buf = std::make_shared<std::string>(msg);
-        ws_.async_write(net::buffer(*buf),
-                        [self = shared_from_this(), buf](beast::error_code ec, std::size_t) {
-                            if (ec) self->close();
-                        });
+        net::post(ws_.get_executor(),
+                  [self = shared_from_this(), buf]() mutable {
+                      self->enqueue_(std::move(buf));
+                  });
     }
 
     void close() {
@@ -84,6 +88,26 @@ private:
         if (ec == ws::error::closed || ec) { close(); return; }
         buf_.consume(buf_.size());
         do_read();
+    }
+
+    // ── File d'écriture (D4) — tout s'exécute sur l'executor ──
+    void enqueue_(std::shared_ptr<std::string> buf) {
+        if (closing_) return;
+        write_queue_.push_back(std::move(buf));
+        if (write_queue_.size() > 1) return;  // une écriture est déjà en vol
+        do_write_();
+    }
+
+    void do_write_() {
+        ws_.async_write(net::buffer(*write_queue_.front()),
+                        beast::bind_front_handler(&Session::on_write_,
+                                                  shared_from_this()));
+    }
+
+    void on_write_(beast::error_code ec, std::size_t) {
+        if (ec) { close(); return; }
+        write_queue_.pop_front();
+        if (!write_queue_.empty()) do_write_();  // message suivant de la file
     }
 };
 

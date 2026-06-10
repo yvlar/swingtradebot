@@ -100,11 +100,13 @@ public:
         return o;
     }
 
-    std::optional<Position> getPosition(const std::string& /*symbol*/) override {
-        if (!position_.has_value() || !currentPrice_) return std::nullopt;
+    // Broker simulé : jamais de panne → toujours Ok (item 10)
+    Result<std::optional<Position>> getPosition(const std::string& /*symbol*/) override {
+        using R = Result<std::optional<Position>>;
+        if (!position_.has_value() || !currentPrice_) return R::Ok(std::nullopt);
         position_->marketValue   = position_->shares * *currentPrice_;
         position_->unrealizedPnl = ((*currentPrice_) - position_->avgPrice) * position_->shares;
-        return position_;
+        return R::Ok(position_);
     }
 
     Account getAccount() override {
