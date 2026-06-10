@@ -77,12 +77,14 @@ public:
         SwingConfig        config,
         const std::string& csvPath,
         double             initialCapital = 10'000.0,
-        double             commissionPct  = 0.001
+        double             commissionPct  = 0.001,
+        double             slippagePct    = 0.0     // slippage+demi-spread par côté (item 6.2)
     )
         : config_(std::move(config))
         , csvPath_(csvPath)
         , initialCapital_(initialCapital)
         , commissionPct_(commissionPct)
+        , slippagePct_(slippagePct)
     {}
 
     // ── Exécution ─────────────────────────────────────────────────────────────
@@ -95,7 +97,8 @@ public:
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
         auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
-        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_);
+        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
+                                                    slippagePct_);
         auto logger = std::make_shared<NullLogger>();
 
         // Une seule instance de stratégie pour tout le backtest (D6 : elle était
@@ -224,6 +227,7 @@ private:
     std::string csvPath_;
     double      initialCapital_;
     double      commissionPct_;
+    double      slippagePct_;
 
 public:
     // Public pour les tests unitaires des métriques : permet de vérifier

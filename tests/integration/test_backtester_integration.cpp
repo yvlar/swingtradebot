@@ -100,6 +100,28 @@ TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
     EXPECT_EQ(r.equityCurve.size(), 1858u);
 }
 
+// ─── Golden « coûts réalistes » (item 6.2, figé le 2026-06-10) ───────────────
+// Config prod + commission 0,1 % + slippage/demi-spread 5 bps par côté.
+// Mêmes 11 trades que le golden prod sans slippage : sur QQQ (très liquide),
+// 5 bps ne changent aucune décision, ils rabotent le retour de −0,37 pt
+// (+36,50 % → +36,14 %). Si un futur edge disparaît sous 5 bps de slippage,
+// c'est qu'il n'existait pas.
+TEST(BacktesterIntegration, GoldenProdConfigWithRealisticCosts) {
+    trading::Backtester bt(trading::ibkrProdConfig(), SWINGBOT_QQQ_CSV,
+                           10'000.0, 0.001, /*slippage=*/0.0005);
+    const auto r = bt.run();
+
+    EXPECT_NEAR(r.finalValue,     13613.63352, 0.01);
+    EXPECT_NEAR(r.totalReturnPct, 36.1363352,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct, 1.9986827,   1e-4);
+    EXPECT_NEAR(r.sharpeRatio,    1.8005342,   1e-4);
+    EXPECT_EQ(r.totalTrades,   11);
+    EXPECT_EQ(r.winningTrades, 10);
+
+    // Le slippage ne peut que coûter : capital final < golden sans slippage
+    EXPECT_LT(r.finalValue, 13650.16);
+}
+
 // ─── Comparaison côte à côte défaut vs prod (acceptation item 6.1) ───────────
 // Affiche les deux goldens l'un contre l'autre et verrouille leur ordre :
 // si une modification fait passer la config prod SOUS la config défaut, ce

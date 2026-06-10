@@ -13,8 +13,9 @@ namespace {
 
 // Broker prêt à trader : prix et date courants déjà fixés
 PaperBroker readyBroker(double capital, double commission = 0.0,
-                        double price = 100.0, const std::string& date = "2024-01-02") {
-    PaperBroker b(capital, commission);
+                        double price = 100.0, const std::string& date = "2024-01-02",
+                        double slippage = 0.0) {
+    PaperBroker b(capital, commission, slippage);
     b.setCurrentPrice(price);
     b.setCurrentDate(date);
     return b;
@@ -194,6 +195,76 @@ TEST(PaperBrokerUnit, HoldDaysLifecycle) {
     b.submitSell("QQQ", 10);
     ASSERT_EQ(b.trades().size(), 2u);
     EXPECT_EQ(b.trades().back().holdDays, 1);
+}
+
+// ════════════════════════════════════════════════════════════
+//  Slippage + demi-spread (item 6.2) — le fill est PIRE que le
+//  prix coté, des deux côtés ; la valorisation reste au prix coté
+// ════════════════════════════════════════════════════════════
+
+// Achat avec slippage 10 bps : fill à 100,10 $ (pas 100 $)
+TEST(PaperBrokerUnit, BuySlippageWorsensFillPrice) {
+    auto b = readyBroker(10'000.0, 0.0, 100.0, "2024-01-02", /*slippage=*/0.001);
+    auto o = b.submitBuy("QQQ", 10);
+
+    ASSERT_TRUE(o.has_value());
+    EXPECT_DOUBLE_EQ(o->price, 100.1);                  // 100 × (1 + 0,001)
+    EXPECT_NEAR(b.cash(), 10'000.0 - 1'001.0, 1e-9);    // débit au prix de fill
+
+    // La position est portée au prix de fill (le coût réel d'entrée)
+    auto pos = b.getPosition("QQQ");
+    ASSERT_TRUE(pos.ok() && pos.value().has_value());
+    EXPECT_DOUBLE_EQ(pos.value()->avgPrice, 100.1);
+}
+
+// Vente avec slippage 10 bps : fill à 109,89 $ (pas 110 $)
+TEST(PaperBrokerUnit, SellSlippageWorsensFillPrice) {
+    auto b = readyBroker(10'000.0, 0.0, 100.0, "2024-01-02", /*slippage=*/0.001);
+    b.submitBuy("QQQ", 10);
+
+    b.setCurrentPrice(110.0);
+    auto o = b.submitSell("QQQ", 10);
+
+    ASSERT_TRUE(o.has_value());
+    EXPECT_DOUBLE_EQ(o->price, 109.89);                 // 110 × (1 − 0,001)
+    ASSERT_EQ(b.trades().size(), 1u);
+    // P&L sur les prix de fill : (109,89 − 100,10) × 10
+    EXPECT_NEAR(b.trades().front().pnl, 97.9, 1e-9);
+}
+
+// Même aller-retour, avec et sans slippage : le slippage coûte du capital —
+// c'est le test d'acceptation de l'item 6.2
+TEST(PaperBrokerUnit, RoundTripWithSlippageEndsWithLessCash) {
+    auto sans = readyBroker(10'000.0, 0.001);
+    auto avec = readyBroker(10'000.0, 0.001, 100.0, "2024-01-02", 0.0005);
+
+    for (auto* b : {&sans, &avec}) {
+        b->submitBuy("QQQ", 10);
+        b->setCurrentPrice(110.0);
+        b->submitSell("QQQ", 10);
+    }
+
+    EXPECT_LT(avec.cash(), sans.cash());
+}
+
+// Le slippage réduit aussi la quantité achetable à cash donné
+TEST(PaperBrokerUnit, BuyShrinkAccountsForSlippage) {
+    auto b = readyBroker(1'000.0, 0.0, 100.0, "2024-01-02", /*slippage=*/0.01);
+    auto o = b.submitBuy("QQQ", 50);
+
+    ASSERT_TRUE(o.has_value());
+    EXPECT_EQ(o->quantity, 9);              // 1 000 / 101 = 9,9 → 9
+}
+
+// La valorisation (mark-to-market) reste au prix coté, pas au prix de fill
+TEST(PaperBrokerUnit, MarkToMarketUsesQuotedPriceNotFill) {
+    auto b = readyBroker(10'000.0, 0.0, 100.0, "2024-01-02", 0.001);
+    b.submitBuy("QQQ", 10);                 // fill 100,10 $, cash 8 999 $
+
+    auto r = b.getPosition("QQQ");
+    ASSERT_TRUE(r.ok() && r.value().has_value());
+    EXPECT_DOUBLE_EQ(r.value()->marketValue, 1'000.0);  // 10 × 100 (coté)
+    EXPECT_NEAR(b.portfolioValue(), 8'999.0 + 1'000.0, 1e-9);
 }
 
 // ════════════════════════════════════════════════════════════

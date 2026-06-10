@@ -23,20 +23,26 @@ struct TradeRecord {
 
 // ─── PaperBroker ──────────────────────────────────────────────────────────────
 // Implémente IBroker pour le backtesting.
-// Simule l'exécution des ordres sans frais réels.
-// Enregistre tous les trades pour générer le rapport de performance.
+// Simule l'exécution des ordres et enregistre tous les trades pour le rapport.
 //
-// Hypothèses simplificatrices:
-//   - Exécution au prix de clôture de la barre courante
-//   - Pas de slippage (hypothèse optimiste — réalité légèrement moins bonne)
-//   - Frais: configurable (défaut 0 pour backtest pur)
+// Modèle de coûts (item 6.2 / D22) :
+//   - Exécution au prix de clôture de la barre courante, dégradé par le
+//     slippage : achat à close×(1+slippagePct), vente à close×(1−slippagePct).
+//     slippagePct regroupe slippage + demi-spread (coût par CÔTÉ, en fraction :
+//     0.0005 = 5 bps). Défaut 0 pour préserver les goldens historiques.
+//   - Commission proportionnelle par côté, appliquée sur le prix de fill.
+//   - La valorisation (mark-to-market) reste au prix coté : seuls les FILLS
+//     sont dégradés, comme en réalité.
 
 class PaperBroker final : public IBroker {
 public:
-    explicit PaperBroker(double initialCapital = 10'000.0, double commissionPct = 0.0)
+    explicit PaperBroker(double initialCapital = 10'000.0,
+                         double commissionPct  = 0.0,
+                         double slippagePct    = 0.0)
         : initialCapital_(initialCapital)
         , cash_(initialCapital)
         , commissionPct_(commissionPct)
+        , slippagePct_(slippagePct)
     {}
 
     // ── Implémentation IBroker ────────────────────────────────────────────────
@@ -44,7 +50,8 @@ public:
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
         if (qty <= 0 || !currentPrice_) return std::nullopt;
 
-        double price = *currentPrice_;
+        // Fill dégradé par le slippage : on paie PLUS que le prix coté
+        double price = *currentPrice_ * (1.0 + slippagePct_);
         double cost  = price * qty * (1.0 + commissionPct_);
 
         if (cost > cash_) {
@@ -70,7 +77,8 @@ public:
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
         if (!position_.has_value() || qty <= 0 || !currentPrice_) return std::nullopt;
 
-        double price    = *currentPrice_;
+        // Fill dégradé par le slippage : on reçoit MOINS que le prix coté
+        double price    = *currentPrice_ * (1.0 - slippagePct_);
         double proceeds = price * qty * (1.0 - commissionPct_);
         cash_ += proceeds;
 
@@ -160,6 +168,7 @@ private:
     double                   initialCapital_;
     double                   cash_;
     double                   commissionPct_;
+    double                   slippagePct_;
     std::optional<Position>  position_;
     std::optional<double>    currentPrice_;
     std::string              currentDate_;
