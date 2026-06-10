@@ -38,6 +38,12 @@ python3 prototype_regime.py    # teste les leviers du Sprint 8 et compare l'OOS
 | `swingbench.py` | bibliothèque : indicateurs (EMA/RSI/SMA Wilder, miroir du C++), `run_backtest`, `anchored_split`, `rolling`, `Params` (avec les leviers du Sprint 8) |
 | `run_baseline.py` | référence : rejoue config défaut + prod et leur walk-forward |
 | `prototype_regime.py` | teste les items 8.1 (régime SMA200), 8.2 (laisser courir), 8.4 (pas de sortie RSI) et compare leur verdict OOS |
+| `vbt_adapter.py` | pont vers **VectorBT** (balayages vectorisés ~1000× plus rapides) : mêmes données, mêmes coûts, verdict `oos_verdict` ; smoke test : `python3 vbt_adapter.py` |
+
+Le skill **`.claude/skills/quant-research/`** (adapté de
+[marketcalls/vectorbt-backtesting-skills](https://github.com/marketcalls/vectorbt-backtesting-skills),
+MIT) encode ces conventions pour Claude et embarque la référence VectorBT
+(walk-forward, robustesse, optimisation, pièges) dans `rules/`.
 
 ## ⚠️ Deux mises en garde (à garder en tête en lisant les chiffres)
 
@@ -66,3 +72,11 @@ d'entrée actuel (croisement EMA + RSI<65) est contre-productif — ça compose 
 sur-filtrage. Le régime doit **remplacer** la logique d'entrée (item 8.3), pas s'y
 ajouter. Le levier le plus net isolément est **8.4** (ne pas vendre sur RSI). Ce banc
 a produit ce diagnostic en quelques secondes — c'est exactement son rôle.
+
+**Read VectorBT (D33)** : le croisement EMA 13/21 **nu** (sans TP fixe, sans sortie RSI,
+sans stops) bat le B&H **en IS ET en OOS** (alpha OOS +3,8 pts, 3 trades) — première
+config OOS-positive observée. ⚠️ Pour un verdict « gagne », le biais D28 joue CONTRE
+nous (B&H sous-estimé d'~0,55 %/an) : marge réelle mince, à confirmer en walk-forward
+roulant et en C++. Direction quand même limpide : **les sorties actuelles détruisent
+l'edge de tendance** ; le cœur du Sprint 8 est de les refondre (8.2/8.4), le filtre
+d'entrée venant ensuite.
