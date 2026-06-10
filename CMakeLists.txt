@@ -86,6 +86,10 @@ add_executable(unit_tests
         tests/unit/test_paper_broker_unit.cpp
         tests/unit/test_csv_data_feed_unit.cpp
         tests/unit/test_backtester_metrics_unit.cpp
+        tests/unit/test_alpaca_broker_unit.cpp
+        tests/unit/test_alpaca_data_feed_unit.cpp
+        tests/unit/test_ibkr_data_feed_unit.cpp
+        tests/unit/test_logger_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -109,6 +113,7 @@ add_executable(integration_tests
         tests/integration/test_ws_server_integration.cpp
         tests/integration/test_swing_strategy_integration.cpp
         tests/integration/test_backtester_integration.cpp
+        tests/integration/test_http_client_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})

@@ -201,3 +201,50 @@ for (int i = 0; i < 500; ++i)
 bars.push_back(make_bar(i, 100.0 + i * 0.1));
 EXPECT_NO_THROW(s->evaluate(bars));
 }
+// ════════════════════════════════════════════════════════════
+//  Compléments de couverture — conversion RiskConfig,
+//  garde « indicateurs vides »
+// ════════════════════════════════════════════════════════════
+
+// Item 12 : les composition roots passent une SwingConfig au bot via cette
+// conversion — le bot ne dépend jamais de la stratégie
+TEST(SwingStrategyUnit, SwingConfigConvertsToRiskConfig) {
+    SwingConfig cfg;
+    cfg.symbol          = "SPY";
+    cfg.stopLossPct     = 0.04;
+    cfg.takeProfitPct   = 0.12;
+    cfg.trailingStopPct = 0.02;
+    cfg.riskPerTradePct = 0.01;
+    cfg.minHoldDays     = 5;
+
+    RiskConfig r = cfg;
+    EXPECT_EQ(r.symbol, "SPY");
+    EXPECT_DOUBLE_EQ(r.stopLossPct,     0.04);
+    EXPECT_DOUBLE_EQ(r.takeProfitPct,   0.12);
+    EXPECT_DOUBLE_EQ(r.trailingStopPct, 0.02);
+    EXPECT_DOUBLE_EQ(r.riskPerTradePct, 0.01);
+    EXPECT_EQ(r.minHoldDays, 5);
+}
+
+namespace {
+
+// Indicateur qui ne produit jamais rien — simule un échec de calcul
+class EmptyIndicator final : public IIndicator<double> {
+public:
+    std::vector<double> compute(const std::vector<double>&) const override { return {}; }
+    std::string name() const override { return "Empty"; }
+};
+
+} // namespace
+
+// Indicateurs injectés défaillants : HOLD explicite, jamais de crash
+TEST(SwingStrategyUnit, FailedIndicatorComputationReturnsHold) {
+    SwingStrategy strat(SwingConfig{},
+                        std::make_unique<EmptyIndicator>(),
+                        std::make_unique<EmptyIndicator>(),
+                        std::make_unique<EmptyIndicator>());
+
+    auto sig = strat.evaluate(flat(400.0, 60));
+    EXPECT_TRUE(sig.isHold());
+    EXPECT_NE(sig.reason.find("indicateurs"), std::string::npos);
+}

@@ -65,3 +65,66 @@ TEST(DayTradeStrategyUnit, ComputeAtrStopScalesWithVolatility) {
     auto moving = makeBars(60, 100.0, -0.5);
     EXPECT_GT(strat->computeATRStop(moving), 0.0);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Compléments de couverture — signal d'ACHAT, name/config
+// ════════════════════════════════════════════════════════════
+
+namespace {
+
+// Déclin régulier puis rallye fort à volume élevé : produit un croisement
+// EMA haussier avec prix > VWAP et volume > moyenne sur une des barres
+std::vector<Bar> declineThenRally(int declineBars, int rallyBars) {
+    auto bars = makeBars(declineBars, 110.0, -0.3, /*volume=*/1'000);
+    double last = bars.back().close;
+    for (int i = 1; i <= rallyBars; ++i) {
+        Bar b;
+        b.date = "2024-03-05 14:" + std::to_string(10 + i);
+        double p = last + 2.5 * i;
+        b.open = b.high = b.low = b.close = p;
+        b.volume = 8'000;                   // confirmation par le volume
+        bars.push_back(b);
+    }
+    return bars;
+}
+
+} // namespace
+
+// Le croisement haussier tombe sur UNE des barres du rallye : on évalue
+// chaque préfixe (comme le ferait le bot barre par barre) et on exige
+// qu'un signal BUY apparaisse pendant le rallye
+TEST(DayTradeStrategyUnit, RallyWithVolumeProducesBuySignal) {
+    DayTradeConfig cfg;
+    cfg.rsiBuyMax        = 99.0;   // le filtre testé ici est le croisement
+    cfg.volumeMultiplier = 1.2;
+    auto strat = DayTradeStrategy::create(cfg);
+
+    auto bars = declineThenRally(55, 8);
+    const int minBars = cfg.emaSlow + cfg.volumePeriod + 5;
+
+    bool buySeen = false;
+    std::string buyReason;
+    for (size_t len = minBars; len <= bars.size(); ++len) {
+        auto sig = strat->evaluate({bars.begin(), bars.begin() + len});
+        if (sig.isBuy()) {
+            buySeen   = true;
+            buyReason = sig.reason;
+            EXPECT_DOUBLE_EQ(sig.price, bars[len - 1].close);
+        }
+    }
+
+    ASSERT_TRUE(buySeen);
+    // La raison documente les conditions remplies (EMA, VWAP, RSI, volume)
+    EXPECT_NE(buyReason.find("EMA"),  std::string::npos);
+    EXPECT_NE(buyReason.find("VWAP"), std::string::npos);
+    EXPECT_NE(buyReason.find("Vol="), std::string::npos);
+}
+
+TEST(DayTradeStrategyUnit, NameAndConfigAccessors) {
+    DayTradeConfig cfg;
+    cfg.rsiBuyMax = 55.0;
+    auto strat = DayTradeStrategy::create(cfg);
+
+    EXPECT_EQ(strat->name(), "DayTradeStrategy_VWAP_EMA_RSI");
+    EXPECT_DOUBLE_EQ(strat->config().rsiBuyMax, 55.0);
+}

@@ -149,3 +149,13 @@ TEST(DayIndicatorsUnit, VolumeOscillatorNeutralOnZeroAverage) {
     ASSERT_EQ(v.size(), 3u);
     EXPECT_DOUBLE_EQ(v[2], 1.0);  // moyenne nulle → neutre, pas de division par 0
 }
+
+// ════════════════════════════════════════════════════════════
+//  name() — identifiants pour le logging
+// ════════════════════════════════════════════════════════════
+
+TEST(DayIndicatorsUnit, IndicatorNamesCarryPeriod) {
+    EXPECT_EQ(ATR(14).name(),               "ATR(14)");
+    EXPECT_EQ(VWAP().name(),                "VWAP");
+    EXPECT_EQ(VolumeOscillator(20).name(),  "VolumeOscillator(20)");
+}

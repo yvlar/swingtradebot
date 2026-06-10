@@ -152,3 +152,108 @@ TEST(IbkrBrokerUnit, ZeroQuantityShortCircuitsWithoutHttp) {
     EXPECT_FALSE(b.submitSell("QQQ", -2).has_value());
     EXPECT_TRUE(b.calls.empty());
 }
+
+// ════════════════════════════════════════════════════════════
+//  getPosition / getAccount — canal Result (item 10)
+// ════════════════════════════════════════════════════════════
+
+TEST(IbkrBrokerUnit, OpenPositionParsed) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/position/320227571", R"([{"position":9.0,
+        "avgCost":402.5,"mktValue":3700.0,"unrealizedPnl":77.5}])"}};
+
+    auto r = b.getPosition("QQQ");
+    ASSERT_TRUE(r.ok());
+    ASSERT_TRUE(r.value().has_value());
+    EXPECT_EQ(r.value()->shares, 9);
+    EXPECT_DOUBLE_EQ(r.value()->avgPrice,      402.5);
+    EXPECT_DOUBLE_EQ(r.value()->marketValue,   3700.0);
+    EXPECT_DOUBLE_EQ(r.value()->unrealizedPnl,   77.5);
+}
+
+// Réponse vide ou position nulle = certitude « pas de position » → Ok(nullopt)
+TEST(IbkrBrokerUnit, EmptyOrZeroPositionIsOkNullopt) {
+    ScriptedIbkrBroker vide("DU123", "https://gw");
+    vide.responses = {{"/position/", "[]"}};
+    auto r1 = vide.getPosition("QQQ");
+    ASSERT_TRUE(r1.ok());
+    EXPECT_FALSE(r1.value().has_value());
+
+    ScriptedIbkrBroker zero("DU123", "https://gw");
+    zero.responses = {{"/position/", R"([{"position":0.0}])"}};
+    auto r2 = zero.getPosition("QQQ");
+    ASSERT_TRUE(r2.ok());
+    EXPECT_FALSE(r2.value().has_value());
+}
+
+// Réponse illisible = panne : la position est INCONNUE → Err, jamais nullopt
+TEST(IbkrBrokerUnit, MalformedPositionResponseIsErr) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/position/", "<html>502</html>"}};
+
+    auto r = b.getPosition("QQQ");
+    ASSERT_FALSE(r.ok());
+    EXPECT_NE(r.error().find("IBKR getPosition"), std::string::npos);
+    EXPECT_FALSE(b.lastError().empty());
+}
+
+// Symbole hors KNOWN_CONIDS → Err immédiat, sans appel HTTP
+TEST(IbkrBrokerUnit, UnknownSymbolIsErrWithoutHttp) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+
+    auto r = b.getPosition("ZZZ");
+    ASSERT_FALSE(r.ok());
+    EXPECT_NE(r.error().find("Conid inconnu"), std::string::npos);
+    EXPECT_TRUE(b.calls.empty());
+}
+
+// Les montants du compte sont dans des objets imbriqués IBKR
+TEST(IbkrBrokerUnit, AccountSummaryParsedFromNestedAmounts) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/summary", R"({
+        "availablefunds":  {"amount": 25000.50},
+        "netliquidation":  {"amount": 31000.75}
+    })"}};
+
+    auto a = b.getAccount();
+    EXPECT_DOUBLE_EQ(a.cash,   25'000.50);
+    EXPECT_DOUBLE_EQ(a.equity, 31'000.75);
+    EXPECT_EQ(a.status, "ACTIVE");
+}
+
+// Panne sur le résumé de compte → INACTIVE (le RiskManager bloquera tout trade)
+TEST(IbkrBrokerUnit, AccountFailureReturnsInactive) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/summary", "pas du json"}};
+
+    auto a = b.getAccount();
+    EXPECT_DOUBLE_EQ(a.cash, 0.0);
+    EXPECT_EQ(a.status, "INACTIVE");
+}
+
+// ════════════════════════════════════════════════════════════
+//  Compléments de couverture — confirmations épuisées, exceptions
+// ════════════════════════════════════════════════════════════
+
+// Le Gateway pose une question à CHAQUE acquittement : après 5 tours,
+// on abandonne (nullopt + lastError) plutôt que de boucler à l'infini
+TEST(IbkrBrokerUnit, EndlessConfirmationsAbortAfterMaxRounds) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {
+        {"/iserver/reply/",          R"([{"id":"q-suivante","message":["encore ?"]}])"},
+        {"/iserver/account/DU123",   R"([{"id":"q-1","message":["confirmer ?"]}])"},
+    };
+
+    EXPECT_FALSE(b.submitBuy("QQQ", 1).has_value());
+    EXPECT_NE(b.lastError().find("non résolues"), std::string::npos);
+    EXPECT_EQ(b.countUrlContaining("/iserver/reply/"), 5);   // kMaxConfirmRounds
+}
+
+// Symbole sans conid connu : l'exception est absorbée → nullopt + lastError
+TEST(IbkrBrokerUnit, SubmitUnknownSymbolFailsSoftly) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+
+    EXPECT_FALSE(b.submitBuy("ZZZ", 1).has_value());
+    EXPECT_NE(b.lastError().find("Conid inconnu"), std::string::npos);
+    EXPECT_TRUE(b.calls.empty());
+}

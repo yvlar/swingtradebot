@@ -24,7 +24,7 @@ namespace trading {
 // Alias local au namespace (pas de pollution du scope global — D9)
 using json = nlohmann::json;
 
-class AlpacaDataFeed final : public IDataFeed {
+class AlpacaDataFeed : public IDataFeed {   // non-final : les tests substituent httpRequest()
 public:
     // ── Construction ─────────────────────────────────────────
     // paper=true  → paper-api.alpaca.markets  (argent fictif)
@@ -109,7 +109,7 @@ private:
 
     // ── HTTP GET via le client commun (code HTTP vérifié, retry) ──
     std::string get(const std::string& url) {
-        std::string response = http_.get(url, {
+        std::string response = httpRequest("GET", url, "", {
             "APCA-API-KEY-ID: "     + apiKey_,
             "APCA-API-SECRET-KEY: " + apiSecret_,
             "Accept: application/json",
@@ -122,6 +122,18 @@ private:
 
         return response;
     }
+
+protected:
+    // HTTP bas niveau — virtuel pour la substitution dans les tests
+    // unitaires (aucun réseau), même pattern qu'IBKRBroker
+    virtual std::string httpRequest(const std::string& method,
+                                    const std::string& url,
+                                    const std::string& body,
+                                    const std::vector<std::string>& headers) {
+        return http_.request(method, url, body, headers);
+    }
+
+private:
 
     // ── Utilitaires de date ───────────────────────────────────
     static std::time_t daysAgo(int n) {

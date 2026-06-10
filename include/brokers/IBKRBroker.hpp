@@ -131,23 +131,25 @@ private:
 
     std::optional<Order> submitOrder(const std::string& symbol,
                                       int qty, const std::string& side) {
-        std::string conid = resolveConid(symbol);
-
-        json orderBody = json::array();
-        orderBody.push_back({
-            {"conid",       std::stoi(conid)},
-            {"secType",     conid + ":STK"},
-            {"cOID",        makeClientOrderId(symbol, side)},  // idempotence
-            {"orderType",   "MKT"},           // market order
-            {"side",        side},
-            {"quantity",    qty},
-            {"tif",         "DAY"},
-            {"listingExchange", "SMART"},      // routage intelligent IBKR
-        });
-
-        json body = {{"orders", orderBody}};
-
+        // Tout dans le try : un conid inconnu doit échouer en nullopt +
+        // lastError, jamais en exception qui remonte au cycle du bot
         try {
+            std::string conid = resolveConid(symbol);
+
+            json orderBody = json::array();
+            orderBody.push_back({
+                {"conid",       std::stoi(conid)},
+                {"secType",     conid + ":STK"},
+                {"cOID",        makeClientOrderId(symbol, side)},  // idempotence
+                {"orderType",   "MKT"},           // market order
+                {"side",        side},
+                {"quantity",    qty},
+                {"tif",         "DAY"},
+                {"listingExchange", "SMART"},      // routage intelligent IBKR
+            });
+
+            json body = {{"orders", orderBody}};
+
             auto resp = post(
                 "/v1/api/iserver/account/" + accountId_ + "/orders",
                 body.dump()

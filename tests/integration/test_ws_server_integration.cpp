@@ -266,3 +266,39 @@ EXPECT_NO_THROW(server_->broadcast("{\"test\":true}"));
 std::string msg;
 EXPECT_TRUE(TestClient::connect_and_read(port_, msg));
 }
+// ════════════════════════════════════════════════════════════
+//  Messages entrants du client — le serveur lit, ignore et survit
+// ════════════════════════════════════════════════════════════
+
+// Un client qui PARLE au serveur (le dashboard pourrait envoyer un ping) :
+// le serveur consomme le message sans broadcaster ni crasher, et continue
+// de servir les broadcasts suivants
+TEST_F(WsServerIntegration, ClientMessageConsumedWithoutCrash) {
+    net::io_context ioc;
+    tcp::resolver resolver(ioc);
+    ws_ns::stream<beast::tcp_stream> ws(ioc);
+    beast::get_lowest_layer(ws).expires_after(5s);
+    beast::get_lowest_layer(ws).connect(
+            resolver.resolve("127.0.0.1", std::to_string(port_)));
+    beast::get_lowest_layer(ws).expires_never();
+    ws.handshake("127.0.0.1", "/");
+
+    // état initial poussé à la connexion
+    beast::flat_buffer buf;
+    ws.read(buf);
+
+    // le client envoie deux messages que le serveur doit absorber
+    ws.write(net::buffer(std::string(R"({"type":"ping"})")));
+    ws.write(net::buffer(std::string("bonjour")));
+    std::this_thread::sleep_for(200ms);
+
+    // le serveur fonctionne toujours : un broadcast arrive entier
+    server_->broadcast(R"({"type":"state","apres":"messages"})");
+    buf.consume(buf.size());
+    ws.read(buf);
+    EXPECT_NE(beast::buffers_to_string(buf.data()).find("apres"),
+              std::string::npos);
+
+    ws.close(ws_ns::close_code::normal);
+    std::this_thread::sleep_for(100ms);   // laisse on_read voir la fermeture
+}

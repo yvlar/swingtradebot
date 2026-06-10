@@ -253,3 +253,30 @@ TEST_F(ReplayDataFeedUnit, MarketAlwaysOpenInReplay) {
     ReplayDataFeed feed(csv, 3);
     EXPECT_TRUE(feed.isMarketOpen());
 }
+
+// ════════════════════════════════════════════════════════════
+//  printReport — smoke test du rapport console
+// ════════════════════════════════════════════════════════════
+
+TEST(BacktesterMetricsUnit, PrintReportRendersAllSections) {
+    auto bt = metricsOnly();
+    std::vector<TradeRecord> trades = {
+        trade(+100.0, +10.0, 4, "take-profit (+10%)"),
+        trade( -50.0,  -5.0, 2, "stop-loss (-5%)"),
+    };
+    trades[0].buyDate  = "2024-01-02";
+    trades[0].sellDate = "2024-01-08";
+    auto r = bt.computeMetrics(10'050.0, barsWithCloses({100.0}),
+                               {100.0, 101.0}, {"2024-01-02", "2024-01-03"},
+                               trades, 0);
+
+    testing::internal::CaptureStdout();
+    bt.printReport(r);
+    std::string out = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(out.find("BACKTEST"),               std::string::npos);
+    EXPECT_NE(out.find("PERFORMANCE GLOBALE"),    std::string::npos);
+    EXPECT_NE(out.find("STATISTIQUES DES TRADES"),std::string::npos);
+    EXPECT_NE(out.find("RAISONS DE SORTIE"),      std::string::npos);
+    EXPECT_NE(out.find("2024-01-02"),             std::string::npos);
+}
