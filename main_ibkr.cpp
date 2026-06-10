@@ -122,7 +122,10 @@ int main(int argc, char* argv[]) {
 
     AlertConfig alertCfg;
     alertCfg.heartbeat_interval_sec = 60;
-    alertCfg.max_silence_sec        = 300;
+    // Le heartbeat n'est émis qu'une fois par cycle (60 min) : le seuil de
+    // silence doit couvrir un cycle complet + marge, sinon fausse alerte
+    // « bot silencieux » à chaque cycle (découverte D1)
+    alertCfg.max_silence_sec        = 3900;  // 65 min
     alertCfg.webhook_enabled        = false;
     // alertCfg.webhook_url = "https://discord.com/api/webhooks/XXX/YYY";
     Watchdog watchdog(alertCfg, botState);
