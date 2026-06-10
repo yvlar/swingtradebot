@@ -102,10 +102,16 @@ add_executable(integration_tests
         tests/integration/test_watchdog_integration.cpp
         tests/integration/test_ws_server_integration.cpp
         tests/integration/test_swing_strategy_integration.cpp
+        tests/integration/test_backtester_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
+# Le golden backtest (item 17) lit QQQ.csv depuis la racine du dépôt,
+# indépendamment du répertoire de travail des tests.
+target_compile_definitions(integration_tests PRIVATE
+        SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+)
 
 gtest_discover_tests(integration_tests
         TEST_PREFIX "Integration."
