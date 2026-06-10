@@ -136,3 +136,54 @@ TEST(RiskManagerUnit, NoExitWhenBuyPriceInvalid) {
     EXPECT_FALSE(rm.checkExitConditions(404.0, 0.0, 1, 404.0,
                                         0.05, 0.10, 0.03, 3).has_value());
 }
+
+// Borne complémentaire : un buyPrice négatif (état corrompu) ne doit pas
+// produire de P&L absurde ni de sortie (RiskManager.hpp:72, buyPrice<=0)
+TEST(RiskManagerUnit, NoExitWhenBuyPriceNegative) {
+    RiskManager rm;
+    EXPECT_FALSE(rm.checkExitConditions(404.0, -10.0, 5, 410.0,
+                                        0.05, 0.10, 0.03, 3).has_value());
+}
+
+// ── Priorité : stop-loss > take-profit > trailing ──
+// L'ordre des `if` (RiskManager.hpp:77-89) est une garantie : quand plusieurs
+// conditions sont vraies simultanément, la plus prioritaire l'emporte. Un
+// réordonnancement (régression) ferait remonter la mauvaise raison.
+
+// -7,5 % sous le prix d'achat (stop-loss) ET -17,8 % sous le pic (trailing) :
+// les deux conditions sont vraies → le stop-loss, vérifié en premier, gagne.
+TEST(RiskManagerUnit, StopLossTakesPriorityOverTrailing) {
+    RiskManager rm;
+    auto r = rm.checkExitConditions(370.0, 400.0, 5, 450.0, 0.05, 0.10, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("stop-loss"), std::string::npos);
+    EXPECT_EQ(r->find("trailing"), std::string::npos);
+}
+
+// +6,25 % depuis l'achat (take-profit à 5 %) ET -5,6 % depuis le pic
+// (trailing) : les deux conditions sont vraies → le take-profit gagne.
+TEST(RiskManagerUnit, TakeProfitTakesPriorityOverTrailing) {
+    RiskManager rm;
+    auto r = rm.checkExitConditions(425.0, 400.0, 5, 450.0, 0.05, 0.05, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("take-profit"), std::string::npos);
+    EXPECT_EQ(r->find("trailing"), std::string::npos);
+}
+
+// Les stops protègent dès le jour 0 : minHoldDays ne gate QUE le trailing
+// (cf. TrailingStopOnlyAfterMinHoldDays), jamais le stop-loss.
+TEST(RiskManagerUnit, StopLossFiresRegardlessOfMinHoldDays) {
+    RiskManager rm;
+    auto r = rm.checkExitConditions(370.0, 400.0, 0, 400.0, 0.05, 0.10, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("stop-loss"), std::string::npos);
+}
+
+// peakPrice=0 (pic jamais renseigné) : la garde `peakPrice > 0`
+// (RiskManager.hpp:85) écarte le trailing — pas de drawdown calculé sur un
+// pic nul, donc aucune sortie ici (P&L dans les bandes, minHold atteint).
+TEST(RiskManagerUnit, TrailingSkippedWhenPeakPriceZero) {
+    RiskManager rm;
+    EXPECT_FALSE(rm.checkExitConditions(395.0, 400.0, 5, 0.0,
+                                        0.05, 0.10, 0.03, 3).has_value());
+}
