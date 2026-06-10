@@ -1,0 +1,43 @@
+# ============================================================
+#  CI — build Linux (paquets système) + ctest à chaque push
+#  Sprint 5, item 22. Filet de non-régression : aurait attrapé
+#  le CMakeLists vcpkg-only, le gitignore mort (Sprint 1) et la
+#  dérive du décompte de tests (D20). Utilise le fallback paquets
+#  système (D11) — pas de vcpkg sur le runner.
+# ============================================================
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build & test (Ubuntu, paquets système)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+
+      # Liste alignée sur prompt-executer-sprint.md (apt-get update
+      # obligatoire — un index périmé donne des 404, leçon Sprint 3).
+      - name: Installation des dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            libgtest-dev googletest cmake ninja-build
+
+      - name: Configuration CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+
+      - name: Compilation
+        run: cmake --build build -j"$(nproc)"
+
+      # --output-on-failure : les logs du test fautif sont dans le job.
+      # Le décompte « N tests » sert de garde-fou contre la dérive D20.
+      - name: Tests (ctest)
+        working-directory: build
+        run: ctest --output-on-failure -j4
