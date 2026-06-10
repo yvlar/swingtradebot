@@ -63,12 +63,25 @@ TEST_F(CsvDataFeedUnit, LoadsValidCsvWithAllFields) {
     EXPECT_EQ(b.volume, 45'123'400L);
 }
 
-// La colonne utilisée est Close, PAS Adj Close
-TEST_F(CsvDataFeedUnit, UsesCloseNotAdjClose) {
+// Item 6.3 (D7) : la colonne utilisée par défaut est Adj Close — rendement
+// TOTAL (dividendes réinvestis), pour la stratégie comme pour le Buy & Hold.
+// NB : dans le QQQ.csv actuel les deux colonnes sont identiques (D28), le
+// golden ne bouge donc pas ; ce test fige le contrat pour de futures données.
+TEST_F(CsvDataFeedUnit, UsesAdjCloseByDefault) {
     writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
              "2024-01-02,100,101,99,100.50,95.25,1000\n");
 
     CsvDataFeed feed(path_);
+    ASSERT_EQ(feed.size(), 1u);
+    EXPECT_DOUBLE_EQ(feed.allBars().front().close, 95.25);
+}
+
+// Opt-out explicite : prix bruts (price-return) sur demande
+TEST_F(CsvDataFeedUnit, RawCloseWhenAdjustedDisabled) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,100,101,99,100.50,95.25,1000\n");
+
+    CsvDataFeed feed(path_, /*useAdjustedClose=*/false);
     ASSERT_EQ(feed.size(), 1u);
     EXPECT_DOUBLE_EQ(feed.allBars().front().close, 100.50);
 }

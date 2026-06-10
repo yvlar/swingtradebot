@@ -14,13 +14,20 @@ namespace trading {
 //   Date,Open,High,Low,Close,Adj Close,Volume
 //   2024-01-02,403.25,404.10,401.50,402.80,402.80,45123400
 //
+// Par défaut, `close` porte la colonne **Adj Close** (item 6.3 / D7) : le
+// backtest mesure le rendement TOTAL (dividendes réinvestis), pour la
+// stratégie comme pour le Buy & Hold. `useAdjustedClose=false` restaure les
+// prix bruts (price-return). Open/High/Low restent bruts : seul `close` est
+// consommé par le moteur actuel (voir D18 pour l'élargissement aux high/low).
+//
 // USAGE:
 //   auto feed = CsvDataFeed("QQQ.csv");
 //   auto bars = feed.getBars("QQQ", 60);
 
 class CsvDataFeed final : public IDataFeed {
 public:
-    explicit CsvDataFeed(const std::string& csvPath) : csvPath_(csvPath) {
+    explicit CsvDataFeed(const std::string& csvPath, bool useAdjustedClose = true)
+        : csvPath_(csvPath), useAdjustedClose_(useAdjustedClose) {
         loadAll();
     }
 
@@ -60,6 +67,7 @@ public:
 
 private:
     std::string      csvPath_;
+    bool             useAdjustedClose_;
     std::vector<Bar> bars_;
 
     // ── Parsing CSV ───────────────────────────────────────────────────────────
@@ -112,7 +120,9 @@ private:
             b.open   = std::stod(tokens[1]);
             b.high   = std::stod(tokens[2]);
             b.low    = std::stod(tokens[3]);
-            b.close  = std::stod(tokens[4]);  // utilise Close (pas Adj Close)
+            // Adj Close (tokens[5], garanti par le check ≥ 6 colonnes) par
+            // défaut — rendement total ; Close brut sur opt-out
+            b.close  = std::stod(useAdjustedClose_ ? tokens[5] : tokens[4]);
             b.volume = tokens.size() > 6 ? std::stol(tokens[6]) : 0L;
             return b;
         } catch (...) {
