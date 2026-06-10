@@ -92,9 +92,12 @@ public:
     ) const = 0;
 
     // Vérifie si le trade respecte les règles de risque
+    // (dont coût total = price × qty ≤ cash disponible)
     virtual bool isTradeAllowed(
-        const Account&          account,
-        const std::optional<Position>& currentPosition
+        const Account&                 account,
+        const std::optional<Position>& currentPosition,
+        double                         price,
+        int                            qty
     ) const = 0;
 
     // Vérifie si le stop-loss ou take-profit est atteint

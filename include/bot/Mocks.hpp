@@ -79,6 +79,32 @@ private:
     }
 };
 
+// ─── MockStrategy ─────────────────────────────────────────────────────────────
+// Force un signal donné — permet de tester TradingBot sans dépendre des indicateurs
+class MockStrategy final : public IStrategy {
+public:
+    void setSignal(SignalType type, std::string reason = "mock") {
+        type_   = type;
+        reason_ = std::move(reason);
+    }
+
+    Signal evaluate(const std::vector<Bar>& bars) const override {
+        Signal s;
+        s.type      = type_;
+        s.symbol    = "QQQ";
+        s.price     = bars.empty() ? 0.0 : bars.back().close;
+        s.reason    = reason_;
+        s.timestamp = bars.empty() ? "" : bars.back().date;
+        return s;
+    }
+
+    std::string name() const override { return "MockStrategy"; }
+
+private:
+    SignalType  type_   = SignalType::HOLD;
+    std::string reason_ = "mock";
+};
+
 // ─── MockBroker ───────────────────────────────────────────────────────────────
 // Simule l'exécution des ordres — enregistre tout pour vérification dans les tests
 class MockBroker final : public IBroker {

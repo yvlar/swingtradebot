@@ -93,16 +93,20 @@ public:
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
             auto account = broker_->getAccount();
-            if (!riskManager_->isTradeAllowed(account, pos)) {
-                logger_->warn("Trade non autorisé par le risk manager");
-                return;
-            }
 
             int shares = riskManager_->positionSize(
                 account.cash, price,
                 swingCfg_.stopLossPct,
                 swingCfg_.riskPerTradePct
             );
+            if (shares <= 0) {
+                logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
+                return;
+            }
+            if (!riskManager_->isTradeAllowed(account, pos, price, shares)) {
+                logger_->warn("Trade non autorisé par le risk manager");
+                return;
+            }
 
             auto order = broker_->submitBuy(swingCfg_.symbol, shares);
             if (order.has_value()) {

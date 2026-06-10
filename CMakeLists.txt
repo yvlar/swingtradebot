@@ -74,6 +74,8 @@ add_executable(unit_tests
         tests/unit/test_watchdog_unit.cpp
         tests/unit/test_ws_server_unit.cpp
         tests/unit/test_swing_strategy_unit.cpp
+        tests/unit/test_risk_manager_unit.cpp
+        tests/unit/test_trading_bot_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
