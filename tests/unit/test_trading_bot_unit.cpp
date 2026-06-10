@@ -211,7 +211,7 @@ TEST(TradingBotUnit, HoldDaysIncrementsOncePerNewBarDate) {
 // minHoldDays jours de bourse réels.
 TEST(TradingBotUnit, SellSignalWaitsForRealTradingDays) {
     BotHarness h(402.0, "2024-03-05");
-    SwingConfig cfg;
+    RiskConfig cfg;
     cfg.minHoldDays = 2;
     h.bot->setConfig(cfg);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 402.0, 9 * 2.0});
