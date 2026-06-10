@@ -82,6 +82,10 @@ add_executable(unit_tests
         tests/unit/test_http_client_unit.cpp
         tests/unit/test_day_indicators_unit.cpp
         tests/unit/test_day_trade_strategy_unit.cpp
+        tests/unit/test_indicators_unit.cpp
+        tests/unit/test_paper_broker_unit.cpp
+        tests/unit/test_csv_data_feed_unit.cpp
+        tests/unit/test_backtester_metrics_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})

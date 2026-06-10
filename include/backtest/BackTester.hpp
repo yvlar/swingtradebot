@@ -225,6 +225,10 @@ private:
     double      initialCapital_;
     double      commissionPct_;
 
+public:
+    // Public pour les tests unitaires des métriques : permet de vérifier
+    // chaque formule (drawdown, Sharpe, profit factor…) sur des données
+    // synthétiques, sans dépendre du backtest golden complet
     BacktestResult computeMetrics(
         double                          finalCash,
         const std::vector<Bar>&         allBars,
@@ -316,6 +320,7 @@ private:
         return r;
     }
 
+private:
     static std::string fmt(double v) {
         std::ostringstream s;
         s << std::fixed << std::setprecision(2) << v;
