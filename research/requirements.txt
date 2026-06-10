@@ -1,0 +1,13 @@
+# Banc de prototypage de stratégies (Sprint 8). Le moteur de PRODUCTION reste le
+# C++ (../include) ; ce dossier ne sert qu'à itérer vite des idées de stratégie.
+
+# Requis (le banc tourne avec ça seul) :
+numpy
+pandas
+
+# Accélérateurs OPTIONNELS (backtest vectorisé + rapports), à installer au besoin.
+# ⚠️ vectorbt cible des versions plus anciennes de pandas/numpy : préférer un venv
+# dédié si tu l'installes, pour ne pas casser le banc pandas ci-dessus.
+#   pip install "vectorbt" "quantstats"
+# vectorbt
+# quantstats
