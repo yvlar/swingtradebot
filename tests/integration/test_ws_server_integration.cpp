@@ -198,6 +198,55 @@ for (auto& t : threads) t.join();
 EXPECT_EQ(received.load(), N);
 }
 
+// ── Sprint 2, D4 : broadcasts rapprochés → file d'écriture ──
+// BUG : Session::send lançait async_write sans file d'attente — deux
+// broadcasts rapprochés écrivaient en concurrence sur le même stream
+// WebSocket (UB Beast). Avec la file, tous les messages arrivent, dans
+// l'ordre d'émission. Les gros payloads forcent le chevauchement.
+TEST_F(WsServerIntegration, RapidBroadcastsAllDeliveredInOrder) {
+    constexpr int N = 20;
+    const std::string padding(256 * 1024, 'x');   // écritures longues
+
+    std::atomic<bool> ready{false};
+    std::atomic<int>  received{0};
+    std::vector<int>  order;
+
+    std::thread client([&](){
+        try {
+            net::io_context ioc;
+            tcp::resolver resolver(ioc);
+            ws_ns::stream<beast::tcp_stream> ws(ioc);
+            beast::get_lowest_layer(ws).expires_after(10s);
+            beast::get_lowest_layer(ws).connect(
+                    resolver.resolve("127.0.0.1", std::to_string(port_)));
+            beast::get_lowest_layer(ws).expires_never();
+            ws.handshake("127.0.0.1", "/");
+            beast::flat_buffer b1; ws.read(b1);   // état initial
+            ready = true;
+            for (int i = 0; i < N; ++i) {
+                beast::flat_buffer b; ws.read(b);
+                json j = json::parse(beast::buffers_to_string(b.data()));
+                order.push_back(j["seq"].get<int>());
+                received++;
+            }
+            ws.close(ws_ns::close_code::normal);
+        } catch (...) { ready = true; }
+    });
+
+    for (int i = 0; i < 100 && !ready; ++i)
+        std::this_thread::sleep_for(50ms);
+
+    // Salve de broadcasts sans aucune pause : chevauchement garanti
+    for (int i = 0; i < N; ++i)
+        server_->broadcast("{\"seq\":" + std::to_string(i)
+                           + ",\"pad\":\"" + padding + "\"}");
+    client.join();
+
+    ASSERT_EQ(received.load(), N);
+    for (int i = 0; i < N; ++i)
+        EXPECT_EQ(order[i], i) << "message " << i << " hors d'ordre";
+}
+
 TEST_F(WsServerIntegration, ClientBrutalDisconnectNoServerCrash) {
 std::thread([&](){
 try {
