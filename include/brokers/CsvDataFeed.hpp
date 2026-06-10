@@ -25,16 +25,18 @@ public:
     }
 
     // Retourne les N dernières barres (ou moins si pas assez de données)
-    std::vector<Bar> getBars(const std::string& /*symbol*/, int days) override {
-        if (bars_.empty()) return {};
+    // Données locales : jamais de panne → toujours Ok (item 10)
+    Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {
+        if (bars_.empty()) return Result<std::vector<Bar>>::Ok({});
         int start = std::max(0, static_cast<int>(bars_.size()) - days);
-        return std::vector<Bar>(bars_.begin() + start, bars_.end());
+        return Result<std::vector<Bar>>::Ok(
+            std::vector<Bar>(bars_.begin() + start, bars_.end()));
     }
 
     // Retourne le dernier prix de clôture connu
-    std::optional<double> getLatestPrice(const std::string& /*symbol*/) override {
-        if (bars_.empty()) return std::nullopt;
-        return bars_.back().close;
+    Result<std::optional<double>> getLatestPrice(const std::string& /*symbol*/) override {
+        if (bars_.empty()) return Result<std::optional<double>>::Ok(std::nullopt);
+        return Result<std::optional<double>>::Ok(bars_.back().close);
     }
 
     // En backtesting, le marché est toujours "ouvert"

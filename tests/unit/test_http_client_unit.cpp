@@ -108,6 +108,20 @@ TEST(HttpClientUnit, ClientError401ThrowsWithoutRetry) {
     EXPECT_EQ(c.attempts, 1);
 }
 
+// L'erreur lancée porte le code de statut : les appelants peuvent
+// distinguer p. ex. 404 « pas de ressource » d'une vraie panne (item 10)
+TEST(HttpClientUnit, ThrownErrorCarriesHttpStatus) {
+    ScriptedHttpClient c(fastCfg());
+    c.script = {{404, "Not Found"}};
+
+    try {
+        c.request("GET", "https://x/api");
+        FAIL() << "une HttpError était attendue";
+    } catch (const HttpError& e) {
+        EXPECT_EQ(e.status(), 404);
+    }
+}
+
 // ── Épuisement des essais ─────────────────────────────────
 
 TEST(HttpClientUnit, PersistentServerErrorExhaustsRetriesThenThrows) {

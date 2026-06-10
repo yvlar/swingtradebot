@@ -41,19 +41,22 @@ public:
         return submitOrder(symbol, qty, "SELL");
     }
 
-    std::optional<Position> getPosition(const std::string& symbol) override {
-        std::string conid = resolveConid(symbol);
-        std::string url   = gatewayUrl_
-            + "/v1/api/portfolio/" + accountId_
-            + "/position/" + conid;
+    // Ok(nullopt) = le gateway confirme l'absence de position ;
+    // Err = panne réseau/parsing : la position est INCONNUE (item 10)
+    Result<std::optional<Position>> getPosition(const std::string& symbol) override {
+        using R = Result<std::optional<Position>>;
         try {
+            std::string conid = resolveConid(symbol);
+            std::string url   = gatewayUrl_
+                + "/v1/api/portfolio/" + accountId_
+                + "/position/" + conid;
             auto resp = get(url);
             auto j    = json::parse(resp);
-            if (!j.is_array() || j.empty()) return std::nullopt;
+            if (!j.is_array() || j.empty()) return R::Ok(std::nullopt);
 
             const auto& p = j[0];
             int shares = static_cast<int>(p.value("position", 0.0));
-            if (shares <= 0) return std::nullopt;
+            if (shares <= 0) return R::Ok(std::nullopt);
 
             Position pos;
             pos.symbol        = symbol;
@@ -61,9 +64,10 @@ public:
             pos.avgPrice      = p.value("avgCost",       0.0);
             pos.marketValue   = p.value("mktValue",      0.0);
             pos.unrealizedPnl = p.value("unrealizedPnl", 0.0);
-            return pos;
-        } catch (...) {
-            return std::nullopt;
+            return R::Ok(pos);
+        } catch (const std::exception& e) {
+            lastError_ = e.what();
+            return R::Err(std::string("IBKR getPosition: ") + e.what());
         }
     }
 

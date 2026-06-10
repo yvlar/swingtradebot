@@ -15,14 +15,21 @@ public:
     void setBars(std::vector<Bar> bars) { bars_ = std::move(bars); }
     void setLatestPrice(double p)       { latestPrice_ = p; }
     void setMarketOpen(bool open)       { marketOpen_ = open; }
+    // Simule une panne réseau du feed (item 10) : getBars/getLatestPrice
+    // retournent Err au lieu d'une réponse
+    void setFeedDown(std::string error) { feedError_ = std::move(error); }
+    void setFeedUp()                    { feedError_.reset(); }
 
-    std::vector<Bar> getBars(const std::string&, int) override {
-        return bars_;
+    Result<std::vector<Bar>> getBars(const std::string&, int) override {
+        if (feedError_) return Result<std::vector<Bar>>::Err(*feedError_);
+        return Result<std::vector<Bar>>::Ok(bars_);
     }
 
-    std::optional<double> getLatestPrice(const std::string&) override {
-        if (latestPrice_ > 0) return latestPrice_;
-        return std::nullopt;
+    Result<std::optional<double>> getLatestPrice(const std::string&) override {
+        using R = Result<std::optional<double>>;
+        if (feedError_) return R::Err(*feedError_);
+        if (latestPrice_ > 0) return R::Ok(latestPrice_);
+        return R::Ok(std::nullopt);
     }
 
     bool isMarketOpen() override { return marketOpen_; }
@@ -63,9 +70,10 @@ public:
     }
 
 private:
-    std::vector<Bar>      bars_;
-    double                latestPrice_ = 0.0;
-    bool                  marketOpen_  = true;
+    std::vector<Bar>           bars_;
+    double                     latestPrice_ = 0.0;
+    bool                       marketOpen_  = true;
+    std::optional<std::string> feedError_;
 
     static Bar makeBar(const std::string& date, double price) {
         Bar b;
@@ -117,6 +125,9 @@ public:
 
     void setAccount(Account acct)              { account_  = std::move(acct); }
     void setPosition(std::optional<Position> p){ position_ = std::move(p); }
+    // Simule une panne réseau du broker (item 10) : getPosition retourne Err
+    void setPositionQueryFails(std::string error) { positionError_ = std::move(error); }
+    void setPositionQueryOk()                     { positionError_.reset(); }
 
     // Résultat des prochains submit* :
     //   nullopt          → échec de soumission (panne réseau simulée)
@@ -164,8 +175,10 @@ public:
         return o;
     }
 
-    std::optional<Position> getPosition(const std::string&) override {
-        return position_;
+    Result<std::optional<Position>> getPosition(const std::string&) override {
+        using R = Result<std::optional<Position>>;
+        if (positionError_) return R::Err(*positionError_);
+        return R::Ok(position_);
     }
 
     Account getAccount() override { return account_; }
@@ -177,11 +190,12 @@ public:
     void clearOrders() { orders_.clear(); }
 
 private:
-    Account                    account_      = {10000.0, 10000.0, "ACTIVE"};
-    std::optional<Position>    position_     = std::nullopt;
-    std::vector<OrderRecord>   orders_;
-    std::optional<OrderStatus> submitResult_ = OrderStatus::FILLED;
-    double                     fillPrice_    = 420.0;
+    Account                     account_      = {10000.0, 10000.0, "ACTIVE"};
+    std::optional<Position>     position_     = std::nullopt;
+    std::vector<OrderRecord>    orders_;
+    std::optional<OrderStatus>  submitResult_ = OrderStatus::FILLED;
+    double                      fillPrice_    = 420.0;
+    std::optional<std::string>  positionError_;
 };
 
 // ─── MockStateStore ───────────────────────────────────────────────────────────

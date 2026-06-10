@@ -45,39 +45,47 @@ public:
     // ── IDataFeed ─────────────────────────────────────────────
 
     // Récupère les N dernières barres journalières
-    std::vector<Bar> getBars(const std::string& symbol, int days) override {
-        // Calcule la date de début (aujourd'hui - N jours ouvrables ≈ days × 1.5)
-        auto start = isoDate(daysAgo(static_cast<int>(days * 1.5)));
-        auto end   = isoDate(daysAgo(1)); // hier (barre du jour non fermée)
+    // Ok(vide) = réponse sans barre ; Err = panne (item 10)
+    Result<std::vector<Bar>> getBars(const std::string& symbol, int days) override {
+        using R = Result<std::vector<Bar>>;
+        try {
+            // Calcule la date de début (aujourd'hui - N jours ouvrables ≈ days × 1.5)
+            auto start = isoDate(daysAgo(static_cast<int>(days * 1.5)));
+            auto end   = isoDate(daysAgo(1)); // hier (barre du jour non fermée)
 
-        std::string url = baseDataUrl_
-            + "/v2/stocks/" + symbol + "/bars"
-            + "?timeframe=1Day"
-            + "&start=" + start
-            + "&end="   + end
-            + "&limit="  + std::to_string(days)
-            + "&feed=iex"
-            + "&sort=asc";
+            std::string url = baseDataUrl_
+                + "/v2/stocks/" + symbol + "/bars"
+                + "?timeframe=1Day"
+                + "&start=" + start
+                + "&end="   + end
+                + "&limit="  + std::to_string(days)
+                + "&feed=iex"
+                + "&sort=asc";
 
-        auto resp = get(url);
-        auto j    = json::parse(resp);
+            auto resp = get(url);
+            auto j    = json::parse(resp);
 
-        std::vector<Bar> bars;
-        for (const auto& b : j.value("bars", json::array())) {
-            Bar bar;
-            bar.date   = b.value("t", "").substr(0, 10); // "2024-01-02T..."→"2024-01-02"
-            bar.open   = b.value("o", 0.0);
-            bar.high   = b.value("h", 0.0);
-            bar.low    = b.value("l", 0.0);
-            bar.close  = b.value("c", 0.0);
-            bar.volume = static_cast<long>(b.value("v", 0.0));
-            if (bar.close > 0) bars.push_back(bar);
+            std::vector<Bar> bars;
+            for (const auto& b : j.value("bars", json::array())) {
+                Bar bar;
+                bar.date   = b.value("t", "").substr(0, 10); // "2024-01-02T..."→"2024-01-02"
+                bar.open   = b.value("o", 0.0);
+                bar.high   = b.value("h", 0.0);
+                bar.low    = b.value("l", 0.0);
+                bar.close  = b.value("c", 0.0);
+                bar.volume = static_cast<long>(b.value("v", 0.0));
+                if (bar.close > 0) bars.push_back(bar);
+            }
+            return R::Ok(std::move(bars));
+        } catch (const std::exception& e) {
+            return R::Err(std::string("Alpaca getBars: ") + e.what());
         }
-        return bars;
     }
 
     // Prix en temps quasi-réel (dernière transaction)
-    std::optional<double> getLatestPrice(const std::string& symbol) override {
+    // Ok(nullopt) = réponse sans prix exploitable ; Err = panne (item 10)
+    Result<std::optional<double>> getLatestPrice(const std::string& symbol) override {
+        using R = Result<std::optional<double>>;
         std::string url = baseDataUrl_
             + "/v2/stocks/" + symbol + "/trades/latest"
             + "?feed=iex";
@@ -85,9 +93,10 @@ public:
             auto resp = get(url);
             auto j    = json::parse(resp);
             double p  = j["trade"].value("p", 0.0);
-            return p > 0 ? std::optional<double>(p) : std::nullopt;
-        } catch (...) {
-            return std::nullopt;
+            if (p > 0) return R::Ok(p);
+            return R::Ok(std::nullopt);
+        } catch (const std::exception& e) {
+            return R::Err(std::string("Alpaca getLatestPrice: ") + e.what());
         }
     }
 

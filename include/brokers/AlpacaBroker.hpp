@@ -83,7 +83,10 @@ public:
     }
 
     // Récupère la position ouverte pour un symbole
-    std::optional<Position> getPosition(const std::string& symbol) override {
+    // Ok(nullopt) = Alpaca confirme l'absence de position (404) ;
+    // Err = panne réseau/parsing : la position est INCONNUE (item 10)
+    Result<std::optional<Position>> getPosition(const std::string& symbol) override {
+        using R = Result<std::optional<Position>>;
         try {
             auto resp = get("/v2/positions/" + symbol);
             auto j    = json::parse(resp);
@@ -94,10 +97,16 @@ public:
             p.avgPrice      = std::stod(j.value("avg_entry_price", "0"));
             p.marketValue   = std::stod(j.value("market_value",    "0"));
             p.unrealizedPnl = std::stod(j.value("unrealized_pl",   "0"));
-            return p.shares > 0 ? std::optional<Position>(p) : std::nullopt;
-        } catch (...) {
-            // 404 = pas de position ouverte pour ce symbole
-            return std::nullopt;
+            if (p.shares > 0) return R::Ok(p);
+            return R::Ok(std::nullopt);
+        } catch (const HttpError& e) {
+            // 404 = réponse certaine : pas de position ouverte pour ce symbole
+            if (e.status() == 404) return R::Ok(std::nullopt);
+            lastError_ = e.what();
+            return R::Err(std::string("Alpaca getPosition: ") + e.what());
+        } catch (const std::exception& e) {
+            lastError_ = e.what();
+            return R::Err(std::string("Alpaca getPosition: ") + e.what());
         }
     }
 

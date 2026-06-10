@@ -56,63 +56,73 @@ public:
 
     // Récupère les N dernières barres journalières
     // Utilise l'endpoint HMDS (Historical Market Data Service)
-    std::vector<Bar> getBars(const std::string& symbol, int days) override {
-        std::string conid = resolveConid(symbol);
+    // Ok(vide) = le gateway a répondu sans donnée ; Err = panne (item 10)
+    Result<std::vector<Bar>> getBars(const std::string& symbol, int days) override {
+        using R = Result<std::vector<Bar>>;
+        try {
+            std::string conid = resolveConid(symbol);
 
-        // period ex: "60d" pour 60 jours
-        std::string period = std::to_string(days) + "d";
+            // period ex: "60d" pour 60 jours
+            std::string period = std::to_string(days) + "d";
 
-        std::string url = gatewayUrl_
-            + "/v1/api/hmds/history"
-            + "?conid=" + conid
-            + "&period=" + period
-            + "&bar=1d"         // barres journalières
-            + "&outsideRth=false"; // heures régulières seulement
+            std::string url = gatewayUrl_
+                + "/v1/api/hmds/history"
+                + "?conid=" + conid
+                + "&period=" + period
+                + "&bar=1d"         // barres journalières
+                + "&outsideRth=false"; // heures régulières seulement
 
-        auto resp = get(url);
-        auto j    = json::parse(resp);
+            auto resp = get(url);
+            auto j    = json::parse(resp);
 
-        std::vector<Bar> bars;
-        if (!j.contains("data")) return bars;
+            std::vector<Bar> bars;
+            if (!j.contains("data")) return R::Ok(std::move(bars));
 
-        for (const auto& d : j["data"]) {
-            Bar bar;
-            // timestamp IBKR en ms → date ISO
-            long long ms = d.value("t", 0LL);
-            bar.date   = msToDate(ms);
-            bar.open   = d.value("o", 0.0);
-            bar.high   = d.value("h", 0.0);
-            bar.low    = d.value("l", 0.0);
-            bar.close  = d.value("c", 0.0);
-            bar.volume = static_cast<long>(d.value("v", 0.0));
-            if (bar.close > 0) bars.push_back(bar);
+            for (const auto& d : j["data"]) {
+                Bar bar;
+                // timestamp IBKR en ms → date ISO
+                long long ms = d.value("t", 0LL);
+                bar.date   = msToDate(ms);
+                bar.open   = d.value("o", 0.0);
+                bar.high   = d.value("h", 0.0);
+                bar.low    = d.value("l", 0.0);
+                bar.close  = d.value("c", 0.0);
+                bar.volume = static_cast<long>(d.value("v", 0.0));
+                if (bar.close > 0) bars.push_back(bar);
+            }
+            return R::Ok(std::move(bars));
+        } catch (const std::exception& e) {
+            return R::Err(std::string("IBKR getBars: ") + e.what());
         }
-        return bars;
     }
 
     // Prix en temps réel via market data snapshot
-    std::optional<double> getLatestPrice(const std::string& symbol) override {
-        std::string conid = resolveConid(symbol);
-
-        // Souscrit d'abord aux données (IBKR requiert une souscription)
-        subscribeMarketData(conid);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-        // field 31 = last price
-        std::string url = gatewayUrl_
-            + "/v1/api/iserver/marketdata/snapshot"
-            + "?conids=" + conid
-            + "&fields=31,84,86"; // 31=last, 84=bid, 86=ask
-
+    // Ok(nullopt) = réponse sans prix exploitable ; Err = panne (item 10)
+    Result<std::optional<double>> getLatestPrice(const std::string& symbol) override {
+        using R = Result<std::optional<double>>;
         try {
+            std::string conid = resolveConid(symbol);
+
+            // Souscrit d'abord aux données (IBKR requiert une souscription)
+            subscribeMarketData(conid);
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            // field 31 = last price
+            std::string url = gatewayUrl_
+                + "/v1/api/iserver/marketdata/snapshot"
+                + "?conids=" + conid
+                + "&fields=31,84,86"; // 31=last, 84=bid, 86=ask
+
             auto resp = get(url);
             auto j    = json::parse(resp);
             if (j.is_array() && !j.empty()) {
                 double price = j[0].value("31", 0.0);
-                if (price > 0) return price;
+                if (price > 0) return R::Ok(price);
             }
-        } catch (...) {}
-        return std::nullopt;
+            return R::Ok(std::nullopt);
+        } catch (const std::exception& e) {
+            return R::Err(std::string("IBKR getLatestPrice: ") + e.what());
+        }
     }
 
     // Vérifie si le marché US est ouvert via l'horloge IBKR

@@ -325,3 +325,81 @@ TEST(TradingBotUnit, FilledSellOnStopLossResetsState) {
     EXPECT_FALSE(h.bot->state().inPosition);
     EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 0.0);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Sprint 2 item 10 — panne ≠ donnée vide (canal d'erreur Result)
+// ════════════════════════════════════════════════════════════
+
+// BUG : getPosition()→nullopt signifiait à la fois « pas de position »
+// (certitude) et « panne réseau » (inconnue). Sur panne, la réconciliation
+// réinitialisait l'état → stops désactivés sur une position bien réelle.
+TEST(TradingBotUnit, BrokerOutageDoesNotResetPositionState) {
+    BotHarness h(420.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->setState({true, 400.0, 405.0, 1, "2024-03-04"});
+    h.broker->setPositionQueryFails("timeout simulé");
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.bot->state().inPosition);      // état CONSERVÉ
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 400.0);
+    EXPECT_EQ(h.broker->sellCount(), 0);         // pas de trade à l'aveugle
+}
+
+// Symétrique : panne pendant que le broker détient une position non suivie
+// → pas d'adoption hasardeuse (la réponse n'est pas certaine), pas d'achat
+TEST(TradingBotUnit, BrokerOutageDoesNotAdoptNorBuy) {
+    BotHarness h(420.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setPositionQueryFails("connexion refusée");
+
+    h.bot->runOnce();
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.broker->buyCount(), 0);          // cycle ignoré
+}
+
+// Après la panne, le cycle suivant (broker rétabli) réconcilie normalement
+TEST(TradingBotUnit, RecoveryAfterBrokerOutageReconcilesNormally) {
+    BotHarness h(420.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->setState({true, 400.0, 405.0, 1, "2024-03-04"});
+    h.broker->setPositionQueryFails("timeout simulé");
+    h.bot->runOnce();
+    ASSERT_TRUE(h.bot->state().inPosition);
+
+    // Broker rétabli : il confirme qu'AUCUNE position n'existe
+    h.broker->setPositionQueryOk();
+    h.broker->setPosition(std::nullopt);
+    h.bot->runOnce();
+
+    EXPECT_FALSE(h.bot->state().inPosition);     // réconciliation légitime
+}
+
+// Panne du data feed : cycle ignoré sans toucher à l'état ni trader
+TEST(TradingBotUnit, FeedOutageSkipsCycleWithoutTrading) {
+    BotHarness h(420.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::BUY);
+    h.feed->setFeedDown("DNS injoignable");
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 0);
+    EXPECT_FALSE(h.bot->state().inPosition);
+}
+
+// Une panne feed n'est pas un « feed vide » : au rétablissement, le bot
+// reprend le trading normalement
+TEST(TradingBotUnit, FeedRecoveryResumesTrading) {
+    BotHarness h(420.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::BUY);
+    h.feed->setFeedDown("DNS injoignable");
+    h.bot->runOnce();
+    ASSERT_EQ(h.broker->buyCount(), 0);
+
+    h.feed->setFeedUp();
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 1);
+    EXPECT_TRUE(h.bot->state().inPosition);
+}

@@ -33,6 +33,18 @@ struct HttpResponse {
     std::string body;
 };
 
+// Erreur HTTP porteuse du code de statut (0 = erreur transport) :
+// permet aux appelants de distinguer p. ex. un 404 « pas de ressource »
+// d'une vraie panne (item 10)
+class HttpError : public std::runtime_error {
+public:
+    HttpError(long status, const std::string& msg)
+        : std::runtime_error(msg), status_(status) {}
+    long status() const { return status_; }
+private:
+    long status_;
+};
+
 struct HttpClientConfig {
     long timeout_sec        = 15;    // timeout curl par essai
     bool verify_ssl         = true;  // false pour le cert auto-signé du CP Gateway
@@ -80,12 +92,12 @@ public:
             }
 
             // 3xx/4xx définitif : réessayer ne changera rien
-            throw std::runtime_error("HTTP " + method + " " + url
+            throw HttpError(resp.status, "HTTP " + method + " " + url
                 + " → statut " + std::to_string(resp.status)
                 + (resp.body.empty() ? "" : " : " + resp.body));
         }
 
-        throw std::runtime_error("HTTP " + method + " " + url
+        throw HttpError(0, "HTTP " + method + " " + url
             + " : échec après " + std::to_string(cfg_.max_retries + 1)
             + " essais (" + lastError + ")");
     }

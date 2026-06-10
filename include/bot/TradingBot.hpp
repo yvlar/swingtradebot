@@ -59,7 +59,15 @@ public:
         }
 
         // 1. Récupération des données
-        auto bars = dataFeed_->getBars(swingCfg_.symbol, 60);
+        // Panne du feed ≠ « pas de donnée » (item 10) : sur panne, on saute
+        // le cycle sans toucher à l'état
+        auto barsRes = dataFeed_->getBars(swingCfg_.symbol, 60);
+        if (!barsRes.ok()) {
+            logger_->error("Panne du data feed (" + barsRes.error()
+                           + ") — cycle ignoré");
+            return;
+        }
+        const auto& bars = barsRes.value();
         if (bars.empty()) {
             logger_->warn("Aucune barre reçue");
             return;
@@ -75,10 +83,20 @@ public:
         );
 
         // 3. Gestion de la position ouverte
-        auto pos = broker_->getPosition(swingCfg_.symbol);
+        // Panne broker : la position est INCONNUE — ne SURTOUT pas réconcilier
+        // (l'ancien nullopt ambigu réinitialisait l'état sur simple panne
+        // réseau — item 10) ni trader à l'aveugle : cycle ignoré, état conservé
+        auto posRes = broker_->getPosition(swingCfg_.symbol);
+        if (!posRes.ok()) {
+            logger_->error("Panne broker sur getPosition (" + posRes.error()
+                           + ") — cycle ignoré, état conservé");
+            return;
+        }
+        const auto& pos = posRes.value();
 
         // Réconciliation : la position broker fait foi (restart, ordre PENDING
-        // exécuté entre deux cycles, position fermée à la main…)
+        // exécuté entre deux cycles, position fermée à la main…) — uniquement
+        // sur une réponse broker CERTAINE
         reconcilePosition_(pos, price, bars.back().date);
 
         if (state_.inPosition && pos.has_value()) {
