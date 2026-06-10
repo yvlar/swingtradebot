@@ -80,6 +80,17 @@ public:
             " │ " + signalStr(signal) + " │ " + signal.reason
         );
 
+        // Compteurs journaliers du kill-switch (item 18) : remis à zéro au
+        // changement de date de barre ; l'equity de début de journée sert de
+        // référence au drawdown. L'account est récupéré une fois par cycle et
+        // réutilisé par la branche d'entrée.
+        Account account = broker_->getAccount();
+        if (bars.back().date != riskDay_) {
+            riskDay_        = bars.back().date;
+            dayStartEquity_ = account.equity;
+            ordersToday_    = 0;
+        }
+
         // 3. Gestion de la position ouverte
         // Panne broker : la position est INCONNUE — ne SURTOUT pas réconcilier
         // (l'ancien nullopt ambigu réinitialisait l'état sur simple panne
@@ -125,6 +136,7 @@ public:
                 // pour que le broker simulé enregistre la raison dans le trade
                 if (exitObserver_) exitObserver_(reason);
                 auto order = broker_->submitSell(riskCfg_.symbol, pos->shares);
+                ordersToday_++;
                 // Seul un fill confirmé clôt la position côté bot.
                 // PENDING : la position broker disparaîtra une fois l'ordre exécuté
                 // (réconciliation au cycle suivant) ; REJECTED/échec : on conserve
@@ -133,6 +145,10 @@ public:
                     double fillPrice = order->price    > 0 ? order->price    : price;
                     int    fillQty   = order->quantity > 0 ? order->quantity : pos->shares;
                     double pnl = (fillPrice - state_.buyPrice) * fillQty;
+                    // Série de pertes pour le kill-switch (item 18) : un trade
+                    // perdant incrémente, un gagnant remet le compteur à zéro.
+                    if (pnl < 0) consecutiveLosses_++;
+                    else         consecutiveLosses_ = 0;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
                     state_ = BotState{};  // reset
@@ -146,7 +162,15 @@ public:
 
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
-            auto account = broker_->getAccount();
+            // Coupe-circuit (item 18) : un plafond de risque franchi bloque
+            // toute NOUVELLE entrée pour la journée (les positions ouvertes,
+            // gérées plus haut, gardent leurs stops).
+            if (auto halt = riskManager_->checkKillSwitch(
+                    account.equity, dayStartEquity_, consecutiveLosses_,
+                    ordersToday_, riskCfg_.killSwitch)) {
+                logger_->warn("🛑 Entrée bloquée — " + *halt);
+                return;
+            }
 
             int shares = riskManager_->positionSize(
                 account.cash, price,
@@ -163,6 +187,7 @@ public:
             }
 
             auto order = broker_->submitBuy(riskCfg_.symbol, shares);
+            ordersToday_++;
             // Seul un fill confirmé ouvre la position côté bot, au prix RÉEL
             // d'exécution. PENDING : l'état ne bouge pas, la réconciliation avec
             // la position broker fera foi au cycle suivant.
@@ -213,6 +238,10 @@ public:
     void setState(const BotState& s)    { state_ = s; }
     void setConfig(const RiskConfig& c) { riskCfg_ = c; }
 
+    // Compteurs du kill-switch (item 18) — exposés pour les tests et le dashboard
+    int    ordersToday()       const { return ordersToday_; }
+    int    consecutiveLosses() const { return consecutiveLosses_; }
+
     // Seam pour le backtest : raison de sortie transmise au broker simulé
     // juste avant chaque ordre de vente (TradeRecord du rapport)
     void setExitObserver(std::function<void(const std::string&)> obs) {
@@ -232,6 +261,14 @@ private:
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
     std::function<void(const std::string&)> exitObserver_;
+
+    // État du kill-switch (item 18). En mémoire : remis à zéro au redémarrage —
+    // acceptable pour une boucle de 60 min (les stops, eux, sont persistés). La
+    // persistance de ces compteurs est notée comme découverte pour un sprint futur.
+    std::string riskDay_;               // date de barre de référence du jour courant
+    double      dayStartEquity_   = 0.0;
+    int         ordersToday_      = 0;
+    int         consecutiveLosses_ = 0;
 
     // ── Réconciliation état interne ↔ position broker ─────────────────────────
     // La position broker fait foi : couvre le redémarrage (état perdu ou

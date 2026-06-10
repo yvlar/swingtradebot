@@ -64,6 +64,17 @@ struct Account {
     std::string status;
 };
 
+// ─── KillSwitchConfig — coupe-circuit de risque (item 18) ────────────────────
+// Plafonds qui, une fois franchis, BLOQUENT toute nouvelle entrée pour la
+// journée. Les positions déjà ouvertes restent protégées par leurs stops —
+// le kill-switch ne ferme rien, il empêche d'aggraver l'exposition.
+struct KillSwitchConfig {
+    bool   enabled              = true;
+    double maxDailyDrawdownPct  = 0.08;  // -8% d'equity sur la journée → stop entrées
+    int    maxConsecutiveLosses = 6;     // 6 trades perdants d'affilée → stop entrées
+    int    maxOrdersPerDay      = 20;    // garde-fou anti-emballement (boucle folle)
+};
+
 // ─── RiskConfig — paramètres de risque et d'orchestration du bot ─────────────
 // Découplé de la stratégie (item 12) : TradingBot n'a besoin que du symbole et
 // des règles de gestion du risque — les paramètres d'indicateurs (EMA, RSI…)
@@ -75,6 +86,7 @@ struct RiskConfig {
     double trailingStopPct = 0.03;  // -3% depuis le pic
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;
+    KillSwitchConfig killSwitch{};  // coupe-circuit de risque (item 18)
 };
 
 // ─── BotState — état de position du bot ──────────────────────────────────────

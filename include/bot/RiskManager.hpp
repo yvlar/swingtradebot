@@ -91,6 +91,35 @@ public:
         return std::nullopt;
     }
 
+    // Coupe-circuit (item 18) : ordre de vérification = du moins cher au plus
+    // cher à diagnostiquer. Un seuil ≤ 0 désactive le plafond correspondant.
+    std::optional<std::string> checkKillSwitch(
+        double                  currentEquity,
+        double                  dayStartEquity,
+        int                     consecutiveLosses,
+        int                     ordersToday,
+        const KillSwitchConfig& cfg
+    ) const override {
+        if (!cfg.enabled) return std::nullopt;
+
+        if (cfg.maxConsecutiveLosses > 0 && consecutiveLosses >= cfg.maxConsecutiveLosses)
+            return "kill-switch: " + std::to_string(consecutiveLosses)
+                   + " pertes consécutives";
+
+        if (cfg.maxOrdersPerDay > 0 && ordersToday >= cfg.maxOrdersPerDay)
+            return "kill-switch: plafond d'ordres/jour atteint ("
+                   + std::to_string(ordersToday) + ")";
+
+        // Drawdown journalier : nécessite une equity de référence valide
+        if (cfg.maxDailyDrawdownPct > 0 && dayStartEquity > 0) {
+            double dd = (currentEquity - dayStartEquity) / dayStartEquity;
+            if (dd <= -cfg.maxDailyDrawdownPct)
+                return "kill-switch: drawdown journalier " + formatPct(dd);
+        }
+
+        return std::nullopt;
+    }
+
 private:
     double maxCapitalUsagePct_;
 
