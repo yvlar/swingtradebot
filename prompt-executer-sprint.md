@@ -36,6 +36,9 @@ une discipline de production : le sprint se termine compilable, testé, commité
    c. Prouver : le test rouge passe au vert, et TOUTE la suite reste verte.
    d. **Committer l'item seul** (message clair en français, format
       `fix:`/`feat:`/`test:`/`refactor:` + description ; pas de mélange d'items).
+      Toujours inspecter `git status --short` AVANT de committer ; jamais de
+      `git add -A` sans vérifier la liste (leçon Sprint 1 : `build/` a failli
+      être committé — découverte D13).
    e. Si l'item s'avère plus gros que prévu, le découper et noter le reliquat dans
       ROADMAP.md (section Découvertes) plutôt que de bâcler.
 4. **Si un choix d'architecture est ambigu** (deux interprétations défendables, décision

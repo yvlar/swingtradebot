@@ -9,14 +9,14 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 68        | 68                           |
-| Qualité      | 60        | 60                           |
-| FinTech      | 38        | 38                           |
-| Production   | 35        | 35                           |
+| Architecture | 71        | 68                           |
+| Qualité      | 70        | 60                           |
+| FinTech      | 58        | 38                           |
+| Production   | 42        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (initialisation du workflow)
-- **Sprint courant** : Sprint 1 — Sécurité financière
-- **État des tests** : 110/110 verts (baseline avant Sprint 1)
+- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 1)
+- **Sprint courant** : Sprint 2 — Fiabilité / concurrence
+- **État des tests** : 155/155 verts (110 baseline + 45 ajoutés au Sprint 1)
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système depuis le fallback SQLite3 (voir Découverte D11)
 
@@ -36,69 +36,73 @@ constat invalidé. Les découvertes nouvelles sont consignées dans la section
 
 ---
 
-## 🔴 SPRINT 1 — Sécurité financière (sprint courant)
+## 🔴 SPRINT 1 — Sécurité financière ✅ (clos le 2026-06-10)
 
 Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → test vert → commit.
 
-- [ ] **1. Position orpheline au redémarrage** — `trading::BotState` (TradingBot.hpp:14)
-  vit en mémoire seule ; après restart avec position ouverte, `inPosition=false` et la
-  branche de sortie (TradingBot.hpp:68) ne s'exécute plus jamais → position **sans
-  stop-loss pour toujours** (le bot est aussi bloqué : `isTradeAllowed` refuse toute
-  entrée tant que la position broker existe).
-  **Fix** : interface `IStateStore` + implémentation SQLite + réconciliation avec
-  `broker->getPosition()` à chaque cycle (couvre démarrage ET désynchronisation en cours
-  de route, voir D3).
-  **Acceptation** : un TradingBot neuf, store vide, broker en position → adopte la
-  position (stop-loss actif) ; store pré-rempli → état restauré ; position disparue
-  côté broker → état réinitialisé et persisté.
-- [ ] **2. Statut d'ordre jamais vérifié** — `order.has_value()` traité comme un fill
-  (TradingBot.hpp:84 vente, :108 achat). Un ordre REJECTED/PENDING met quand même le bot
-  en position, au prix du signal et non du fill (P&L de vente aussi calculé au prix du
-  signal, voir D5).
-  **Fix** : seul `OrderStatus::FILLED` change l'état ; prix/quantité réels d'exécution
-  utilisés ; PENDING → réconciliation au cycle suivant (dépend de l'item 1) ;
-  vente rejetée → position conservée + log d'erreur.
-  **Acceptation** : tests TradingBotUnit achat rejeté / achat pending / vente rejetée /
-  fill à prix différent du signal.
-- [ ] **3. Sémantique `holdDays` cassée** — incrément par cycle (TradingBot.hpp:69)
-  alors que `main_ibkr.cpp:184` boucle toutes les 60 min → ~7 « jours » par jour de
-  bourse ; `minHoldDays` et trailing stop faussés.
-  **Fix** : compter par changement de date de barre (`lastBarDate` dans l'état persisté).
-  **Acceptation** : deux `runOnce()` sur la même date de barre → holdDays inchangé ;
-  nouvelle date → +1.
-- [ ] **4. Risque de double-ordre IBKR** — après confirmation des `messageIds`, l'ordre
-  complet est re-posté (IBKRBroker.hpp:143-149) au lieu de lire la réponse de
-  `/iserver/reply` → deux ordres réels possibles.
-  **Fix** : boucle de confirmation qui consomme la réponse du reply (sans re-POST) +
-  `cOID` idempotent (granularité symbole+side+heure, adaptée au cycle 60 min).
-  **Acceptation** : test avec HTTP simulé (seam `request()` virtuel) — scénario
-  « confirmation demandée » ne génère qu'UN SEUL POST sur `/orders` ; payload contient
-  `cOID`.
-- [ ] **5. Sizing forcé à 1** — `return std::max(1, shares)` (RiskManager.hpp:38) achète
-  1 action même quand le calcul dit 0 (cash insuffisant).
-  **Fix** : retourner 0 ; `isTradeAllowed` étendu (prix+quantité) vérifie
-  `cash ≥ coût total` ; TradingBot ne soumet pas d'ordre si qty ≤ 0.
-  **Acceptation** : capital 100 $, prix 420 $ → `positionSize()==0` et aucun
-  `submitBuy` émis.
+- [x] **1. Position orpheline au redémarrage** → `281000d`
+  Interface `IStateStore` (Interfaces.hpp) + `SqliteStateStore` (core/state_store.h,
+  table `bot_state`, UPSERT, WAL) + réconciliation à chaque cycle dans `runOnce` :
+  position broker non suivie → adoption (stops actifs immédiatement) ; position absente
+  → réinitialisation (couvre D3). `BotState` déplacé dans models/Models.hpp.
+  Câblé dans main_ibkr.cpp (`swingbot_ibkr_state.db`).
+  Tests rouges : RestartAdoptsExistingBrokerPosition, AdoptedPositionStopLossFires,
+  PositionGoneAtBrokerResetsState + StateStoreUnit (round-trip, réouverture).
+- [x] **2. Statut d'ordre jamais vérifié** → `4bb8ac2`
+  Seul `OrderStatus::FILLED` change l'état, au prix/quantité réels d'exécution (D5
+  inclus) ; PENDING → réconciliation au cycle suivant ; vente non exécutée → position
+  conservée + log. Tests rouges : RejectedBuyDoesNotEnterPosition,
+  PendingBuyDoesNotEnterPositionYet, BuyUsesFillPriceNotSignalPrice,
+  RejectedSellKeepsPosition.
+- [x] **3. Sémantique `holdDays` cassée** → `55587bf`
+  Incrément seulement au changement de date de barre (`BotState::lastBarDate`,
+  initialisé au jour d'entrée). Tests rouges : HoldDaysDoesNotIncrementWithinSameBarDate,
+  HoldDaysIncrementsOncePerNewBarDate, SellSignalWaitsForRealTradingDays.
+- [x] **4. Risque de double-ordre IBKR** → `9aeef3f`
+  Boucle de confirmation (max 5 tours) consommant la réponse de `/iserver/reply`
+  (formats `{id, message}` et `{messageIds}`, questions en chaîne) ; plus aucun
+  re-POST de l'ordre ; `cOID` idempotent par (symbole, side, heure UTC) ; seam de test
+  `request()` protected virtual. Tests rouges : ConfirmationConsumesReplyWithoutReposting,
+  ChainedConfirmationsAllConsumed, OrderPayloadContainsIdempotentClientOrderId.
+- [x] **5. Sizing forcé à 1** → `1c1451b`
+  `positionSize` retourne 0 ; `IRiskManager::isTradeAllowed(account, pos, price, qty)`
+  vérifie le coût total ; TradingBot ne soumet rien si qty ≤ 0. Tests rouges :
+  PositionSizeReturnsZeroWhenCashCannotAffordOneShare,
+  PositionSizeReturnsZeroWhenRiskBudgetBelowOneShare, InsufficientCashSubmitsNoOrder.
+- [x] **D1. Watchdog mal calibré** → `eaf70ff` — `max_silence_sec` porté à 3900 s
+  (un cycle de 60 min + marge) dans main_ibkr.cpp.
+- [x] **Avancé de l'item 14 : `.gitignore`** → `52f9c95` — le fichier `gitignore` sans
+  point n'ignorait rien ; renommé après que `build/` a failli être committé (D13).
 
-## 🟠 SPRINT 2 — Fiabilité / concurrence
+## 🟠 SPRINT 2 — Fiabilité / concurrence (sprint courant)
 
 - [ ] **6.** Data race UB : `Watchdog::last_heartbeat_` non atomique, écrit thread
   principal (watchdog.h:68), lu thread watchdog (watchdog.h:107). + `build_alert_msg_`
   lit `BotState` sans lock (watchdog.h:134-137). + alertes SMTP/SMS/webhook **sans
   `CURLOPT_TIMEOUT`** (watchdog.h:149-256) : le watchdog peut se geler lui-même.
+  **Acceptation** : `last_heartbeat_` atomique (epoch ns ou time_point atomique) ;
+  lecture de BotState sous `state_.mtx` ; CURLOPT_TIMEOUT sur les 3 canaux d'alerte ;
+  tests Watchdog existants verts (ils couvrent déjà heartbeat/silence).
 - [ ] **7.** `curl_global_init/cleanup` dans les ctors/dtors de 4 classes
   (IBKRDataFeed.hpp:50, AlpacaBroker.hpp:35, AlpacaDataFeed.hpp:41, watchdog.h:58)
   → init une seule fois (RAII au main). Aggravant : main_ibkr.cpp:70-82 détruit un
   `IBKRDataFeed` temporaire en début de programme.
+  **Acceptation** : un seul `curl_global_init` par processus (guard RAII, ex.
+  `CurlGlobal` dans core/), plus aucun appel dans les ctors/dtors des 4 classes.
 - [ ] **8.** Client HTTP dupliqué 4× (`request()`/`writeCallback`) → extraire un
-  `HttpClient` commun ; vérifier les codes HTTP ; retry + backoff exponentiel ; gérer le 429.
+  `HttpClient` commun ; vérifier les codes HTTP ; retry + backoff exponentiel ; gérer
+  le 429. **Contrainte** : préserver le seam de test de IBKRBroker (request() virtuel
+  introduit au Sprint 1) — l'injection du HttpClient peut le remplacer proprement.
 - [ ] **9.** Codes retour `sqlite3_prepare_v2`/`sqlite3_step` ignorés partout
   (db_logger.h) — aggravé par D2 : `stmt` non initialisé → UB si prepare échoue.
+  **Acceptation** : chaque prepare/step vérifié (modèle : core/state_store.h fait déjà
+  les vérifications) ; test « DB en lecture seule / requête invalide ne crashe pas ».
 - [ ] **10.** `std::optional`/vecteur vide = à la fois « erreur réseau » et « pas de
   donnée » dans `IDataFeed`/`IBroker` → introduire un canal d'erreur (`Result<T>` maison
-  ou `tl::expected`) pour distinguer panne et état vide (rend la réconciliation de
-  l'item 1 plus sûre).
+  ou `tl::expected`) pour distinguer panne et état vide. **Priorité montée d'un cran
+  depuis le Sprint 1** : la réconciliation de l'item 1 réinitialise l'état quand
+  `getPosition()`→nullopt — auto-réparant mais bruyant si le nullopt vient d'une panne
+  réseau ; un canal d'erreur permettra de NE PAS réconcilier sur erreur.
 - [ ] **D4.** `Session::send` (ws_server.cpp:54-62) lance `async_write` sans file
   d'attente → deux broadcasts rapprochés = écritures concurrentes sur le même stream
   WebSocket (UB Beast). Ajouter une queue d'écriture par session.
@@ -147,6 +151,9 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   sont **jamais appelés** dans `main_ibkr.cpp` (table `trades` vide, dashboard sans
   positions — `botState.positions` jamais alimenté). Unifier les deux systèmes de logging
   (`trading::ILogger` ↔ `DbLogger`).
+- [ ] **22.** (ajouté à la rétro Sprint 1) Pipeline CI GitHub Actions : build Linux
+  (paquets système, fallback D11) + `ctest` sur chaque push — aurait attrapé le
+  CMakeLists vcpkg-only, le gitignore mort et tout test rouge avant merge.
 
 ---
 
@@ -166,6 +173,8 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D10 | 🟢 | `IBKRBroker::lastError_` écrit mais jamais exposé ; `fetchFirstAccountId` ignore le code retour curl (IBKRBroker.hpp:101) | Sprint 2 (item 8) |
 | D11 | ✅ | CMakeLists exigeait `unofficial-sqlite3` (config vcpkg uniquement) → fallback `find_package(SQLite3)` système ajouté, build/tests possibles hors conteneur vcpkg | Corrigé (commit `build:`) |
 | D12 | 🟢 | `QQQv1.csv` non référencé par le code (donnée morte) | Sprint 3 (item 14) |
+| D13 | ✅ | (Sprint 1) Le `gitignore` sans point a fait committer `build/` par accident pendant le sprint (commit amendé) — preuve vivante de l'item 14 | Corrigé (`52f9c95`) |
+| D14 | 🟡 | (Sprint 1) Risque résiduel : vente PENDING avec position encore visible au cycle suivant → re-tentative de vente possible. Mitigé par le cOID horaire (1 ordre/side/heure) ; les stops côté broker (item 19) réduiront encore ce risque | Sprint 5 (item 19, noté) |
 
 ## Changelog
 
@@ -175,9 +184,63 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 - `chore:` création de ROADMAP.md, prompt-executer-sprint.md, prompt-mise-a-jour-roadmap.md.
 - Baseline tests : 110/110 verts.
 
-*(Un bloc par sprint : commits, tests ajoutés, métriques.)*
+### Sprint 1 — Sécurité financière (2026-06-10)
+
+**Commits** (ordre chronologique) :
+- `1c1451b` fix(risk) : sizing 0 si cash insuffisant + coût total vérifié (item 5)
+- `52f9c95` fix : gitignore → .gitignore (avancé de l'item 14, suite D13)
+- `4bb8ac2` fix(bot) : statut d'ordre vérifié, fill au prix réel (item 2)
+- `55587bf` fix(bot) : holdDays en jours de bourse réels (item 3)
+- `281000d` feat(bot) : persistance d'état + réconciliation broker (item 1)
+- `eaf70ff` fix(main) : seuil watchdog aligné sur le cycle 60 min (D1)
+- `9aeef3f` fix(ibkr) : confirmation sans re-POST + cOID idempotent (item 4)
+
+**Tests** : 110 → 155 (45 ajoutés, tous rouges-puis-verts ou régression).
+Nouvelles suites : `RiskManagerUnit` (15), `TradingBotUnit` (18), `StateStoreUnit` (6),
+`IbkrBrokerUnit` (6). `Mocks.hpp` n'est plus du code mort (item 15 bien entamé) :
++ `MockStrategy`, + `MockStateStore`, `MockBroker` refondu (statut/prix de fill
+configurables, seuls les FILLED touchent la position simulée).
+
+**Nouveaux fichiers** : `include/core/state_store.h`, 4 fichiers de tests unitaires.
+**Interfaces modifiées** : `IRiskManager::isTradeAllowed(+price,+qty)`, `IStateStore`
+(nouvelle), `TradingBot` (6e paramètre optionnel `stateStore`), `trading::BotState`
+(+`lastBarDate`, déplacé dans Models.hpp). Les composition roots non compilés
+(main_alpaca, main_v2) restent compatibles source (paramètre par défaut).
+
+**DoD** : rebuild propre 0 warning ; 155/155 verts ; chaque bug avec test rouge préalable ;
+pas de golden backtest encore (item 17 — à figer AVANT le refactor du backtester).
 
 ## Rétrospectives
 
-*(Une entrée par sprint, écrite via `prompt-mise-a-jour-roadmap.md` : découpage, suffisance
-des prompts du workflow, garde-fous manquants, notes /100 justifiées.)*
+### Sprint 1 — Sécurité financière (2026-06-10)
+
+**1. Découpage** : bon calibre (5 items + 2 hors-plan absorbés sans déborder). L'ordre
+5→2→3→1→4 a bien géré la dépendance « PENDING s'appuie sur la réconciliation »
+(item 2 avant item 1, sémantique documentée puis implémentée). Erreur de découpage
+identifiée : la partie `.gitignore` de l'item 14 aurait dû être au Sprint 1 dès le
+départ — son absence a failli polluer l'historique (D13).
+
+**2. Suffisance des prompts** : une improvisation = `git add -A` sans inspection a
+committé `build/` (amendé). Correction apportée au workflow dans ce même commit :
+`prompt-executer-sprint.md` exige désormais `git status --short` avant chaque commit
+et interdit `git add -A` sans inspection. Le reste (rouge→fix→vert→commit atomique)
+s'est déroulé sans ambiguïté.
+
+**3. À détecter plus tôt** : (a) le CMakeLists vcpkg-only et le gitignore mort
+auraient été attrapés par une CI Linux minimaliste → item 22 ajouté (Sprint 5) ;
+(b) la réconciliation réinitialise l'état sur `getPosition()`→nullopt même si le
+nullopt vient d'une panne réseau (auto-réparant au cycle suivant, mais bruyant) →
+l'item 10 (canal d'erreur) du Sprint 2 est explicitement motivé par ce cas.
+
+**4. Notes** (baseline 68/60/38/35) :
+- **Architecture 71** (+3) : nouvelle interface `IStateStore` propre, seam de test
+  IBKR, `BotState` au bon endroit (Models). Les gros écarts (backtest ≠ prod,
+  couplage SwingConfig) restent — Sprint 3.
+- **Qualité 70** (+10) : +45 tests sur le cœur (moteur, risk, broker, store), mocks
+  ressuscités, TDD systématique. Manquent : indicateurs purs, golden backtest.
+- **FinTech 58** (+20) : les 5 bugs disqualifiants pour l'argent réel sont corrigés
+  et testés. Pour dépasser 70 : kill-switch (18), stops broker (19), calendrier (20),
+  distinction panne/donnée vide (10).
+- **Production 42** (+7) : état persistant + réconciliation, watchdog calibré,
+  hygiène git. Les data races du watchdog (6), curl global (7) et SQLite (9/D2)
+  pèsent encore — c'est précisément le Sprint 2.
