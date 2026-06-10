@@ -14,8 +14,8 @@
 | FinTech      | 66        | 38                           |
 | Production   | 58        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (méta-audit « analyse complète » — ajout des Sprints 6-9)
-- **Sprint courant** : Sprint 5 — Durcissement production (puis 6-9 : rentabilité)
+- **Dernière mise à jour** : 2026-06-10 (item 6.1 exécuté par anticipation — voir changelog)
+- **Sprint courant** : Sprint 5 — Durcissement production (puis 6-9 : rentabilité ; 6.1 déjà fait)
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -23,17 +23,19 @@
 > noir sur blanc : sur QQQ.csv (~2018→2026), la stratégie rend **+9,67 %** quand
 > **Buy & Hold rend +238,55 %** — un **alpha de −229 points**. Le bot transforme un
 > des plus grands marchés haussiers de l'histoire en quasi-stagnation, en restant
-> en cash l'essentiel du temps (7 trades en ~5 ans). De plus, **la config qui tourne
-> en production (`main_ibkr.cpp:104-114`) n'est PAS celle validée par le golden** —
-> le live trade des paramètres jamais backtestés (voir D21). Tant que ce n'est pas
-> corrigé, « le but est de faire de l'argent » n'est pas servi. C'est l'objet des
-> **Sprints 6-9** (voir le méta-audit ci-dessous). Une 5e dimension est ajoutée au
-> tableau de bord :
+> en cash l'essentiel du temps (7 trades en ~5 ans). ~~De plus, **la config qui tourne
+> en production (`main_ibkr.cpp:104-114`) n'est PAS celle validée par le golden**~~ —
+> **réglé par l'item 6.1** (`918613b`, exécuté par anticipation) : la config prod est
+> désormais une source unique (`include/config/ProdConfig.hpp`) couverte par son
+> propre golden, et le verdict est **+36,50 %, Sharpe 1,82** (vs +9,67 % pour la
+> config défaut) — meilleure que craint, mais toujours **−202 pts d'alpha** vs B&H.
+> C'est l'objet des **Sprints 6-9** (voir le méta-audit ci-dessous). Une 5e dimension
+> est ajoutée au tableau de bord :
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **15**  | Alpha −229 pts vs B&H ; aucune validation hors-échantillon ; config prod ≠ config testée. Le seul chiffre prouvé est une sous-performance massive. |
-- **État des tests** : 350/350 verts (303 unitaires + 47 intégration). Décompte
+> | **Rentabilité** | **22** (15 à l'audit) | La config réellement tradée est enfin quantifiée (+36,50 %, Sharpe 1,82, maxDD 1,97 % — 6.1) et surperforme la config défaut. Reste : alpha −202 pts vs B&H, aucune validation hors-échantillon, coûts irréalistes (slippage). |
+- **État des tests** : 353/353 verts (303 unitaires + 50 intégration, après 6.1). Décompte
   recalé sur la sortie réelle de `ctest` : le « 198 » documenté à la clôture du
   Sprint 3 ignorait un lot de couverture des fondations mergé hors cycle (commit
   `15eb711`, ~144 tests : brokers, PaperBroker, CsvDataFeed, métriques backtest,
@@ -271,11 +273,15 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > figer un **nouveau golden** documenté dans le même commit. 6.1 est le plus urgent
 > (un éventuel money-loser tourne en prod aujourd'hui).
 
-- [ ] **6.1** (D21) Backtester la **config de production** (`main_ibkr.cpp:104-114`) et
-  figer un 2e golden. **Acceptation** : un test affiche côte à côte golden défaut vs
-  golden prod ; si la config prod sous-performe la config défaut, ouvrir une
-  **Décision requise** (aligner la prod sur la config validée, ou continuer à valider
-  la config prod). Aucune config non backtestée ne doit pouvoir partir en live.
+- [x] **6.1** (D21) Backtester la **config de production** et figer un 2e golden
+  → `918613b` (exécuté par anticipation, avant le Sprint 5 — demande utilisateur).
+  Config prod extraite de main_ibkr.cpp vers une **source unique**
+  `include/config/ProdConfig.hpp` consommée par le main ET le golden (fin de la
+  dérive ; l'externalisation JSON reste l'item 9.1). **Verdict** : la config prod
+  SURPERFORME la config défaut — **+36,50 % vs +9,67 %**, Sharpe **1,82 vs 0,62**,
+  11 trades (10G/1P), maxDD 1,97 % — la branche « Décision requise » ne s'ouvre pas
+  (voir D27). 3 tests : 2 goldens prod + comparaison côte à côte qui verrouille
+  prod > défaut et rappelle l'écart au B&H (−202 pts).
 - [ ] **6.2** (D22) Modèle de coûts réaliste dans `PaperBroker` (`PaperBroker.hpp:47,73`) :
   slippage paramétrable (bps) + demi-spread, en plus de la commission. **Acceptation** :
   test rouge (mêmes trades, capital final inférieur slippage > 0) ; nouveau golden figé.
@@ -368,7 +374,8 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D18 | 🟡 | (Sprint 3) L'ATR de l'item 13 est une **approximation clôture-à-clôture** : `IIndicator<double>` ne reçoit que la série des clôtures, pas les high/low — le vrai true range est inaccessible via cette interface. Décision produit : enrichir l'interface (compute sur `vector<Bar>`) ou assumer l'approximation (documentée dans DayIndicators.hpp) | Backlog (décision produit, requis avant tout usage réel de DayTradeStrategy) |
 | D19 | 🟢 | (Sprint 3) `TradingBot::runOnce` code en dur `getBars(symbol, 60)` (TradingBot.hpp:62) alors que le backtest sert une fenêtre de emaSlow+30=51 barres via ReplayDataFeed — la taille de fenêtre influence le seed SMA des EMA, donc les signaux. Bénin tant que les feeds prod renvoient ≥51 barres, mais un `lookback` configurable (RiskConfig ?) unifierait prod et backtest | Sprint 5 (à câbler avec l'item 20, calendrier/données) |
 | D20 | 🟢 | (Sprint 4) Dérive ROADMAP ↔ dépôt : un lot « couverture des fondations » (commit `15eb711`, +~2528 lignes : brokers IBKR/Alpaca, PaperBroker, CsvDataFeed, métriques backtest, Logger, indicateurs) a été mergé hors du cycle `prompt-executer-sprint`. Le décompte de tests du tableau de bord (198) ne le reflétait pas (réel : 344 avant ce sprint). Aucune perte — la couverture est légitime et verte — mais le tableau de bord a menti pendant un sprint. **Garde-fou ajouté** : `prompt-executer-sprint.md` étape 2 exige désormais de recaler « État des tests » sur la sortie réelle de `ctest -N` et de signaler toute dérive ; `prompt-mise-a-jour-roadmap.md` rappelle d'absorber au changelog tout commit mergé hors cycle. La CI (item 22) reste le vrai remède de fond | Corrigé (workflow amendé ce sprint) |
-| D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:104-114` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | Sprint 6 (6.1) puis Sprint 9 (9.1) |
+| D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:104-114` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | 6.1 ✅ `918613b` (source unique ProdConfig.hpp + golden prod, voir D27) ; externalisation JSON → Sprint 9 (9.1) |
+| D27 | 🟢 | (Item 6.1) **La config prod surperforme la config défaut sur QQQ.csv** : +36,50 % vs +9,67 %, Sharpe 1,82 vs 0,62, 11 trades (10G/1P, 0 SL / 4 TP / 2 trailing / 5 signal), maxDD 1,97 %, 1er achat 2019-06-18, dernière vente 2026-02-03. La « Décision requise » de 6.1 (aligner la prod sur la config défaut) est donc **sans objet**. Lecture trader : le RSI d'entrée plus permissif (65 vs 55) et le TP plus large (15 % vs 10 %) confirment les hypothèses T1/T3 du méta-audit — desserrer les freins augmente l'alpha. Mais −202 pts vs B&H restent, et ces chiffres sont **in-sample, sans slippage ni dividendes** : aucune conclusion définitive avant les items 6.2/6.3 et le harnais OOS (Sprint 7) | Constat ; alimente Sprints 7-8 |
 | D22 | 🟠 | (Méta-audit) Backtest optimiste : `PaperBroker` exécute au close **sans slippage**, commission seule (`PaperBroker.hpp:29-31,47,73`). Tout edge mesuré est surévalué ; en prod les fills IBKR sont au marché. Un edge marginal peut être négatif net de slippage/spread | Sprint 6 (6.2) |
 | D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | Sprint 6 (6.4) |
 | D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
@@ -486,6 +493,30 @@ déjà couverts avant d'écrire »), seules les cellules résiduelles ont été 
 tests. Golden backtest **inchangé** (toujours +9,6706 %, 7 trades — il fait partie
 des 350). Build propre, 0 warning. Workflow amendé (D20) : `prompt-executer-sprint.md`
 et `prompt-mise-a-jour-roadmap.md` dans le commit de clôture.
+
+### Item 6.1 — Golden de la config de production (2026-06-10, exécuté par anticipation)
+
+> Hors cycle de sprint : à la suite du méta-audit, l'utilisateur a demandé de
+> quantifier immédiatement la config réellement tradée (risque D21 🔴). Le Sprint 5
+> reste le sprint courant ; le Sprint 6 démarre avec 6.1 déjà coché.
+
+**Commits** :
+- `c01f813` docs : méta-audit (défauts ingénieur E1-E10 + swing trader T1-T8,
+  Sprints 6-9, découvertes D21-D26, dimension Rentabilité au tableau de bord)
+- `918613b` test(backtest) : golden de la config de production + source unique (6.1)
+
+**Tests** : 350 → **353** (3 ajoutés) : `GoldenProdConfigPerformanceOnQqqCsv`,
+`GoldenProdConfigTradeBreakdownOnQqqCsv`, `ProdConfigOutperformsDefaultConfig`
+(comparaison côte à côte, verrouille prod > défaut + écart au B&H).
+
+**Valeurs golden prod figées** (QQQ.csv, 10 000 $, comm. 0,1 %) : retour total
+**+36,5015 %**, capital final **13 650,15 $**, Sharpe **1,8192**, maxDD **1,9702 %**,
+**11 trades** (10G/1P ; 0 SL / 4 TP / 2 trailing / 5 signal), 1er achat 2019-06-18,
+dernière vente 2026-02-03, 1858 points d'équité. Golden défaut **inchangé**.
+
+**Nouveau fichier** : `include/config/ProdConfig.hpp` (source unique de la config
+prod, consommée par `main_ibkr.cpp` et par le golden — fin de la dérive D21).
+Verdict et conséquences : voir D27 (la « Décision requise » de 6.1 est sans objet).
 
 ## Rétrospectives
 
