@@ -117,38 +117,50 @@ public:
 
     void setAccount(Account acct)              { account_  = std::move(acct); }
     void setPosition(std::optional<Position> p){ position_ = std::move(p); }
-    void setRejectOrders(bool reject)          { rejectOrders_ = reject; }
+
+    // Résultat des prochains submit* :
+    //   nullopt          → échec de soumission (panne réseau simulée)
+    //   un OrderStatus   → ordre retourné avec ce statut
+    // Seul FILLED modifie la position simulée (comme un vrai broker).
+    void setSubmitResult(std::optional<OrderStatus> r) { submitResult_ = std::move(r); }
+    void setFillPrice(double p)                        { fillPrice_ = p; }
 
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
-        if (rejectOrders_) return std::nullopt;
         orders_.push_back({symbol, OrderSide::BUY, qty});
-        // Simule l'ouverture de position
-        Position p;
-        p.symbol       = symbol;
-        p.shares       = qty;
-        p.avgPrice     = 420.0;
-        p.marketValue  = qty * 420.0;
-        p.unrealizedPnl = 0.0;
-        position_ = p;
+        if (!submitResult_.has_value()) return std::nullopt;
 
         Order o;
-        o.symbol   = symbol;
-        o.side     = OrderSide::BUY;
-        o.quantity = qty;
-        o.status   = OrderStatus::FILLED;
+        o.symbol = symbol;
+        o.side   = OrderSide::BUY;
+        o.status = *submitResult_;
+        if (o.status == OrderStatus::FILLED) {
+            o.quantity = qty;
+            o.price    = fillPrice_;
+            // Simule l'ouverture de position au prix de fill
+            Position p;
+            p.symbol        = symbol;
+            p.shares        = qty;
+            p.avgPrice      = fillPrice_;
+            p.marketValue   = qty * fillPrice_;
+            p.unrealizedPnl = 0.0;
+            position_ = p;
+        }
         return o;
     }
 
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
-        if (rejectOrders_) return std::nullopt;
         orders_.push_back({symbol, OrderSide::SELL, qty});
-        position_ = std::nullopt;  // ferme la position
+        if (!submitResult_.has_value()) return std::nullopt;
 
         Order o;
-        o.symbol   = symbol;
-        o.side     = OrderSide::SELL;
-        o.quantity = qty;
-        o.status   = OrderStatus::FILLED;
+        o.symbol = symbol;
+        o.side   = OrderSide::SELL;
+        o.status = *submitResult_;
+        if (o.status == OrderStatus::FILLED) {
+            o.quantity = qty;
+            o.price    = fillPrice_;
+            position_  = std::nullopt;  // ferme la position
+        }
         return o;
     }
 
@@ -165,10 +177,11 @@ public:
     void clearOrders() { orders_.clear(); }
 
 private:
-    Account                  account_      = {10000.0, 10000.0, "ACTIVE"};
-    std::optional<Position>  position_     = std::nullopt;
-    std::vector<OrderRecord> orders_;
-    bool                     rejectOrders_ = false;
+    Account                    account_      = {10000.0, 10000.0, "ACTIVE"};
+    std::optional<Position>    position_     = std::nullopt;
+    std::vector<OrderRecord>   orders_;
+    std::optional<OrderStatus> submitResult_ = OrderStatus::FILLED;
+    double                     fillPrice_    = 420.0;
 };
 
 } // namespace trading::mocks

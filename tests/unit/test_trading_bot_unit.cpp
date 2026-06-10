@@ -96,3 +96,89 @@ TEST(TradingBotUnit, BuySignalWithSufficientCashSubmitsOrder) {
     EXPECT_EQ(h.broker->orders().back().qty, 9);
     EXPECT_TRUE(h.bot->state().inPosition);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Sprint 1 item 2 — le statut d'ordre doit être vérifié
+// ════════════════════════════════════════════════════════════
+
+// BUG : un ordre REJECTED mettait quand même le bot « en position »
+TEST(TradingBotUnit, RejectedBuyDoesNotEnterPosition) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 1);          // l'ordre a bien été tenté
+    EXPECT_FALSE(h.bot->state().inPosition);     // mais l'état ne doit pas changer
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 0.0);
+}
+
+// BUG : un ordre PENDING (non encore exécuté) était traité comme un fill
+// au prix du signal. Il ne doit pas changer l'état : la réconciliation avec
+// la position broker fera foi au cycle suivant.
+TEST(TradingBotUnit, PendingBuyDoesNotEnterPositionYet) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::PENDING);
+
+    h.bot->runOnce();
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+}
+
+// BUG : buyPrice prenait le prix du SIGNAL (close) et non le prix de FILL
+TEST(TradingBotUnit, BuyUsesFillPriceNotSignalPrice) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setFillPrice(415.0);               // slippage favorable de 5 $
+
+    h.bot->runOnce();
+
+    ASSERT_TRUE(h.bot->state().inPosition);
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice,  415.0);
+    EXPECT_DOUBLE_EQ(h.bot->state().peakPrice, 415.0);
+}
+
+// BUG : une vente REJECTED réinitialisait quand même l'état → position
+// réelle conservée chez le broker mais plus suivie par le bot (orpheline)
+TEST(TradingBotUnit, RejectedSellKeepsPosition) {
+    BotHarness h(368.0, "2024-03-05");           // -8 % sous le buyPrice → stop-loss
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
+    h.bot->setState({true, 400.0, 405.0, 1});
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->sellCount(), 1);         // la vente a été tentée (stop-loss)
+    EXPECT_TRUE(h.bot->state().inPosition);      // l'état doit rester « en position »
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 400.0);
+}
+
+// Échec de soumission (nullopt) : même exigence — l'état ne bouge pas
+TEST(TradingBotUnit, FailedSellSubmissionKeepsPosition) {
+    BotHarness h(368.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
+    h.bot->setState({true, 400.0, 405.0, 1});
+    h.broker->setSubmitResult(std::nullopt);
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.bot->state().inPosition);
+}
+
+// Cas nominal : vente FILLED sur stop-loss → état réinitialisé
+TEST(TradingBotUnit, FilledSellOnStopLossResetsState) {
+    BotHarness h(368.0, "2024-03-05");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
+    h.bot->setState({true, 400.0, 405.0, 1});
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->sellCount(), 1);
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 0.0);
+}

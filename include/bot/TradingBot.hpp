@@ -81,11 +81,20 @@ public:
             if (shouldSell) {
                 std::string reason = exitReason.value_or("signal");
                 auto order = broker_->submitSell(swingCfg_.symbol, pos->shares);
-                if (order.has_value()) {
-                    double pnl = (price - state_.buyPrice) * pos->shares;
+                // Seul un fill confirmé clôt la position côté bot.
+                // PENDING : la position broker disparaîtra une fois l'ordre exécuté
+                // (réconciliation au cycle suivant) ; REJECTED/échec : on conserve
+                // l'état et on retentera — sinon la position devient orpheline.
+                if (order.has_value() && order->status == OrderStatus::FILLED) {
+                    double fillPrice = order->price    > 0 ? order->price    : price;
+                    int    fillQty   = order->quantity > 0 ? order->quantity : pos->shares;
+                    double pnl = (fillPrice - state_.buyPrice) * fillQty;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
                     state_ = BotState{};  // reset
+                } else {
+                    logger_->error("Ordre de vente non exécuté (" + orderStatusStr(order)
+                                   + ") — position conservée, nouvel essai au prochain cycle");
                 }
             }
         }
@@ -109,13 +118,23 @@ public:
             }
 
             auto order = broker_->submitBuy(swingCfg_.symbol, shares);
-            if (order.has_value()) {
+            // Seul un fill confirmé ouvre la position côté bot, au prix RÉEL
+            // d'exécution. PENDING : l'état ne bouge pas, la réconciliation avec
+            // la position broker fera foi au cycle suivant.
+            if (order.has_value() && order->status == OrderStatus::FILLED) {
+                double fillPrice = order->price    > 0 ? order->price    : price;
+                int    fillQty   = order->quantity > 0 ? order->quantity : shares;
                 state_.inPosition = true;
-                state_.buyPrice   = price;
-                state_.peakPrice  = price;
+                state_.buyPrice   = fillPrice;
+                state_.peakPrice  = fillPrice;
                 state_.holdDays   = 0;
-                logger_->info("🟢 ACHAT │ " + std::to_string(shares) +
-                              " parts × $" + std::to_string(static_cast<int>(price)));
+                logger_->info("🟢 ACHAT │ " + std::to_string(fillQty) +
+                              " parts × $" + std::to_string(static_cast<int>(fillPrice)));
+            } else if (order.has_value() && order->status == OrderStatus::PENDING) {
+                logger_->warn("Ordre d'achat en attente d'exécution — "
+                              "réconciliation au prochain cycle");
+            } else {
+                logger_->error("Ordre d'achat non exécuté (" + orderStatusStr(order) + ")");
             }
         }
     }
@@ -164,6 +183,17 @@ private:
             case SignalType::SELL: return "🔴 SELL";
             default:               return "⚪ HOLD";
         }
+    }
+
+    static std::string orderStatusStr(const std::optional<Order>& o) {
+        if (!o.has_value()) return "échec de soumission";
+        switch (o->status) {
+            case OrderStatus::FILLED:    return "exécuté";
+            case OrderStatus::PENDING:   return "en attente";
+            case OrderStatus::CANCELLED: return "annulé";
+            case OrderStatus::REJECTED:  return "rejeté";
+        }
+        return "statut inconnu";
     }
 };
 
