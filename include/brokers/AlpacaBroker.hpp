@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
+#include <ctime>
 
 namespace trading {
 
@@ -43,11 +44,12 @@ public:
         if (qty <= 0) return std::nullopt;
 
         json body = {
-            {"symbol",        symbol},
-            {"qty",           std::to_string(qty)},
-            {"side",          "buy"},
-            {"type",          "market"},
-            {"time_in_force", "day"},   // valide pour la journée
+            {"symbol",          symbol},
+            {"qty",             std::to_string(qty)},
+            {"side",            "buy"},
+            {"type",            "market"},
+            {"time_in_force",   "day"},   // valide pour la journée
+            {"client_order_id", makeClientOrderId(symbol, "buy")},  // idempotence (D15)
         };
 
         try {
@@ -65,11 +67,12 @@ public:
         if (qty <= 0) return std::nullopt;
 
         json body = {
-            {"symbol",        symbol},
-            {"qty",           std::to_string(qty)},
-            {"side",          "sell"},
-            {"type",          "market"},
-            {"time_in_force", "day"},
+            {"symbol",          symbol},
+            {"qty",             std::to_string(qty)},
+            {"side",            "sell"},
+            {"type",            "market"},
+            {"time_in_force",   "day"},
+            {"client_order_id", makeClientOrderId(symbol, "sell")},  // idempotence (D15)
         };
 
         try {
@@ -147,6 +150,25 @@ private:
     std::string baseUrl_;
     std::string lastError_;
     HttpClient  http_;
+
+    // ── Identifiant client idempotent (D15) ───────────────────
+    // Le retry du HttpClient (item 8) peut re-poster un POST /v2/orders déjà
+    // reçu par Alpaca. Un client_order_id stable par (symbole, side, heure UTC)
+    // fait dédupliquer le doublon par Alpaca (422 sur cOID rejoué), comme le
+    // cOID d'IBKR (item 4) — granularité alignée sur le cycle de 60 min du bot.
+    static std::string makeClientOrderId(const std::string& symbol,
+                                         const std::string& side) {
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm, &t);
+#else
+        gmtime_r(&t, &tm);
+#endif
+        char buf[16];
+        std::strftime(buf, sizeof(buf), "%Y%m%d%H", &tm);
+        return "swingbot-" + symbol + "-" + side + "-" + buf;
+    }
 
     // ── Parsing ───────────────────────────────────────────────
     static Order parseOrder(const json& j) {

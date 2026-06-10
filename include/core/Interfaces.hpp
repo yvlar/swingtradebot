@@ -131,6 +131,18 @@ public:
         double trailingStopPct,
         int    minHoldDays
     ) const = 0;
+
+    // Coupe-circuit de risque (item 18) : retourne la raison de coupure si un
+    // plafond est franchi (drawdown journalier, pertes consécutives, ordres/jour),
+    // sinon nullopt. Pur (sans état) : TradingBot fournit les compteurs courants.
+    // Ne gate QUE les nouvelles entrées — les positions ouvertes gardent leurs stops.
+    virtual std::optional<std::string> checkKillSwitch(
+        double                  currentEquity,
+        double                  dayStartEquity,
+        int                     consecutiveLosses,
+        int                     ordersToday,
+        const KillSwitchConfig& cfg
+    ) const = 0;
 };
 
 } // namespace trading

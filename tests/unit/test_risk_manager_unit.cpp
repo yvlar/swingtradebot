@@ -187,3 +187,65 @@ TEST(RiskManagerUnit, TrailingSkippedWhenPeakPriceZero) {
     EXPECT_FALSE(rm.checkExitConditions(395.0, 400.0, 5, 0.0,
                                         0.05, 0.10, 0.03, 3).has_value());
 }
+
+// ════════════════════════════════════════════════════════════
+//  checkKillSwitch — coupe-circuit de risque (Sprint 5, item 18)
+//  Seuils par défaut : drawdown 8 % / 6 pertes / 20 ordres
+// ════════════════════════════════════════════════════════════
+
+namespace {
+    // dayStartEquity 10 000 $ → currentEquity choisie pour un drawdown donné
+    KillSwitchConfig ksCfg() { return KillSwitchConfig{}; }  // 8% / 6 / 20, activé
+}
+
+// Aucun seuil franchi : le bot peut entrer
+TEST(RiskManagerUnit, KillSwitchQuietBelowAllThresholds) {
+    RiskManager rm;
+    // -7 % (< 8 %), 5 pertes (< 6), 19 ordres (< 20)
+    EXPECT_FALSE(rm.checkKillSwitch(9'300.0, 10'000.0, 5, 19, ksCfg()).has_value());
+}
+
+// Désactivé : même une débâcle ne coupe rien
+TEST(RiskManagerUnit, KillSwitchDisabledNeverTriggers) {
+    RiskManager rm;
+    KillSwitchConfig cfg = ksCfg();
+    cfg.enabled = false;
+    EXPECT_FALSE(rm.checkKillSwitch(5'000.0, 10'000.0, 99, 999, cfg).has_value());
+}
+
+TEST(RiskManagerUnit, KillSwitchTripsOnConsecutiveLosses) {
+    RiskManager rm;
+    auto r = rm.checkKillSwitch(10'000.0, 10'000.0, 6, 0, ksCfg());
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("pertes consécutives"), std::string::npos);
+}
+
+TEST(RiskManagerUnit, KillSwitchTripsOnMaxOrdersPerDay) {
+    RiskManager rm;
+    auto r = rm.checkKillSwitch(10'000.0, 10'000.0, 0, 20, ksCfg());
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("ordres/jour"), std::string::npos);
+}
+
+TEST(RiskManagerUnit, KillSwitchTripsOnDailyDrawdown) {
+    RiskManager rm;
+    // -9 % depuis l'equity de début de journée → franchit le seuil de 8 %
+    auto r = rm.checkKillSwitch(9'100.0, 10'000.0, 0, 0, ksCfg());
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("drawdown"), std::string::npos);
+}
+
+// Garde : sans equity de référence (début de journée = 0), pas de division
+// par zéro ni de fausse coupure sur le drawdown
+TEST(RiskManagerUnit, KillSwitchIgnoresDrawdownWhenDayStartEquityZero) {
+    RiskManager rm;
+    EXPECT_FALSE(rm.checkKillSwitch(0.0, 0.0, 0, 0, ksCfg()).has_value());
+}
+
+// Un seuil ≤ 0 désactive le plafond correspondant (sans toucher aux autres)
+TEST(RiskManagerUnit, KillSwitchPerThresholdDisableViaZero) {
+    RiskManager rm;
+    KillSwitchConfig cfg = ksCfg();
+    cfg.maxConsecutiveLosses = 0;     // plafond pertes désactivé
+    EXPECT_FALSE(rm.checkKillSwitch(10'000.0, 10'000.0, 50, 0, cfg).has_value());
+}

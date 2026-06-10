@@ -142,6 +142,44 @@ public:
         }
     }
 
+    // ── Horloge marché US (fallback testable, DST géré) ──────────
+    // Heure d'été US Eastern (EDT, UTC-4) du 2e dimanche de mars au 1er
+    // dimanche de novembre ; EST (UTC-5) sinon. Déterminée à la granularité
+    // du jour depuis un std::tm UTC — suffisant pour les heures de marché
+    // (9h30-16h ET tombent l'après-midi UTC, même date civile).
+    static bool isUsEasternDst(const std::tm& utc) {
+        int month = utc.tm_mon + 1;                 // 1..12
+        if (month < 3 || month > 11) return false;  // janvier, février, décembre
+        if (month > 3 && month < 11) return true;   // avril → octobre
+        // mars / novembre : position vs le dimanche de bascule.
+        // mday du dernier dimanche ≤ aujourd'hui (tm_wday : 0 = dimanche)
+        int previousSunday = utc.tm_mday - utc.tm_wday;
+        if (month == 3)   return previousSunday >= 8;   // au ≥ 2e dimanche → EDT
+        /* month == 11 */ return previousSunday <= 0;   // avant le 1er dimanche → EDT
+    }
+
+    // Marché US (NYSE/NASDAQ) ouvert à un instant UTC donné : lun-ven,
+    // 9h30 ≤ heure ET < 16h00. Pur et statique → testable sans réseau.
+    static bool isUsMarketOpenAtUtc(std::time_t utc) {
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm, &utc);
+#else
+        gmtime_r(&utc, &tm);
+#endif
+        if (tm.tm_wday == 0 || tm.tm_wday == 6) return false;   // week-end
+        int offset  = isUsEasternDst(tm) ? 4 : 5;               // EDT vs EST
+        int hour_et = (tm.tm_hour - offset + 24) % 24;
+        int min_et  = hour_et * 60 + tm.tm_min;
+        return min_et >= (9 * 60 + 30) && min_et < (16 * 60);   // 9h30 ≤ t < 16h
+    }
+
+    // Marché US ouvert maintenant (horloge système)
+    static bool isUsMarketHours() {
+        return isUsMarketOpenAtUtc(
+            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+    }
+
 private:
     std::string gatewayUrl_;
     bool        verifySsl_;
@@ -185,23 +223,6 @@ private:
         char buf[11];
         std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
         return std::string(buf);
-    }
-
-    // ── Vérification horaire marché US (fallback) ────────────
-    static bool isUsMarketHours() {
-        auto now = std::chrono::system_clock::now();
-        std::time_t t = std::chrono::system_clock::to_time_t(now);
-        std::tm tm{};
-#ifdef _WIN32
-        gmtime_s(&tm, &t);
-#else
-        gmtime_r(&t, &tm);
-#endif
-        // EST = UTC-5 (ou UTC-4 en été)
-        int hour_est = (tm.tm_hour - 5 + 24) % 24;
-        int wday     = tm.tm_wday; // 0=dim, 6=sam
-        if (wday == 0 || wday == 6) return false; // weekend
-        return (hour_est >= 9 && (hour_est < 16 || (hour_est == 9 && tm.tm_min >= 30)));
     }
 
     // ── HTTP GET via le client commun (code HTTP vérifié, retry) ──

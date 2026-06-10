@@ -3,7 +3,7 @@
 #   - le CMakeLists vcpkg-only (D11) — on builde ici SANS vcpkg ;
 #   - tout test rouge mergé sans être vu (dérive D20) ;
 #   - un header qui ne compile que par inclusion transitive (D17).
-# Reproduit exactement la recette documentée dans prompt-executer-sprint.md.
+# Reproduit la recette documentée dans prompt-executer-sprint.md.
 name: CI
 
 on:
@@ -13,16 +13,16 @@ on:
 
 jobs:
   build-and-test:
-    name: Build Linux + ctest
-    runs-on: ubuntu-latest
+    name: Build & test (Ubuntu, paquets système)
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout
+      - name: Récupération du dépôt
         uses: actions/checkout@v4
 
       # L'update est obligatoire : un index apt périmé donne des 404
-      # (leçon Sprint 3).
-      - name: Installer les dépendances système
+      # (leçon Sprint 3). Liste alignée sur prompt-executer-sprint.md.
+      - name: Installation des dépendances système
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -33,18 +33,18 @@ jobs:
             libgtest-dev googletest \
             cmake ninja-build g++
 
-      - name: Configurer (CMake + Ninja, sans vcpkg)
+      - name: Configuration (CMake + Ninja, sans vcpkg)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
 
-      - name: Compiler
+      - name: Compilation
         run: cmake --build build -j"$(nproc)"
 
       # Décompte publié à chaque run : rend « État des tests » de la ROADMAP
       # auto-vérifiable (remède de fond à la dérive D20).
-      - name: Lister les tests (décompte)
+      - name: Liste des tests (décompte)
         working-directory: build
         run: ctest -N
 
-      - name: Lancer toute la suite
+      - name: Tests (ctest)
         working-directory: build
         run: ctest --output-on-failure -j4

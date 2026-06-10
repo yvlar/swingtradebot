@@ -478,3 +478,129 @@ TEST(TradingBotUnit, PendingSellKeepsPosition) {
     h.bot->runOnce();                                    // position conservée → re-vend
     EXPECT_EQ(h.broker->sellCount(), 2);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Sprint 5 item 18 — câblage du kill-switch dans runOnce
+// ════════════════════════════════════════════════════════════
+
+// Drawdown journalier franchi → aucune NOUVELLE entrée (le 1er cycle fixe
+// l'equity de référence, le 2e constate la chute)
+TEST(TradingBotUnit, KillSwitchBlocksEntryOnDailyDrawdown) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setAccount({10'000.0, 10'000.0, "ACTIVE"});
+    h.bot->runOnce();                            // capture dayStartEquity = 10 000
+
+    h.broker->setAccount({9'000.0, 9'000.0, "ACTIVE"});  // -10 % dans la journée
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 0);          // entrée bloquée
+    EXPECT_FALSE(h.bot->state().inPosition);
+}
+
+// Le kill-switch ne gate QUE les entrées : une position ouverte garde ses
+// stops même quand le drawdown journalier est largement franchi
+TEST(TradingBotUnit, KillSwitchDoesNotBlockExit) {
+    BotHarness h(368.0, "2024-03-05");           // -8 % sous le buyPrice → stop-loss
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
+    h.bot->setState({true, 400.0, 405.0, 1});
+    h.broker->setAccount({5'000.0, 5'000.0, "ACTIVE"});  // -50 % : kill-switch armé
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->sellCount(), 1);         // la sortie n'est PAS bloquée
+    EXPECT_FALSE(h.bot->state().inPosition);
+}
+
+// Compteur de pertes consécutives : +1 sur un trade perdant, remis à zéro
+// par un trade gagnant (alimente le kill-switch)
+TEST(TradingBotUnit, LosingSellIncrementsThenWinningResetsConsecutiveLosses) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // achat, fill @420 (défaut)
+    ASSERT_TRUE(h.bot->state().inPosition);
+
+    h.broker->setFillPrice(380.0);              // vente sous le prix d'achat → perte
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(380.0, "2024-03-04");          // -9,5 % → stop-loss
+    h.bot->runOnce();
+    ASSERT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.bot->consecutiveLosses(), 1);
+
+    h.broker->setFillPrice(400.0);
+    h.strategy->setSignal(SignalType::BUY);
+    h.setLastBar(400.0, "2024-03-05");
+    h.bot->runOnce();                           // nouvel achat @400
+    ASSERT_TRUE(h.bot->state().inPosition);
+
+    h.broker->setFillPrice(445.0);              // +11 % → take-profit, gagnant
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(445.0, "2024-03-06");
+    h.bot->runOnce();
+    ASSERT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.bot->consecutiveLosses(), 0);   // remis à zéro par le gain
+}
+
+// ════════════════════════════════════════════════════════════
+//  Sprint 5 item 21 — observateur de trades (entrée / sortie)
+// ════════════════════════════════════════════════════════════
+
+// L'observateur reçoit ENTRY puis EXIT, aux prix/quantités de FILL réels
+TEST(TradingBotUnit, TradeObserverFiresOnEntryAndExitWithFillDetails) {
+    BotHarness h(420.0, "2024-03-01");
+    std::vector<TradeEvent> events;
+    h.bot->setTradeObserver([&](const TradeEvent& e) { events.push_back(e); });
+
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setFillPrice(415.0);
+    h.bot->runOnce();                            // entrée, fill @415
+
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].kind,   TradeEvent::Kind::ENTRY);
+    EXPECT_EQ(events[0].symbol, "QQQ");
+    EXPECT_EQ(events[0].qty,    9);
+    EXPECT_DOUBLE_EQ(events[0].price, 415.0);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setFillPrice(380.0);
+    h.setLastBar(380.0, "2024-03-04");           // -8,4 % → stop-loss
+    h.bot->runOnce();
+
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[1].kind, TradeEvent::Kind::EXIT);
+    EXPECT_DOUBLE_EQ(events[1].price, 380.0);
+    EXPECT_DOUBLE_EQ(events[1].pnl, (380.0 - 415.0) * 9);  // P&L au prix de fill
+    EXPECT_NE(events[1].reason.find("stop-loss"), std::string::npos);
+}
+
+// Un ordre non exécuté (REJECTED) n'émet AUCUN événement de trade
+TEST(TradingBotUnit, TradeObserverSilentOnRejectedOrder) {
+    BotHarness h(420.0, "2024-03-01");
+    int count = 0;
+    h.bot->setTradeObserver([&](const TradeEvent&) { count++; });
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+
+    h.bot->runOnce();
+    EXPECT_EQ(count, 0);
+}
+
+// Compteur d'ordres/jour : compte achats + ventes, remis à zéro au jour suivant
+TEST(TradingBotUnit, OrdersTodayCountsSubmittedOrdersAndResetsNextDay) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // 1 achat
+    EXPECT_EQ(h.bot->ordersToday(), 1);
+
+    h.broker->setFillPrice(380.0);
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(380.0, "2024-03-01");           // MÊME jour → stop-loss → 1 vente
+    h.bot->runOnce();
+    EXPECT_EQ(h.bot->ordersToday(), 2);
+
+    h.setLastBar(420.0, "2024-03-04");           // jour suivant
+    h.bot->runOnce();
+    EXPECT_EQ(h.bot->ordersToday(), 0);          // compteur réinitialisé
+}

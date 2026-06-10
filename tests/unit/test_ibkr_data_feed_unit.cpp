@@ -196,3 +196,66 @@ TEST(IbkrDataFeedUnit, MissingExchangeInfoFallsBackToLocalClock) {
     // Même repli dans les deux cas → même réponse au même instant
     EXPECT_EQ(viaGateway, viaPanne);
 }
+
+// ════════════════════════════════════════════════════════════
+//  isUsMarketOpenAtUtc — calendrier marché US, DST géré (item 20)
+//  L'ancien code (UTC-5 fixe + ouverture à 9h00) échouait sur
+//  plusieurs de ces instants — d'où le calcul figé par UTC.
+// ════════════════════════════════════════════════════════════
+
+namespace {
+    // Construit un std::time_t à partir de composantes UTC (timegm = UTC pur,
+    // indépendant du fuseau de la machine de test)
+    std::time_t utc(int y, int mon, int d, int h, int mi) {
+        std::tm tm{};
+        tm.tm_year = y - 1900;
+        tm.tm_mon  = mon - 1;
+        tm.tm_mday = d;
+        tm.tm_hour = h;
+        tm.tm_min  = mi;
+        return timegm(&tm);
+    }
+}
+
+// La bascule EDT/EST est calculée, pas codée en dur
+TEST(IbkrDataFeedUnit, EasternDstWindowDetected) {
+    auto dstAt = [](int mon, int d) {
+        std::tm tm{};
+        std::time_t t = utc(2024, mon, d, 12, 0);
+        gmtime_r(&t, &tm);
+        return IBKRDataFeed::isUsEasternDst(tm);
+    };
+    EXPECT_FALSE(dstAt(1, 15));   // janvier → EST
+    EXPECT_FALSE(dstAt(3, 9));    // 2024 : avant le 2e dimanche (10 mars) → EST
+    EXPECT_TRUE (dstAt(3, 11));   // après la bascule → EDT
+    EXPECT_TRUE (dstAt(7, 4));    // plein été → EDT
+    EXPECT_TRUE (dstAt(11, 2));   // 2024 : avant le 1er dimanche (3 nov) → EDT
+    EXPECT_FALSE(dstAt(11, 4));   // après la bascule → EST
+    EXPECT_FALSE(dstAt(12, 25));  // décembre → EST
+}
+
+// Été (EDT, UTC-4) : 9h45 ET = 13h45 UTC. L'ancien calcul UTC-5 donnait
+// 8h45 → marché « fermé » à tort.
+TEST(IbkrDataFeedUnit, SummerMorningOpenWithDstOffset) {
+    EXPECT_TRUE (IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 3, 13, 45)));
+    // 16h30 ET = 20h30 UTC → fermé. L'ancien UTC-5 voyait 15h30 → « ouvert ».
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 3, 20, 30)));
+    // Bornes d'été : 13h30 UTC = 9h30 ET (ouverture), 20h00 UTC = 16h00 (clôture)
+    EXPECT_TRUE (IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 3, 13, 30)));
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 3, 20, 0)));
+}
+
+// Hiver (EST, UTC-5) : 9h00 ET = 14h00 UTC → fermé (avant 9h30). L'ancien
+// code ouvrait dès 9h00 (la condition minute était morte).
+TEST(IbkrDataFeedUnit, WinterOpenAt930NotAt900) {
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 1, 3, 14, 0)));   // 9h00 ET
+    EXPECT_TRUE (IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 1, 3, 14, 30)));  // 9h30 ET
+    EXPECT_TRUE (IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 1, 3, 20, 59)));  // 15h59 ET
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 1, 3, 21, 0)));   // 16h00 ET
+}
+
+// Week-end : fermé quelle que soit l'heure
+TEST(IbkrDataFeedUnit, WeekendAlwaysClosed) {
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 6, 14, 0)));   // samedi
+    EXPECT_FALSE(IBKRDataFeed::isUsMarketOpenAtUtc(utc(2024, 7, 7, 18, 0)));   // dimanche
+}

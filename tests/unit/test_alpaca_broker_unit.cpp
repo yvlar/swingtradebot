@@ -77,6 +77,32 @@ TEST(AlpacaBrokerUnit, BuyPostsMarketOrderPayload) {
     EXPECT_NE(b.calls[0].body.find("\"time_in_force\":\"day\""), std::string::npos);
 }
 
+// D15 : chaque ordre porte un client_order_id idempotent (anti double-ordre
+// sur retry du HttpClient). Stable dans l'heure, spécifique au side.
+TEST(AlpacaBrokerUnit, OrdersCarryIdempotentClientOrderId) {
+    ScriptedAlpacaBroker b;
+    b.responses = {{"/v2/orders", R"({"id":"o-1","symbol":"QQQ","side":"buy",
+        "status":"accepted"})"}};
+
+    b.submitBuy("QQQ", 9);
+    b.submitSell("QQQ", 9);
+
+    ASSERT_EQ(b.calls.size(), 2u);
+    EXPECT_NE(b.calls[0].body.find("\"client_order_id\":\"swingbot-QQQ-buy-"),
+              std::string::npos);
+    EXPECT_NE(b.calls[1].body.find("\"client_order_id\":\"swingbot-QQQ-sell-"),
+              std::string::npos);
+
+    // Idempotent : deux achats du même symbole dans la même heure → même cOID,
+    // donc Alpaca dédupliquerait un retour en double
+    b.submitBuy("QQQ", 9);
+    auto coid = [](const std::string& body) {
+        auto k = body.find("\"client_order_id\":\"");
+        return body.substr(k, body.find('"', k + 19) - k);
+    };
+    EXPECT_EQ(coid(b.calls[0].body), coid(b.calls[2].body));
+}
+
 TEST(AlpacaBrokerUnit, AuthHeadersOnEveryCall) {
     ScriptedAlpacaBroker b;
     b.responses = {{"/v2/account", R"({"cash":"1","equity":"1","status":"ACTIVE"})"}};

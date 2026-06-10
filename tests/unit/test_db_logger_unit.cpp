@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include "core/db_logger.h"
+#include "core/db_log_sink.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -49,6 +50,35 @@ TEST_F(DbLoggerUnit, LogAllLevels) {
 
 TEST_F(DbLoggerUnit, LogSpecialChars) {
     EXPECT_NO_THROW(db_->log({"INFO","$10,000 — \"test\" <ok>","09:00:00"}));
+}
+
+// logs_json relit la table logs en ordre chronologique (item 21)
+TEST_F(DbLoggerUnit, LogsJsonReadsBackInOrder) {
+    db_->log({"INFO", "premier",  "09:00:00"});
+    db_->log({"WARN", "deuxième", "09:00:01"});
+
+    auto arr = json::parse(db_->logs_json());
+    ASSERT_EQ(arr.size(), 2u);
+    EXPECT_EQ(arr[0]["msg"],   "premier");
+    EXPECT_EQ(arr[1]["level"], "WARN");
+    EXPECT_EQ(arr[1]["msg"],   "deuxième");
+}
+
+// DbLogSink (item 21) : un trading::ILogger qui route vers la table logs,
+// chaque niveau correctement étiqueté
+TEST_F(DbLoggerUnit, DbLogSinkRoutesIloggerToLogsTable) {
+    trading::DbLogSink sink(*db_);
+    sink.info("cycle ok");
+    sink.warn("cash bas");
+    sink.error("panne feed");
+
+    auto arr = json::parse(db_->logs_json());
+    ASSERT_EQ(arr.size(), 3u);
+    EXPECT_EQ(arr[0]["level"], "INFO");
+    EXPECT_EQ(arr[0]["msg"],   "cycle ok");
+    EXPECT_EQ(arr[1]["level"], "WARN");
+    EXPECT_EQ(arr[2]["level"], "ERROR");
+    EXPECT_EQ(arr[2]["msg"],   "panne feed");
 }
 
 TEST_F(DbLoggerUnit, Log200EntriesNoError) {

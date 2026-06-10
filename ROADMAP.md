@@ -9,14 +9,15 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 81        | 68                           |
-| Qualité      | 84        | 60                           |
-| FinTech      | 66        | 38                           |
-| Production   | 58        | 35                           |
+| Architecture | 82        | 68                           |
+| Qualité      | 88        | 60                           |
+| FinTech      | 76        | 38                           |
+| Production   | 70        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 6 — exécuté avant le Sprint 5)
-- **Sprint courant** : Sprint 5 — Durcissement production (items 18/19 : décisions
-  utilisateur requises ; puis Sprints 7-9 : rentabilité)
+- **Dernière mise à jour** : 2026-06-10 (consolidation Sprints 5 + 6 sur cette branche)
+- **Sprint courant** : données total-return (D28, prérequis) → Sprint 7 — Harnais de
+  validation. Sprint 5 (durcissement ✅) et Sprint 6 (vérité du backtest ✅) clos ;
+  reliquat de l'item 19 (stop résident broker) replié en Sprint 9.5.
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -36,11 +37,10 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **25** (15 à l'audit, 22 après 6.1) | La mesure est désormais honnête (Sprint 6 clos) : config prod quantifiée (+36,50 %, +36,14 % avec slippage 5 bps), CAGR 4,47 %/an, **investi 29 % du temps** (cash drag T4 chiffré), verdict `beatsBuyHold=NON` figé par test. Reste l'essentiel : aucun edge démontré (pas d'OOS — Sprint 7), stratégie à refondre (Sprint 8), et données non total-return (D28). |
-- **État des tests** : 367/367 verts (316 unitaires + 51 intégration, après Sprint 6). Décompte
-  recalé sur la sortie réelle de `ctest` : le « 198 » documenté à la clôture du
-  Sprint 3 ignorait un lot de couverture des fondations mergé hors cycle (commit
-  `15eb711`, ~144 tests : brokers, PaperBroker, CsvDataFeed, métriques backtest,
-  Logger, indicateurs) — voir D20.
+- **État des tests** : 387/387 verts (336 unitaires + 51 intégration), recalé sur
+  `ctest -N`. La CI GitHub Actions (item 22) vérifie ce décompte à chaque push.
+  Rappel D20 : le « 198 » de la clôture Sprint 3 ignorait un lot de fondations mergé
+  hors cycle (`15eb711`) — d'où le recalage systématique.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -186,42 +186,44 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   saturations, CrossoverDetector + warmup. Indicateurs testés directement, fichier
   déjà dans `unit_tests`. Rien à réécrire ; vérifié avant d'agir (consigne du sprint).
 
-## 🔵 SPRINT 5 — Durcissement production (sprint courant)
+## 🔵 SPRINT 5 — Durcissement production ✅ (clos le 2026-06-10)
 
 > Sprint orienté FinTech/Production : protections runtime réelles (et non plus
-> seulement testées). Dépendances : l'item 21 touche les deux systèmes de logging
-> (`trading::ILogger` ↔ `DbLogger`) et gagne à passer après l'item 18 (le kill-switch
-> produit des événements à journaliser). L'item 22 (CI) est indépendant et devrait
-> passer en premier : il sécurise tous les autres. Items 18/19 marqués « Décision
-> requise » : seuils chiffrés et politique de stop résident à arbitrer avec l'utilisateur.
+> seulement testées). Ordre suivi : 22 (CI, sécurise tout) → 18 → 20 → D15 → 21.
+> Le stop résident broker de l'item 19 a été **reporté au Sprint 6** (décision
+> utilisateur) : c'est un chantier money-path + migration du schéma d'état trop
+> gros pour la fin du sprint — D15 (sa partie idempotence Alpaca) est livrée.
 
-- [ ] **18.** Kill-switch dans `IRiskManager` : drawdown journalier max, pertes
-  consécutives max, plafond d'ordres/jour. Étendre l'interface `IRiskManager`
-  (Interfaces.hpp) + `RiskManager` (RiskManager.hpp) ; câbler dans `runOnce`
-  (TradingBot.hpp, avant la branche d'entrée en position). **Décision requise** :
-  valeurs par défaut des trois seuils. **Acceptation** : tests rouges (seuil franchi
-  → aucune entrée, position existante laissée à ses stops) ; golden inchangé.
-- [ ] **19.** Stops côté broker (ordre stop résident) en complément du stop logiciel
-  (réduit aussi le risque de double-vente sur ordre PENDING, cf. note item 2 et D14).
-  + D15 : donner un `client_order_id` idempotent aux ordres Alpaca (AlpacaBroker.hpp —
-  le retry du HttpClient peut re-poster un POST /v2/orders). **Décision requise** :
-  stop résident remplaçant ou doublant le stop logiciel.
-- [ ] **20.** Calendrier de marché : `isUsMarketHours` est en UTC-5 fixe
-  (IBKRDataFeed.hpp:191, commentaire « EST = UTC-5 » à la ligne 200), faux 8 mois/an
-  (EDT) ; horodatages unifiés en UTC. **Acceptation** : test sur une date d'été (DST)
-  où l'ancien calcul ouvrait/fermait le marché à la mauvaise heure.
-- [ ] **21.** Câbler la persistance des trades en prod : `record_trade`/`close_trade` ne
-  sont **jamais appelés** dans `main_ibkr.cpp` (table `trades` vide, dashboard sans
-  positions — `botState.positions` jamais alimenté). Unifier les deux systèmes de logging
-  (`trading::ILogger` ↔ `DbLogger`).
-- [x] **22.** (ajouté à la rétro Sprint 1) Pipeline CI GitHub Actions → `0156f97`
-  `.github/workflows/ci.yml` : build Linux sans vcpkg (paquets système, fallback D11)
-  + `ctest` à chaque push et pull request, publie `ctest -N` (décompte auto-vérifiable,
-  remède de fond à D20). Recette validée sur build propre (367/367 verts). Attrape
-  désormais automatiquement : CMakeLists vcpkg-only (D11), test rouge mergé sans revue
-  (D20), header compilant par inclusion transitive (D17).
-
----
+- [x] **18.** Kill-switch dans `IRiskManager` → `c7c1bb1`
+  `KillSwitchConfig` (Models.hpp, membre de RiskConfig) + `checkKillSwitch` pur
+  (Interfaces.hpp/RiskManager.hpp) : drawdown journalier max, pertes consécutives
+  max, plafond d'ordres/jour (seuils retenus **8 % / 6 / 20**, décision utilisateur).
+  Câblé dans `runOnce` : compteurs portés par TradingBot (equity de début de jour,
+  ordres/jour, pertes consécutives), remis à zéro au changement de date de barre ;
+  gate UNIQUEMENT la branche d'entrée. +11 tests (7 logique pure, 4 câblage dont
+  « entrée bloquée » et « sortie NON bloquée »). Compteurs en mémoire → D29.
+- [ ] **19.** Stops côté broker (ordre stop résident) — **reporté au Sprint 6**.
+  - [x] **D15** → `90b1361` : `client_order_id` idempotent sur les ordres Alpaca
+    (stable par symbole/side/heure UTC, même schéma que le cOID IBKR de l'item 4) —
+    le retry du HttpClient ne peut plus re-poster un ordre. Test
+    `OrdersCarryIdempotentClientOrderId`.
+  - [ ] Stop résident broker (doubler le stop logiciel, décision utilisateur) :
+    voir Sprint 6 (interface + 4 brokers + persistance de l'order-id + golden).
+- [x] **20.** Calendrier de marché DST-aware → `5f05372`
+  `isUsMarketHours` codait UTC-5 en dur (faux 8 mois/an en EDT) et ouvrait à 9h00
+  (condition minute morte). Extrait en `isUsMarketOpenAtUtc(time_t)` pur/statique
+  (DST US Eastern calculée : EDT du 2e dim. de mars au 1er dim. de novembre). +4
+  tests sur instants UTC figés été/hiver/week-end qui échouaient sur l'ancien calcul.
+- [x] **21.** Persistance des trades en prod + journalisation unifiée → `97b75af`
+  `TradingBot::setTradeObserver` émet un `TradeEvent` (ENTRY/EXIT, prix/qty de fill,
+  P&L, raison) sans coupler le moteur à DbLogger ; `main_ibkr` y branche
+  `record_trade`/`close_trade` + `botState.positions[]`. `DbLogSink`
+  (core/db_log_sink.h) route `trading::ILogger` → table `logs` (composé avec
+  ConsoleLogger) ; `DbLogger::logs_json` ajouté. +4 tests.
+- [x] **22.** Pipeline CI GitHub Actions → `313c5a9`
+  `.github/workflows/ci.yml` : runner ubuntu-24.04, paquets système (fallback D11,
+  `apt-get update` obligatoire), configure + build + `ctest` sur push et
+  pull_request. Runs #1/#2/#3 verts sur le runner. Le garde-fou anti-D20 est en place.
 
 # 🧭 MÉTA-AUDIT « Analyse complète » (2026-06-10)
 
@@ -362,6 +364,34 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 - [ ] **9.4** Procédure de **re-calibration walk-forward** documentée (cadence, critère de
   reprise des paramètres) — pour que l'edge ne se dégrade pas en silence.
 
+## 🟣 SPRINT 9.5 — Stop résident broker (reliquat de l'item 19)
+
+> Replié ici lors de la consolidation Sprints 5+6 : l'autre branche l'avait
+> numéroté « Sprint 6 », en collision avec la vérité du backtest. C'est un item de
+> durcissement production — à traiter après l'edge OOS (Sprints 7-8), sauf priorité
+> contraire. La numérotation 9.5 le rattache au Sprint 9 (mise en prod).
+
+> Reliquat de l'item 19 (Sprint 5), isolé car c'est le chantier le plus sensible
+> du backlog : il touche le chemin de l'argent ET le schéma d'état persisté.
+> Décision utilisateur déjà prise : le stop résident **double** le stop logiciel.
+
+- [ ] **19 (suite).** Stop-loss résident chez le broker, en complément du stop
+  logiciel (couvre crash/perte réseau du bot ; réduit le risque double-vente D14).
+  Périmètre vérifié :
+  - `IBroker` (Interfaces.hpp:43) : ajouter `submitStopOrder(symbol, qty, stopPrice)`
+    et `cancelOrder(orderId)`.
+  - `BotState` (Models.hpp:83) : ajouter `stopOrderId` **persisté** (sinon, après
+    redémarrage, impossible d'annuler le stop résident → double-vente, le risque
+    qu'on ferme). Implique une migration du schéma `SqliteStateStore`
+    (core/state_store.h) + sérialisation.
+  - `TradingBot::runOnce` : poser le stop résident après un BUY fill (à
+    buyPrice×(1−stopLossPct)) ; l'annuler avant toute vente logicielle ; sur
+    disparition de la position (stop résident exécuté), réconcilier et oublier l'id.
+  - Implémentations : `IBKRBroker`/`AlpacaBroker` (ordres STP/`type:"stop"` + DELETE),
+    `PaperBroker` (enregistre SANS auto-fill → **golden inchangé**), `MockBroker`.
+  - **Acceptation** : tests rouges (stop résident posé après achat ; annulé quand le
+    bot vend ; pas de double ordre) ; golden au centime ; les 4 mains compilent.
+
 ---
 
 ## Découvertes (Phase 0, 2026-06-10)
@@ -396,6 +426,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
+| D29 | 🟡 | (Sprint 5) Les compteurs du kill-switch (equity de début de jour, ordres/jour, pertes consécutives — TradingBot.hpp) sont **en mémoire** : un redémarrage en cours de journée les remet à zéro, affaiblissant la coupure (drawdown journalier réévalué depuis l'equity du redémarrage, série de pertes oubliée). Acceptable pour une boucle de 60 min, mais à persister (via `IStateStore`, à côté de l'état de position) pour une protection robuste | Sprint 9.5 (migration de schéma de l'item 19) |
 
 ## Changelog
 
@@ -509,11 +540,38 @@ tests. Golden backtest **inchangé** (toujours +9,6706 %, 7 trades — il fait p
 des 350). Build propre, 0 warning. Workflow amendé (D20) : `prompt-executer-sprint.md`
 et `prompt-mise-a-jour-roadmap.md` dans le commit de clôture.
 
+### Sprint 5 — Durcissement production (2026-06-10)
+
+**Commits** (ordre chronologique) :
+- `313c5a9` ci : pipeline GitHub Actions — build Linux + ctest à chaque push (item 22)
+- `c7c1bb1` feat(risk) : kill-switch — drawdown/pertes/ordres (item 18)
+- `5f05372` fix(ibkr) : calendrier marché US DST-aware + ouverture à 9h30 (item 20)
+- `90b1361` fix(alpaca) : client_order_id idempotent sur les ordres (D15)
+- `97b75af` feat(persistance) : trades en prod + journalisation unifiée (item 21)
+
+**Tests** : 350 → **370** (20 ajoutés, tous unitaires). RiskManagerUnit +7
+(kill-switch), TradingBotUnit +6 (4 câblage kill-switch, 2 observateur de trades),
+IbkrDataFeedUnit +4 (calendrier DST), AlpacaBrokerUnit +1 (cOID), DbLoggerUnit +2
+(logs_json, DbLogSink). Golden backtest **inchangé** (kill-switch jamais déclenché
+sur barres journalières ; aucun observateur posé par le backtest).
+
+**Nouveaux fichiers** : `.github/workflows/ci.yml`, `include/core/db_log_sink.h`.
+**Interfaces modifiées** : `IRiskManager::checkKillSwitch` (+ `KillSwitchConfig`
+dans Models.hpp, membre de RiskConfig) ; `TradingBot::setTradeObserver` (+ struct
+`TradeEvent`) ; `IBKRDataFeed::isUsMarketOpenAtUtc`/`isUsEasternDst` publics ;
+`DbLogger::logs_json`. Les composition roots non compilés (main_alpaca, main_v2)
+restent compatibles (paramètres/méthodes additifs) ; les 4 mains passent
+`g++ -fsyntax-only`. **Reporté** : le stop résident broker de l'item 19 (Sprint 6).
+
+**DoD** : rebuild propre 0 warning ; 370/370 vert ; chaque correctif avec test
+préalable (rouge à la compilation pour les nouvelles API, distinguant pour le
+calendrier) ; golden inchangé ; CI verte sur le runner.
+
 ### Item 6.1 — Golden de la config de production (2026-06-10, exécuté par anticipation)
 
 > Hors cycle de sprint : à la suite du méta-audit, l'utilisateur a demandé de
-> quantifier immédiatement la config réellement tradée (risque D21 🔴). Le Sprint 5
-> reste le sprint courant ; le Sprint 6 démarre avec 6.1 déjà coché.
+> quantifier immédiatement la config réellement tradée (risque D21 🔴). Le Sprint 5 (durcissement) et le Sprint 6 (vérité du backtest) ont été menés en
+> parallèle sur deux branches puis consolidés.
 
 **Commits** :
 - `c01f813` docs : méta-audit (défauts ingénieur E1-E10 + swing trader T1-T8,
@@ -533,7 +591,7 @@ dernière vente 2026-02-03, 1858 points d'équité. Golden défaut **inchangé**
 prod, consommée par `main_ibkr.cpp` et par le golden — fin de la dérive D21).
 Verdict et conséquences : voir D27 (la « Décision requise » de 6.1 est sans objet).
 
-### Sprint 6 — Vérité du backtest & réalisme (2026-06-10, clos avant le Sprint 5)
+### Sprint 6 — Vérité du backtest & réalisme (2026-06-10, consolidé avec le Sprint 5)
 
 > Exécuté hors ordre sur demande utilisateur (suite logique de 6.1) : aucun item
 > ne dépendait du Sprint 5, et 6.2-6.4 ne demandaient aucune décision produit.
@@ -610,6 +668,54 @@ hypothèse de plan mérite sa mesure avant son sprint.
   beatsBuyHold=NON est figé par test, le cash drag est un chiffre (29 %), et le
   coût du réalisme est connu (−0,37 pt à 5 bps). Le levier est maintenant
   entièrement dans les Sprints 7-8.
+
+### Sprint 5 — Durcissement production (2026-06-10)
+
+**1. Découpage** : 5 livrables (22, 18, 20, D15, 21) + 1 reliquat assumé (stop
+résident, item 19). L'ordre 22→18→20→D15→21 était le bon : la CI en tête a
+sécurisé tous les commits suivants (3 runs verts), et l'item 21 après l'item 18
+a profité du `TradeEvent` pour journaliser des trades produits par un moteur déjà
+protégé. Bonne décision de **scinder l'item 19** : la partie idempotence (D15)
+était petite et à fort enjeu, le stop résident est un chantier money-path +
+migration de schéma qui méritait son propre sprint plutôt qu'une fin de course
+bâclée — conforme à « découper plutôt que bâcler ». La décision a été remontée à
+l'utilisateur (option « item 21 puis clôturer, 19 reporté »).
+
+**2. Suffisance des prompts** : aucune improvisation d'infrastructure cette fois —
+la liste apt et le recalage `ctest -N` (ajoutés aux rétros précédentes) ont tenu.
+Le « test rouge » strict ne s'appliquait pas au kill-switch (on verrouille une
+protection neuve, pas un bug existant) : red à la compilation (API nouvelle) +
+assertions « entrée bloquée / sortie NON bloquée ». Pour le calendrier (20), les
+tests sont de vrais distinguants : ils échouaient sur l'ancien UTC-5/9h00. Le
+workflow n'a pas eu besoin d'être amendé.
+
+**3. À détecter plus tôt** : (a) D29 (compteurs kill-switch en mémoire) aurait dû
+être anticipé à la conception — toute protection à fenêtre journalière qui doit
+survivre à un crash a besoin de persistance ; affecté au Sprint 6 où la migration
+de schéma de l'item 19 ouvrira de toute façon `IStateStore`. (b) Le stop résident
+(19) confirme la leçon FinTech récurrente : un ordre côté broker touche le chemin
+de l'argent ET l'état persisté — à isoler dès qu'identifié, ce qui a été fait.
+(c) La CI étant désormais en place, le prochain risque non couvert est l'absence
+de test du composition root (`main_ibkr`) : le câblage de l'item 21 n'est vérifié
+que par compilation — un test d'intégration de bout en bout (feed mock → trades en
+base) serait le prochain garde-fou rentable.
+
+**4. Notes** (précédent 81/84/66/58) :
+- **Architecture 82** (+1) : le `TradeEvent`/observateur découple proprement la
+  persistance et le dashboard du moteur (DIP préservé) ; le kill-switch reste pur
+  dans RiskManager. Petit gain : l'essentiel du sprint est fonctionnel, pas structurel.
+- **Qualité 88** (+4) : **la CI tourne** — les tests ne sont plus déclaratifs, ils
+  s'exécutent à chaque push (fin de la dette d'infrastructure n°1, ouverte au
+  Sprint 1) ; +20 tests ; le décompte est auto-vérifié (D20 verrouillé). Plafonné
+  par l'absence de test du composition root.
+- **FinTech 74** (+8) : trois protections réelles — kill-switch runtime (18),
+  idempotence des ordres Alpaca (D15), calendrier de marché correct 12 mois/an (20).
+  Le bot cesse d'aggraver une mauvaise journée et ne trade plus à la mauvaise heure.
+  Pour dépasser 80 : stop résident broker (19, Sprint 6) et persistance des
+  compteurs de risque (D29).
+- **Production 70** (+12) : CI (22), trades enfin persistés et dashboard alimenté
+  (21), journalisation unifiée vers SQLite. Le bot est observable et reproductible.
+  Manquent : test E2E du main, persistance des compteurs kill-switch (D29).
 
 ### Sprint 4 — Tests du moteur (2026-06-10)
 
