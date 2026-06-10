@@ -20,6 +20,7 @@
 #include "core/bot_state.h"
 #include "core/ws_server.h"
 #include "core/db_logger.h"
+#include "core/state_store.h"
 #include "core/watchdog.h"
 
 #include <iostream>
@@ -121,7 +122,10 @@ int main(int argc, char* argv[]) {
 
     AlertConfig alertCfg;
     alertCfg.heartbeat_interval_sec = 60;
-    alertCfg.max_silence_sec        = 300;
+    // Le heartbeat n'est émis qu'une fois par cycle (60 min) : le seuil de
+    // silence doit couvrir un cycle complet + marge, sinon fausse alerte
+    // « bot silencieux » à chaque cycle (découverte D1)
+    alertCfg.max_silence_sec        = 3900;  // 65 min
     alertCfg.webhook_enabled        = false;
     // alertCfg.webhook_url = "https://discord.com/api/webhooks/XXX/YYY";
     Watchdog watchdog(alertCfg, botState);
@@ -133,6 +137,9 @@ int main(int argc, char* argv[]) {
     auto strategy = trading::SwingStrategy::create(cfg);
     auto riskMgr  = std::make_shared<trading::RiskManager>();
     auto logger   = std::make_shared<trading::ConsoleLogger>();
+    // Persistance de l'état de position : survit aux redémarrages
+    // (réconciliée avec la position broker à chaque cycle)
+    auto stateStore = std::make_shared<trading::SqliteStateStore>("swingbot_ibkr_state.db");
 
     // ── Vérification du solde ─────────────────────────────────
     auto account = broker->getAccount();
@@ -145,7 +152,7 @@ int main(int argc, char* argv[]) {
     std::cout << "   Equity : $" << static_cast<int>(account.equity) << "\n\n";
 
     // ── Bot principal ─────────────────────────────────────────
-    trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr, logger);
+    trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr, logger, stateStore);
     bot.setConfig(cfg);
 
     std::signal(SIGINT,  on_signal);

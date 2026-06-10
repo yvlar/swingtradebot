@@ -7,18 +7,12 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <algorithm>
 
 namespace trading {
 
-// ─── BotState — état persistant de la position ────────────────────────────────
-struct BotState {
-    bool   inPosition = false;
-    double buyPrice   = 0.0;
-    double peakPrice  = 0.0;
-    int    holdDays   = 0;
-};
-
 // ─── TradingBot ───────────────────────────────────────────────────────────────
+// (BotState vit dans models/Models.hpp, persisté via IStateStore)
 // Orchestrateur principal. Dépend UNIQUEMENT des interfaces (DIP).
 // Les implémentations concrètes sont injectées via le constructeur.
 class TradingBot {
@@ -29,19 +23,36 @@ public:
         std::shared_ptr<IBroker>      broker,
         std::shared_ptr<IStrategy>    strategy,
         std::shared_ptr<IRiskManager> riskManager,
-        std::shared_ptr<ILogger>      logger
+        std::shared_ptr<ILogger>      logger,
+        std::shared_ptr<IStateStore>  stateStore = nullptr   // optionnel : persistance
     )
         : dataFeed_   (std::move(dataFeed))
         , broker_     (std::move(broker))
         , strategy_   (std::move(strategy))
         , riskManager_(std::move(riskManager))
         , logger_     (std::move(logger))
+        , stateStore_ (std::move(stateStore))
     {
         logger_->info("TradingBot initialisé │ Stratégie: " + strategy_->name());
     }
 
     // ── Cycle unique de trading (testable unitairement) ───────────────────────
     void runOnce() {
+        // Restauration de l'état persisté au premier cycle (après le setConfig
+        // du composition root, pour charger le bon symbole)
+        if (!stateLoaded_) {
+            stateLoaded_ = true;
+            if (stateStore_) {
+                if (auto persisted = stateStore_->load(swingCfg_.symbol)) {
+                    state_ = *persisted;
+                    logger_->info("État restauré │ inPosition="
+                                  + std::string(state_.inPosition ? "oui" : "non")
+                                  + " │ buyPrice=$"
+                                  + std::to_string(static_cast<int>(state_.buyPrice)));
+                }
+            }
+        }
+
         if (!dataFeed_->isMarketOpen()) {
             logger_->info("Marché fermé — en attente");
             return;
@@ -65,9 +76,23 @@ public:
 
         // 3. Gestion de la position ouverte
         auto pos = broker_->getPosition(swingCfg_.symbol);
+
+        // Réconciliation : la position broker fait foi (restart, ordre PENDING
+        // exécuté entre deux cycles, position fermée à la main…)
+        reconcilePosition_(pos, price, bars.back().date);
+
         if (state_.inPosition && pos.has_value()) {
-            state_.holdDays++;
-            if (price > state_.peakPrice) state_.peakPrice = price;
+            // holdDays = jours de bourse réels : +1 seulement quand la DATE de
+            // la dernière barre change (la boucle prod tourne toutes les 60 min)
+            bool dirty = false;
+            const std::string& barDate = bars.back().date;
+            if (barDate != state_.lastBarDate) {
+                state_.holdDays++;
+                state_.lastBarDate = barDate;
+                dirty = true;
+            }
+            if (price > state_.peakPrice) { state_.peakPrice = price; dirty = true; }
+            if (dirty) saveState_();
 
             auto exitReason = riskManager_->checkExitConditions(
                 price, state_.buyPrice, state_.holdDays, state_.peakPrice,
@@ -81,11 +106,21 @@ public:
             if (shouldSell) {
                 std::string reason = exitReason.value_or("signal");
                 auto order = broker_->submitSell(swingCfg_.symbol, pos->shares);
-                if (order.has_value()) {
-                    double pnl = (price - state_.buyPrice) * pos->shares;
+                // Seul un fill confirmé clôt la position côté bot.
+                // PENDING : la position broker disparaîtra une fois l'ordre exécuté
+                // (réconciliation au cycle suivant) ; REJECTED/échec : on conserve
+                // l'état et on retentera — sinon la position devient orpheline.
+                if (order.has_value() && order->status == OrderStatus::FILLED) {
+                    double fillPrice = order->price    > 0 ? order->price    : price;
+                    int    fillQty   = order->quantity > 0 ? order->quantity : pos->shares;
+                    double pnl = (fillPrice - state_.buyPrice) * fillQty;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
                     state_ = BotState{};  // reset
+                    saveState_();
+                } else {
+                    logger_->error("Ordre de vente non exécuté (" + orderStatusStr(order)
+                                   + ") — position conservée, nouvel essai au prochain cycle");
                 }
             }
         }
@@ -93,25 +128,41 @@ public:
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
             auto account = broker_->getAccount();
-            if (!riskManager_->isTradeAllowed(account, pos)) {
-                logger_->warn("Trade non autorisé par le risk manager");
-                return;
-            }
 
             int shares = riskManager_->positionSize(
                 account.cash, price,
                 swingCfg_.stopLossPct,
                 swingCfg_.riskPerTradePct
             );
+            if (shares <= 0) {
+                logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
+                return;
+            }
+            if (!riskManager_->isTradeAllowed(account, pos, price, shares)) {
+                logger_->warn("Trade non autorisé par le risk manager");
+                return;
+            }
 
             auto order = broker_->submitBuy(swingCfg_.symbol, shares);
-            if (order.has_value()) {
-                state_.inPosition = true;
-                state_.buyPrice   = price;
-                state_.peakPrice  = price;
-                state_.holdDays   = 0;
-                logger_->info("🟢 ACHAT │ " + std::to_string(shares) +
-                              " parts × $" + std::to_string(static_cast<int>(price)));
+            // Seul un fill confirmé ouvre la position côté bot, au prix RÉEL
+            // d'exécution. PENDING : l'état ne bouge pas, la réconciliation avec
+            // la position broker fera foi au cycle suivant.
+            if (order.has_value() && order->status == OrderStatus::FILLED) {
+                double fillPrice = order->price    > 0 ? order->price    : price;
+                int    fillQty   = order->quantity > 0 ? order->quantity : shares;
+                state_.inPosition  = true;
+                state_.buyPrice    = fillPrice;
+                state_.peakPrice   = fillPrice;
+                state_.holdDays    = 0;
+                state_.lastBarDate = bars.back().date;  // jour d'entrée = jour 0
+                saveState_();
+                logger_->info("🟢 ACHAT │ " + std::to_string(fillQty) +
+                              " parts × $" + std::to_string(static_cast<int>(fillPrice)));
+            } else if (order.has_value() && order->status == OrderStatus::PENDING) {
+                logger_->warn("Ordre d'achat en attente d'exécution — "
+                              "réconciliation au prochain cycle");
+            } else {
+                logger_->error("Ordre d'achat non exécuté (" + orderStatusStr(order) + ")");
             }
         }
     }
@@ -149,10 +200,44 @@ private:
     std::shared_ptr<IStrategy>    strategy_;
     std::shared_ptr<IRiskManager> riskManager_;
     std::shared_ptr<ILogger>      logger_;
+    std::shared_ptr<IStateStore>  stateStore_;
 
     BotState    state_;
     SwingConfig swingCfg_;
     std::atomic<bool> running_{false};
+    bool stateLoaded_ = false;
+
+    // ── Réconciliation état interne ↔ position broker ─────────────────────────
+    // La position broker fait foi : couvre le redémarrage (état perdu ou
+    // restauré obsolète), l'ordre PENDING exécuté entre deux cycles, et la
+    // position fermée hors du bot (découverte D3).
+    void reconcilePosition_(const std::optional<Position>& pos,
+                            double price,
+                            const std::string& barDate) {
+        if (state_.inPosition && !pos.has_value()) {
+            logger_->warn("Position absente chez le broker (fermée hors bot ?) — "
+                          "réinitialisation de l'état");
+            state_ = BotState{};
+            saveState_();
+        } else if (!state_.inPosition && pos.has_value()) {
+            double basis = pos->avgPrice > 0 ? pos->avgPrice : price;
+            logger_->warn("Position broker non suivie (redémarrage ?) — adoption : "
+                          + std::to_string(pos->shares) + " parts @ $"
+                          + std::to_string(static_cast<int>(basis)));
+            state_.inPosition  = true;
+            state_.buyPrice    = basis;
+            state_.peakPrice   = std::max(basis, price);
+            state_.holdDays    = 0;   // conservateur : minHoldDays repart de zéro,
+                                      // les stops (prioritaires) sont actifs immédiatement
+            state_.lastBarDate = barDate;
+            saveState_();
+        }
+    }
+
+    void saveState_() {
+        if (stateStore_ && !stateStore_->save(swingCfg_.symbol, state_))
+            logger_->error("Échec de la persistance de l'état du bot");
+    }
 
     static std::string signalStr(const Signal& s) {
         switch (s.type) {
@@ -160,6 +245,17 @@ private:
             case SignalType::SELL: return "🔴 SELL";
             default:               return "⚪ HOLD";
         }
+    }
+
+    static std::string orderStatusStr(const std::optional<Order>& o) {
+        if (!o.has_value()) return "échec de soumission";
+        switch (o->status) {
+            case OrderStatus::FILLED:    return "exécuté";
+            case OrderStatus::PENDING:   return "en attente";
+            case OrderStatus::CANCELLED: return "annulé";
+            case OrderStatus::REJECTED:  return "rejeté";
+        }
+        return "statut inconnu";
     }
 };
 

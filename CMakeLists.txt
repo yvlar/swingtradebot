@@ -7,9 +7,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ── Dépendances vcpkg ─────────────────────────────────────
 find_package(Boost         REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(CURL          REQUIRED)
 find_package(GTest         CONFIG REQUIRED)
+
+# SQLite3 : config vcpkg si disponible, sinon paquet système
+# (permet de builder/tester hors du conteneur vcpkg, ex. CI Linux)
+find_package(unofficial-sqlite3 CONFIG QUIET)
+if(unofficial-sqlite3_FOUND)
+    set(SQLITE3_TARGET unofficial::sqlite3::sqlite3)
+else()
+    find_package(SQLite3 REQUIRED)
+    set(SQLITE3_TARGET SQLite::SQLite3)
+endif()
 
 # ── Sources bot (headers-only + ws_server.cpp) ────────────
 file(GLOB_RECURSE BOT_SOURCES
@@ -34,7 +43,7 @@ set(COMMON_INCLUDES
 set(COMMON_LIBS
         Boost::system
         nlohmann_json::nlohmann_json
-        unofficial::sqlite3::sqlite3
+        ${SQLITE3_TARGET}
         CURL::libcurl
         $<$<PLATFORM_ID:Windows>:ws2_32>
         $<$<PLATFORM_ID:Windows>:mswsock>
@@ -65,6 +74,10 @@ add_executable(unit_tests
         tests/unit/test_watchdog_unit.cpp
         tests/unit/test_ws_server_unit.cpp
         tests/unit/test_swing_strategy_unit.cpp
+        tests/unit/test_risk_manager_unit.cpp
+        tests/unit/test_trading_bot_unit.cpp
+        tests/unit/test_state_store_unit.cpp
+        tests/unit/test_ibkr_broker_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})

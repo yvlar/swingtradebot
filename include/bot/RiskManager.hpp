@@ -35,17 +35,23 @@ public:
         double maxShares = (capital * maxCapitalUsagePct_) / price;
         shares = std::min(shares, static_cast<int>(maxShares));
 
-        return std::max(1, shares);
+        // 0 est une réponse valide : cash insuffisant → on n'achète RIEN
+        // (l'ancien max(1, shares) forçait un achat à découvert du budget de risque)
+        return std::max(0, shares);
     }
 
-    // Vérifie qu'on n'est pas déjà en position et qu'on a assez de cash
+    // Vérifie qu'on n'est pas déjà en position, que le compte est actif
+    // et que le coût total de l'ordre tient dans le cash disponible
     bool isTradeAllowed(
         const Account&                 account,
-        const std::optional<Position>& currentPosition
+        const std::optional<Position>& currentPosition,
+        double                         price,
+        int                            qty
     ) const override {
         if (currentPosition.has_value()) return false;  // déjà en position
-        if (account.cash < 100.0)        return false;  // pas assez de cash
         if (account.status != "ACTIVE")  return false;  // compte inactif
+        if (qty <= 0 || price <= 0)      return false;  // ordre vide ou prix invalide
+        if (account.cash < price * qty)  return false;  // coût total > cash
         return true;
     }
 

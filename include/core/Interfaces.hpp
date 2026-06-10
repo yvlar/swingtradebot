@@ -77,6 +77,21 @@ public:
     virtual std::string name() const = 0;
 };
 
+// ─── IStateStore ──────────────────────────────────────────────────────────────
+// Persistance de l'état de position du bot — survit aux redémarrages.
+// Sans elle, une position ouverte devient orpheline après un restart
+// (plus de stop-loss, plus de suivi).
+class IStateStore {
+public:
+    virtual ~IStateStore() = default;
+
+    // Retourne l'état persisté pour un symbole, ou nullopt si aucun
+    virtual std::optional<BotState> load(const std::string& symbol) = 0;
+
+    // Persiste l'état ; false en cas d'échec (le bot loggue mais continue)
+    virtual bool save(const std::string& symbol, const BotState& state) = 0;
+};
+
 // ─── IRiskManager ─────────────────────────────────────────────────────────────
 // Calcul du sizing et validation des ordres
 class IRiskManager {
@@ -92,9 +107,12 @@ public:
     ) const = 0;
 
     // Vérifie si le trade respecte les règles de risque
+    // (dont coût total = price × qty ≤ cash disponible)
     virtual bool isTradeAllowed(
-        const Account&          account,
-        const std::optional<Position>& currentPosition
+        const Account&                 account,
+        const std::optional<Position>& currentPosition,
+        double                         price,
+        int                            qty
     ) const = 0;
 
     // Vérifie si le stop-loss ou take-profit est atteint

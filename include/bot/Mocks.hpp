@@ -79,6 +79,32 @@ private:
     }
 };
 
+// ─── MockStrategy ─────────────────────────────────────────────────────────────
+// Force un signal donné — permet de tester TradingBot sans dépendre des indicateurs
+class MockStrategy final : public IStrategy {
+public:
+    void setSignal(SignalType type, std::string reason = "mock") {
+        type_   = type;
+        reason_ = std::move(reason);
+    }
+
+    Signal evaluate(const std::vector<Bar>& bars) const override {
+        Signal s;
+        s.type      = type_;
+        s.symbol    = "QQQ";
+        s.price     = bars.empty() ? 0.0 : bars.back().close;
+        s.reason    = reason_;
+        s.timestamp = bars.empty() ? "" : bars.back().date;
+        return s;
+    }
+
+    std::string name() const override { return "MockStrategy"; }
+
+private:
+    SignalType  type_   = SignalType::HOLD;
+    std::string reason_ = "mock";
+};
+
 // ─── MockBroker ───────────────────────────────────────────────────────────────
 // Simule l'exécution des ordres — enregistre tout pour vérification dans les tests
 class MockBroker final : public IBroker {
@@ -91,38 +117,50 @@ public:
 
     void setAccount(Account acct)              { account_  = std::move(acct); }
     void setPosition(std::optional<Position> p){ position_ = std::move(p); }
-    void setRejectOrders(bool reject)          { rejectOrders_ = reject; }
+
+    // Résultat des prochains submit* :
+    //   nullopt          → échec de soumission (panne réseau simulée)
+    //   un OrderStatus   → ordre retourné avec ce statut
+    // Seul FILLED modifie la position simulée (comme un vrai broker).
+    void setSubmitResult(std::optional<OrderStatus> r) { submitResult_ = std::move(r); }
+    void setFillPrice(double p)                        { fillPrice_ = p; }
 
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
-        if (rejectOrders_) return std::nullopt;
         orders_.push_back({symbol, OrderSide::BUY, qty});
-        // Simule l'ouverture de position
-        Position p;
-        p.symbol       = symbol;
-        p.shares       = qty;
-        p.avgPrice     = 420.0;
-        p.marketValue  = qty * 420.0;
-        p.unrealizedPnl = 0.0;
-        position_ = p;
+        if (!submitResult_.has_value()) return std::nullopt;
 
         Order o;
-        o.symbol   = symbol;
-        o.side     = OrderSide::BUY;
-        o.quantity = qty;
-        o.status   = OrderStatus::FILLED;
+        o.symbol = symbol;
+        o.side   = OrderSide::BUY;
+        o.status = *submitResult_;
+        if (o.status == OrderStatus::FILLED) {
+            o.quantity = qty;
+            o.price    = fillPrice_;
+            // Simule l'ouverture de position au prix de fill
+            Position p;
+            p.symbol        = symbol;
+            p.shares        = qty;
+            p.avgPrice      = fillPrice_;
+            p.marketValue   = qty * fillPrice_;
+            p.unrealizedPnl = 0.0;
+            position_ = p;
+        }
         return o;
     }
 
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
-        if (rejectOrders_) return std::nullopt;
         orders_.push_back({symbol, OrderSide::SELL, qty});
-        position_ = std::nullopt;  // ferme la position
+        if (!submitResult_.has_value()) return std::nullopt;
 
         Order o;
-        o.symbol   = symbol;
-        o.side     = OrderSide::SELL;
-        o.quantity = qty;
-        o.status   = OrderStatus::FILLED;
+        o.symbol = symbol;
+        o.side   = OrderSide::SELL;
+        o.status = *submitResult_;
+        if (o.status == OrderStatus::FILLED) {
+            o.quantity = qty;
+            o.price    = fillPrice_;
+            position_  = std::nullopt;  // ferme la position
+        }
         return o;
     }
 
@@ -139,10 +177,38 @@ public:
     void clearOrders() { orders_.clear(); }
 
 private:
-    Account                  account_      = {10000.0, 10000.0, "ACTIVE"};
-    std::optional<Position>  position_     = std::nullopt;
-    std::vector<OrderRecord> orders_;
-    bool                     rejectOrders_ = false;
+    Account                    account_      = {10000.0, 10000.0, "ACTIVE"};
+    std::optional<Position>    position_     = std::nullopt;
+    std::vector<OrderRecord>   orders_;
+    std::optional<OrderStatus> submitResult_ = OrderStatus::FILLED;
+    double                     fillPrice_    = 420.0;
+};
+
+// ─── MockStateStore ───────────────────────────────────────────────────────────
+// Persistance en mémoire — enregistre chaque save pour vérification
+class MockStateStore final : public IStateStore {
+public:
+    void preload(BotState s)   { preloaded_ = std::move(s); }
+    void setSaveFails(bool f)  { saveFails_ = f; }
+
+    std::optional<BotState> load(const std::string&) override { return preloaded_; }
+
+    bool save(const std::string&, const BotState& s) override {
+        if (saveFails_) return false;
+        saved_.push_back(s);
+        return true;
+    }
+
+    const std::vector<BotState>& saved() const { return saved_; }
+    std::optional<BotState> lastSaved() const {
+        if (saved_.empty()) return std::nullopt;
+        return saved_.back();
+    }
+
+private:
+    std::optional<BotState> preloaded_;
+    std::vector<BotState>   saved_;
+    bool                    saveFails_ = false;
 };
 
 } // namespace trading::mocks
