@@ -18,8 +18,8 @@ WsServer* g_ws  = nullptr;
 DbLogger* g_db  = nullptr;
 Watchdog* g_wd  = nullptr;
 
-static volatile bool g_running = true;
-void on_signal(int) { g_running = false; }
+static volatile std::sig_atomic_t g_running = 1; // type sûr en handler de signal (D8)
+void on_signal(int) { g_running = 0; }
 
 // ─── Helper : log partout + broadcast ─────────────────────
 void bot_log(const std::string& level, const std::string& msg) {

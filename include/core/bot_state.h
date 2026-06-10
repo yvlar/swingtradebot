@@ -15,7 +15,7 @@
 #include <iomanip>
 #include <sstream>
 
-using json = nlohmann::json;
+// (pas d'alias `json` global : il polluait tous les TU incluant ce header — D9)
 
 // ─── Structures de données ────────────────────────────────
 
@@ -110,7 +110,7 @@ struct BotState {
         for (size_t i = start; i < logs.size(); ++i)
             recent_logs.push_back(logs[i]);
 
-        json j = {
+        nlohmann::json j = {
             {"type",      "state"},
             {"equity",    equity},
             {"pnl",       pnl},

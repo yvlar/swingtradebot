@@ -21,9 +21,10 @@
 #include <iomanip>
 #include <map>
 
-using json = nlohmann::json;
-
 namespace trading {
+
+// Alias local au namespace (pas de pollution du scope global — D9)
+using json = nlohmann::json;
 
 // ── Conids IBKR connus ─────────────────────────────────────────────────────────
 // Chaque titre a un identifiant numérique unique chez IBKR (conid)
@@ -93,35 +94,6 @@ public:
             return R::Ok(std::move(bars));
         } catch (const std::exception& e) {
             return R::Err(std::string("IBKR getBars: ") + e.what());
-        }
-    }
-
-    // Prix en temps réel via market data snapshot
-    // Ok(nullopt) = réponse sans prix exploitable ; Err = panne (item 10)
-    Result<std::optional<double>> getLatestPrice(const std::string& symbol) override {
-        using R = Result<std::optional<double>>;
-        try {
-            std::string conid = resolveConid(symbol);
-
-            // Souscrit d'abord aux données (IBKR requiert une souscription)
-            subscribeMarketData(conid);
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-            // field 31 = last price
-            std::string url = gatewayUrl_
-                + "/v1/api/iserver/marketdata/snapshot"
-                + "?conids=" + conid
-                + "&fields=31,84,86"; // 31=last, 84=bid, 86=ask
-
-            auto resp = get(url);
-            auto j    = json::parse(resp);
-            if (j.is_array() && !j.empty()) {
-                double price = j[0].value("31", 0.0);
-                if (price > 0) return R::Ok(price);
-            }
-            return R::Ok(std::nullopt);
-        } catch (const std::exception& e) {
-            return R::Err(std::string("IBKR getLatestPrice: ") + e.what());
         }
     }
 

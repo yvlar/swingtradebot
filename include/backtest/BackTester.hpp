@@ -33,10 +33,6 @@ public:
             csv_->getBarsUpTo(cursor_, std::min(days, lookback_)));
     }
 
-    Result<std::optional<double>> getLatestPrice(const std::string& /*symbol*/) override {
-        return Result<std::optional<double>>::Ok(csv_->priceAt(cursor_));
-    }
-
     // En backtest, le marché est toujours « ouvert »
     bool isMarketOpen() override { return true; }
 

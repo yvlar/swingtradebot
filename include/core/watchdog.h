@@ -248,7 +248,7 @@ private:
         if (!curl) return;
 
         // Format compatible Discord et Slack
-        json payload = { {"content", body}, {"text", body} };
+        nlohmann::json payload = { {"content", body}, {"text", body} };
         std::string post = payload.dump();
 
         struct curl_slist* headers = nullptr;

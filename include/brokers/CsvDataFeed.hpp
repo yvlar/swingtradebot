@@ -33,12 +33,6 @@ public:
             std::vector<Bar>(bars_.begin() + start, bars_.end()));
     }
 
-    // Retourne le dernier prix de clôture connu
-    Result<std::optional<double>> getLatestPrice(const std::string& /*symbol*/) override {
-        if (bars_.empty()) return Result<std::optional<double>>::Ok(std::nullopt);
-        return Result<std::optional<double>>::Ok(bars_.back().close);
-    }
-
     // En backtesting, le marché est toujours "ouvert"
     bool isMarketOpen() override { return true; }
 
