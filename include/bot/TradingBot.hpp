@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <algorithm>
+#include <functional>
 
 namespace trading {
 
@@ -123,6 +124,9 @@ public:
 
             if (shouldSell) {
                 std::string reason = exitReason.value_or("signal");
+                // Observateur de sortie (backtest) : notifié AVANT la soumission
+                // pour que le broker simulé enregistre la raison dans le trade
+                if (exitObserver_) exitObserver_(reason);
                 auto order = broker_->submitSell(swingCfg_.symbol, pos->shares);
                 // Seul un fill confirmé clôt la position côté bot.
                 // PENDING : la position broker disparaîtra une fois l'ordre exécuté
@@ -212,6 +216,12 @@ public:
     void setState(const BotState& s)     { state_ = s; }
     void setConfig(const SwingConfig& c) { swingCfg_ = c; }
 
+    // Seam pour le backtest : raison de sortie transmise au broker simulé
+    // juste avant chaque ordre de vente (TradeRecord du rapport)
+    void setExitObserver(std::function<void(const std::string&)> obs) {
+        exitObserver_ = std::move(obs);
+    }
+
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
     std::shared_ptr<IBroker>      broker_;
@@ -224,6 +234,7 @@ private:
     SwingConfig swingCfg_;
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
+    std::function<void(const std::string&)> exitObserver_;
 
     // ── Réconciliation état interne ↔ position broker ─────────────────────────
     // La position broker fait foi : couvre le redémarrage (état perdu ou
