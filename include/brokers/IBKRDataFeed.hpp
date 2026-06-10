@@ -11,7 +11,7 @@
 //  Dépendances : libcurl + nlohmann/json (déjà dans le projet)
 // ============================================================
 #include "core/Interfaces.hpp"
-#include <curl/curl.h>
+#include "core/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
@@ -46,6 +46,7 @@ public:
                           bool verifySsl = false)
         : gatewayUrl_(std::move(gatewayUrl))
         , verifySsl_ (verifySsl)  // false requis avec le cert auto-signé du gateway
+        , http_      (makeClientConfig(verifySsl))
     {
         // L'init globale de libcurl est faite une seule fois au main
         // via CurlGlobal (core/curl_global.h) — jamais ici (item 7)
@@ -162,6 +163,14 @@ public:
 private:
     std::string gatewayUrl_;
     bool        verifySsl_;
+    HttpClient  http_;
+
+    static HttpClientConfig makeClientConfig(bool verifySsl) {
+        HttpClientConfig cfg;
+        cfg.verify_ssl  = verifySsl;
+        cfg.timeout_sec = 15;
+        return cfg;
+    }
 
     // ── Résolution de conid ───────────────────────────────────
     std::string resolveConid(const std::string& symbol) {
@@ -213,33 +222,9 @@ private:
         return (hour_est >= 9 && (hour_est < 16 || (hour_est == 9 && tm.tm_min >= 30)));
     }
 
-    // ── HTTP GET (avec SSL désactivé pour cert auto-signé) ────
+    // ── HTTP GET via le client commun (code HTTP vérifié, retry) ──
     std::string get(const std::string& url) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("curl_easy_init failed");
-
-        std::string response;
-        curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT,        15L);
-        // Le CP Gateway utilise un certificat auto-signé → on désactive la vérif
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, verifySsl_ ? 1L : 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, verifySsl_ ? 2L : 0L);
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
-            throw std::runtime_error(std::string("HTTP GET: ")
-                                     + curl_easy_strerror(res));
-        return response;
-    }
-
-    static size_t writeCallback(void* data, size_t size,
-                                size_t nmemb, std::string* out) {
-        out->append(static_cast<char*>(data), size * nmemb);
-        return size * nmemb;
+        return http_.get(url);
     }
 };
 

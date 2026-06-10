@@ -12,7 +12,7 @@
 // ============================================================
 #pragma once
 #include "core/Interfaces.hpp"
-#include <curl/curl.h>
+#include "core/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
@@ -137,6 +137,7 @@ private:
     std::string apiSecret_;
     std::string baseUrl_;
     std::string lastError_;
+    HttpClient  http_;
 
     // ── Parsing ───────────────────────────────────────────────
     static Order parseOrder(const json& j) {
@@ -178,42 +179,18 @@ private:
         request("DELETE", path, "");
     }
 
+    // HTTP via le client commun : code HTTP vérifié, retry + backoff,
+    // 429 géré (item 8)
     std::string request(const std::string& method,
                         const std::string& path,
                         const std::string& body) {
-        CURL* curl = curl_easy_init();
-        if (!curl) throw std::runtime_error("curl_easy_init failed");
+        std::string response = http_.request(method, baseUrl_ + path, body, {
+            "APCA-API-KEY-ID: "     + apiKey_,
+            "APCA-API-SECRET-KEY: " + apiSecret_,
+            "Content-Type: application/json",
+        });
 
-        std::string url = baseUrl_ + path;
-        std::string response;
-
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, ("APCA-API-KEY-ID: "    + apiKey_).c_str());
-        headers = curl_slist_append(headers, ("APCA-API-SECRET-KEY: " + apiSecret_).c_str());
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL,            url.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &response);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT,        15L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-
-        if (method == "POST") {
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-        } else if (method == "DELETE") {
-            curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-        }
-
-        CURLcode res = curl_easy_perform(curl);
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK)
-            throw std::runtime_error(std::string("HTTP ") + method
-                                     + " failed: " + curl_easy_strerror(res));
-
-        // Erreur Alpaca (code HTTP 4xx/5xx)
+        // Erreur applicative Alpaca dans un corps 2xx
         auto j = json::parse(response, nullptr, false);
         if (!j.is_discarded() && j.contains("code") && j.contains("message"))
             throw std::runtime_error("Alpaca error "
@@ -221,12 +198,6 @@ private:
                 + ": " + j["message"].get<std::string>());
 
         return response;
-    }
-
-    static size_t writeCallback(void* data, size_t size,
-                                 size_t nmemb, std::string* out) {
-        out->append(static_cast<char*>(data), size * nmemb);
-        return size * nmemb;
     }
 };
 
