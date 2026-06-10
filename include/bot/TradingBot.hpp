@@ -15,7 +15,8 @@ struct BotState {
     bool   inPosition = false;
     double buyPrice   = 0.0;
     double peakPrice  = 0.0;
-    int    holdDays   = 0;
+    int    holdDays   = 0;          // jours de BOURSE depuis l'entrée (pas cycles)
+    std::string lastBarDate;        // date de la dernière barre comptée
 };
 
 // ─── TradingBot ───────────────────────────────────────────────────────────────
@@ -66,7 +67,13 @@ public:
         // 3. Gestion de la position ouverte
         auto pos = broker_->getPosition(swingCfg_.symbol);
         if (state_.inPosition && pos.has_value()) {
-            state_.holdDays++;
+            // holdDays = jours de bourse réels : +1 seulement quand la DATE de
+            // la dernière barre change (la boucle prod tourne toutes les 60 min)
+            const std::string& barDate = bars.back().date;
+            if (barDate != state_.lastBarDate) {
+                state_.holdDays++;
+                state_.lastBarDate = barDate;
+            }
             if (price > state_.peakPrice) state_.peakPrice = price;
 
             auto exitReason = riskManager_->checkExitConditions(
@@ -124,10 +131,11 @@ public:
             if (order.has_value() && order->status == OrderStatus::FILLED) {
                 double fillPrice = order->price    > 0 ? order->price    : price;
                 int    fillQty   = order->quantity > 0 ? order->quantity : shares;
-                state_.inPosition = true;
-                state_.buyPrice   = fillPrice;
-                state_.peakPrice  = fillPrice;
-                state_.holdDays   = 0;
+                state_.inPosition  = true;
+                state_.buyPrice    = fillPrice;
+                state_.peakPrice   = fillPrice;
+                state_.holdDays    = 0;
+                state_.lastBarDate = bars.back().date;  // jour d'entrée = jour 0
                 logger_->info("🟢 ACHAT │ " + std::to_string(fillQty) +
                               " parts × $" + std::to_string(static_cast<int>(fillPrice)));
             } else if (order.has_value() && order->status == OrderStatus::PENDING) {

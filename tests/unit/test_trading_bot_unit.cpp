@@ -169,6 +169,68 @@ TEST(TradingBotUnit, FailedSellSubmissionKeepsPosition) {
     EXPECT_TRUE(h.bot->state().inPosition);
 }
 
+// ════════════════════════════════════════════════════════════
+//  Sprint 1 item 3 — holdDays = jours de bourse réels, pas cycles
+// ════════════════════════════════════════════════════════════
+
+// BUG : holdDays était incrémenté à CHAQUE runOnce (boucle prod = 60 min)
+// → ~7 « jours » par jour de bourse. Il ne doit avancer qu'au changement
+// de date de barre.
+TEST(TradingBotUnit, HoldDaysDoesNotIncrementWithinSameBarDate) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée le 2024-03-01
+    ASSERT_TRUE(h.bot->state().inPosition);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();                            // même journée (cycle 60 min)
+    h.bot->runOnce();                            // même journée encore
+
+    EXPECT_EQ(h.bot->state().holdDays, 0);       // aucun jour de bourse écoulé
+}
+
+TEST(TradingBotUnit, HoldDaysIncrementsOncePerNewBarDate) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée le 2024-03-01
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(420.0, "2024-03-04");           // lundi suivant
+    h.bot->runOnce();
+    h.bot->runOnce();                            // 2e cycle du même jour
+    EXPECT_EQ(h.bot->state().holdDays, 1);
+
+    h.setLastBar(420.0, "2024-03-05");
+    h.bot->runOnce();
+    EXPECT_EQ(h.bot->state().holdDays, 2);
+}
+
+// BUG conséquent : minHoldDays était consommé en quelques heures de cycles.
+// Un signal SELL le jour même de l'achat ne doit PAS vendre avant
+// minHoldDays jours de bourse réels.
+TEST(TradingBotUnit, SellSignalWaitsForRealTradingDays) {
+    BotHarness h(402.0, "2024-03-05");
+    SwingConfig cfg;
+    cfg.minHoldDays = 2;
+    h.bot->setConfig(cfg);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 402.0, 9 * 2.0});
+    h.bot->setState({true, 400.0, 402.0, 0, "2024-03-05"});
+    h.strategy->setSignal(SignalType::SELL);
+
+    h.bot->runOnce();                            // 3 cycles le même jour
+    h.bot->runOnce();
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->sellCount(), 0);         // minHold pas atteint en vrais jours
+
+    h.setLastBar(402.0, "2024-03-06");           // J+1
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->sellCount(), 0);         // holdDays=1 < 2
+
+    h.setLastBar(402.0, "2024-03-07");           // J+2
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->sellCount(), 1);         // holdDays=2 → vente autorisée
+}
+
 // Cas nominal : vente FILLED sur stop-loss → état réinitialisé
 TEST(TradingBotUnit, FilledSellOnStopLossResetsState) {
     BotHarness h(368.0, "2024-03-05");
