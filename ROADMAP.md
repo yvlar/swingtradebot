@@ -353,6 +353,14 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > Le sprint qui doit **transformer −229 pts d'alpha en alpha positif (ou neutre à moindre
 > drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**, jamais en IS.
 > Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour des stops/VWAP corrects.
+>
+> **Banc de prototypage** : `research/` (Python, partage `QQQ.csv`) permet d'itérer les
+> idées en quelques secondes avant de les porter en C++ (`prototype_regime.py`). **Read
+> initial (D32)** : ajouter le filtre de régime SMA200 *par-dessus* l'entrée actuelle la
+> sur-filtre (3,3 % investi) → le régime doit **remplacer** l'entrée (8.3 AVANT/AVEC 8.1),
+> pas s'y empiler ; le levier le plus net seul est **8.4** (ne pas vendre sur RSI). Le banc
+> isole aussi un 2e levier : à pleine exposition la config prod fait +207 % (vs +36 % en
+> C++) → le **sizing 2 % est un frein distinct du timing** (à arbitrer dans le Sprint 8).
 
 - [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
   disponibles) ; vrai ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour,
@@ -451,6 +459,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D29 | 🟡 | (Sprint 5) Les compteurs du kill-switch (equity de début de jour, ordres/jour, pertes consécutives — TradingBot.hpp) sont **en mémoire** : un redémarrage en cours de journée les remet à zéro, affaiblissant la coupure (drawdown journalier réévalué depuis l'equity du redémarrage, série de pertes oubliée). Acceptable pour une boucle de 60 min, mais à persister (via `IStateStore`, à côté de l'état de position) pour une protection robuste | Sprint 9.5 (migration de schéma de l'item 19) |
+| D32 | 🟢 | (Banc Python `research/`) **Read de prototypage Sprint 8** : (a) le filtre de régime SMA200 *ajouté par-dessus* l'entrée actuelle (croisement EMA + RSI<65) sur-filtre → 3,3 % investi, alpha OOS −40,8 % : le régime doit **remplacer** la logique d'entrée (8.3), pas s'y empiler ; (b) levier le plus net seul = **8.4** (ne pas vendre sur RSI, alpha OOS −8,7 % vs −13,5 %) ; (c) à pleine exposition la config prod fait +207 % (vs +36 % en C++ sizé à 2 %) → le **sizing conservateur est un frein distinct du timing**. À confirmer en portant le gagnant en C++ et en re-jugeant via `WalkForward` | Sprint 8 (oriente 8.1/8.3/8.4 + arbitrage sizing) |
 | D31 | 🟠 | (Sprint 7, item 7.4) **Pas de données multi-actifs ni total-return.** Un seul CSV (QQQ.csv, synthétique jusqu'en 2026, Close==Adj Close — cf. D28) ; réseau verrouillé sur les fournisseurs (Yahoo `unauthorized`, Stooq mort). Bloque 7.4 (généralisation hors QQQ) et la résolution propre de D28. Le code (`WalkForward`/`Backtester`/`CsvDataFeed(FromBars)`) accepte déjà des barres arbitraires : il ne manque QUE les fichiers. Action DONNÉES : l'utilisateur fournit SPY/IWM/MDY réellement ajustés | Sprint 8 (généralisation) / prérequis fourni par l'utilisateur |
 | D30 | 🔴 | (Sprint 7, item 7.1) **L'edge ne tient pas en out-of-sample.** Walk-forward de la config prod sur QQQ.csv : split 70/30 → OOS +6,56 % vs B&H +39,39 % ; 4 segments roulants → 1/4 seulement bat le B&H, et c'est le segment BAISSIER 2020-10→2022-07 (B&H −7,44 %). La stratégie « gagne » uniquement en étant hors marché pendant les baisses ; dans les 3 segments haussiers elle laisse 50-80 pts sur la table. C'est un **overlay défensif de réduction de risque, pas un générateur d'alpha** — confirmation OOS de D26. Tant que ce verdict n'est pas renversé (Sprint 8), ne PAS engager d'argent réel en visant un rendement supérieur à QQQ | Sprint 8 (à renverser ICI, en OOS) |
 
