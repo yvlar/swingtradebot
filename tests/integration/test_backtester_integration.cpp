@@ -81,6 +81,14 @@ TEST(BacktesterIntegration, GoldenProdConfigPerformanceOnQqqCsv) {
     EXPECT_NEAR(r.buyHoldReturnPct, 238.5544199,  1e-4);
     EXPECT_NEAR(r.maxDrawdownPct,   1.9702419,    1e-4);
     EXPECT_NEAR(r.sharpeRatio,      1.8192344,    1e-4);
+
+    // Métriques d'objectif (item 6.4) : le cash drag rendu mesurable —
+    // 29 % du temps investi seulement, CAGR 4,47 %/an vs ~19 %/an pour QQQ
+    EXPECT_NEAR(r.cagrPct,          4.4699853,    1e-4);
+    EXPECT_NEAR(r.sortinoRatio,     3.1819998,    1e-4);
+    EXPECT_NEAR(r.calmarRatio,      2.2687495,    1e-4);
+    EXPECT_NEAR(r.pctTimeInvested,  29.1048874,   1e-4);
+    EXPECT_FALSE(r.beatsBuyHold);   // le verdict qui résume les Sprints 7-8
 }
 
 TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
@@ -134,11 +142,14 @@ TEST(BacktesterIntegration, ProdConfigOutperformsDefaultConfig) {
     auto ligne = [](const char* nom, const trading::BacktestResult& r) {
         std::cout << "  [6.1] " << nom
                   << " │ retour "   << r.totalReturnPct << " %"
+                  << " │ CAGR "     << r.cagrPct << " %"
                   << " │ Sharpe "   << r.sharpeRatio
                   << " │ maxDD "    << r.maxDrawdownPct << " %"
                   << " │ trades "   << r.totalTrades
                   << " (" << r.winningTrades << "G/" << r.losingTrades << "P)"
-                  << " │ B&H "      << r.buyHoldReturnPct << " %\n";
+                  << " │ investi "  << r.pctTimeInvested << " %"
+                  << " │ B&H "      << r.buyHoldReturnPct << " %"
+                  << " │ bat B&H : " << (r.beatsBuyHold ? "OUI" : "NON") << "\n";
     };
     ligne("défaut", def);
     ligne("prod  ", prod);

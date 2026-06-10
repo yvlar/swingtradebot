@@ -200,6 +200,93 @@ TEST(BacktesterMetricsUnit, EquityCurveAndTradesPassedThrough) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Métriques d'objectif (item 6.4) — CAGR, Sortino, Calmar,
+//  % temps investi, verdict « bat le Buy & Hold »
+// ════════════════════════════════════════════════════════════
+
+// CAGR sur des dates réelles : 10 000 → 11 000 entre le 2020-01-01 et le
+// 2022-01-01 (731 jours) → (1,1^(365,25/731) − 1) × 100
+TEST(BacktesterMetricsUnit, CagrFromEquityDates) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(11'000.0, barsWithCloses({100.0}),
+                               {10'000.0, 11'000.0},
+                               {"2020-01-01", "2022-01-01"},
+                               {}, /*warmup=*/0);
+
+    EXPECT_NEAR(r.cagrPct, 100.0 * (std::pow(1.1, 365.25 / 731.0) - 1.0), 1e-9);
+}
+
+// Sans dates exploitables : CAGR 0, pas de crash
+TEST(BacktesterMetricsUnit, CagrZeroWithoutDates) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(11'000.0, barsWithCloses({100.0}),
+                               {}, {}, {}, 0);
+    EXPECT_DOUBLE_EQ(r.cagrPct, 0.0);
+}
+
+// Courbe {100, 120, 108} : rendements {+0,20 ; −0,10} → moyenne 0,05,
+// downside dev = √(0,1²/2) → Sortino = 0,05×252/(√0,005×√252)
+TEST(BacktesterMetricsUnit, SortinoHandComputed) {
+    auto bt = metricsOnly();
+    auto r = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                               {100.0, 120.0, 108.0},
+                               {}, {}, /*warmup=*/0);
+
+    EXPECT_NEAR(r.sortinoRatio,
+                (0.05 * 252.0) / (std::sqrt(0.005) * std::sqrt(252.0)), 1e-9);
+}
+
+// Aucun rendement négatif : downside nulle → sentinelle 999 (cohérente avec
+// profitFactor) quand la moyenne est positive
+TEST(BacktesterMetricsUnit, SortinoSentinelWhenNoDownside) {
+    auto bt = metricsOnly();
+    auto r = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                               {100.0, 110.0, 121.0},
+                               {}, {}, 0);
+    EXPECT_DOUBLE_EQ(r.sortinoRatio, 999.0);
+}
+
+// Calmar = CAGR / maxDD — sur 1 an exact (365,25 jours impossibles : on
+// vérifie le ratio entre les deux champs déjà testés séparément)
+TEST(BacktesterMetricsUnit, CalmarIsCagrOverMaxDrawdown) {
+    auto bt = metricsOnly(10'000.0);
+    // Pic 12 000 → creux 10 800 : maxDD 10 % ; capital final 11 000
+    auto r = bt.computeMetrics(11'000.0, barsWithCloses({100.0}),
+                               {10'000.0, 12'000.0, 10'800.0, 11'000.0},
+                               {"2020-01-01", "2020-06-01", "2020-09-01", "2021-01-01"},
+                               {}, 0);
+
+    ASSERT_GT(r.maxDrawdownPct, 0.0);
+    EXPECT_NEAR(r.calmarRatio, r.cagrPct / r.maxDrawdownPct, 1e-9);
+}
+
+// % temps investi = Σ holdDays / barres après warmup
+TEST(BacktesterMetricsUnit, PctTimeInvestedFromHoldDays) {
+    auto bt = metricsOnly();
+    std::vector<TradeRecord> trades = {
+        trade(+100.0, +10.0, 4), trade(+50.0, +5.0, 2), trade(-50.0, -5.0, 3),
+    };
+    // 20 points d'équité, warmup 2 → 18 barres tradables ; 9 jours en position
+    std::vector<double> curve(20, 10'000.0);
+    auto r = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                               curve, {}, trades, /*warmup=*/2);
+
+    EXPECT_DOUBLE_EQ(r.pctTimeInvested, 50.0);
+}
+
+// Verdict explicite : la stratégie bat-elle le Buy & Hold net de coûts ?
+TEST(BacktesterMetricsUnit, BeatsBuyHoldVerdict) {
+    auto bt = metricsOnly(10'000.0);
+    auto bars = barsWithCloses({100.0, 100.0, 100.0, 105.0});  // B&H +5 % dès warmup 2
+
+    auto perd  = bt.computeMetrics(10'200.0, bars, {}, {}, {}, 2);  // +2 % < +5 %
+    auto gagne = bt.computeMetrics(11'000.0, bars, {}, {}, {}, 2);  // +10 % > +5 %
+
+    EXPECT_FALSE(perd.beatsBuyHold);
+    EXPECT_TRUE (gagne.beatsBuyHold);
+}
+
+// ════════════════════════════════════════════════════════════
 //  ReplayDataFeed — fenêtre glissante bornée par le lookback
 // ════════════════════════════════════════════════════════════
 
