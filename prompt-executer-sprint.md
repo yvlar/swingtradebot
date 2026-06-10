@@ -32,6 +32,10 @@ une discipline de production : le sprint se termine compilable, testé, commité
    sprint courant) et la dernière rétrospective (elle peut contenir des consignes).
 2. **Vérifier la baseline** : `cmake -B build … && cmake --build build && ctest` doit
    être 100 % vert AVANT de toucher au code. Sinon, corriger d'abord et le consigner.
+   **Recaler le décompte** : comparer le nombre réel de tests (`ctest -N` → « Total
+   Tests ») au champ « État des tests » du tableau de bord. Toute dérive (des commits
+   mergés hors de ce cycle ont changé la couverture sans mettre à jour la ROADMAP —
+   leçon D20) est signalée et corrigée à la clôture (le changelog absorbe ces commits).
 3. **Pour chaque item du sprint, dans l'ordre** :
    a. Relire le code concerné (référence fichier:ligne dans ROADMAP.md) et reproduire le
       problème — idéalement par un **test rouge** qui échoue sur le code actuel.

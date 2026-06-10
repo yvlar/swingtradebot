@@ -17,6 +17,10 @@
 4. **Changelog** : ajouter un bloc `### Sprint N — <titre> (<date>)` listant les
    commits, les tests ajoutés (avant → après), et toute métrique pertinente
    (ex. valeurs du backtest golden si elles ont changé, et pourquoi c'est légitime).
+   Le décompte « avant » est le décompte RÉEL de `ctest -N`, pas celui que le tableau
+   de bord affichait : si des commits ont été mergés hors de ce cycle (leçon D20),
+   les absorber ici (les lister, recaler « État des tests ») pour que le tableau de
+   bord cesse de mentir.
 5. **Rétrospective** : écrire une entrée répondant explicitement aux 4 questions de la
    méta-évaluation :
    1. Le découpage en sprints était-il bon (taille, ordre, dépendances ratées) ?

@@ -10,13 +10,17 @@
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
 | Architecture | 81        | 68                           |
-| Qualité      | 80        | 60                           |
+| Qualité      | 84        | 60                           |
 | FinTech      | 66        | 38                           |
 | Production   | 58        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 3)
-- **Sprint courant** : Sprint 4 — Tests du moteur
-- **État des tests** : 198/198 verts (179 après Sprint 2 + 19 ajoutés au Sprint 3)
+- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 4)
+- **Sprint courant** : Sprint 5 — Durcissement production
+- **État des tests** : 350/350 verts (303 unitaires + 47 intégration). Décompte
+  recalé sur la sortie réelle de `ctest` : le « 198 » documenté à la clôture du
+  Sprint 3 ignorait un lot de couverture des fondations mergé hors cycle (commit
+  `15eb711`, ~144 tests : brokers, PaperBroker, CsvDataFeed, métriques backtest,
+  Logger, indicateurs) — voir D20.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -133,38 +137,59 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   `g++ -fsyntax-only` —, pragma dupliqué AlpacaBroker, D8 sig_atomic_t, D9 alias
   json scoped, D16 getLatestPrice supprimé, includes manquants de Logger.hpp/D17).
 
-## 🟢 SPRINT 4 — Tests du moteur (sprint courant)
+## 🟢 SPRINT 4 — Tests du moteur ✅ (clos le 2026-06-10)
 
-> Pas de dépendance entre les items 15 et 16 ; le golden (item 17) sert de filet
-> global pendant tout le sprint. Compter les cas déjà couverts avant d'écrire :
-> plusieurs scénarios des matrices ci-dessous existent déjà (Sprints 1-2).
+> Pas de dépendance entre les items 15 et 16 ; le golden (item 17) a servi de filet
+> global pendant tout le sprint. Une grande partie des matrices était déjà couverte
+> par le lot de fondations `15eb711` (D20) et les Sprints 1-2 ; ce sprint a comblé
+> les cellules résiduelles et verrouillé les priorités de sortie.
 
-- [ ] **15.** Compléter `tests/unit/test_trading_bot_unit.cpp` (23 tests existants) :
-  matrice complète runOnce × {achat, vente, rejet, feed vide, marché fermé, désync,
-  restart, panne réseau}. Cas manquants identifiés : marché fermé (isMarketOpen=false
-  → aucun appel broker), feed Ok mais vide, ordre CANCELLED, adoption avec avgPrice=0
-  (TradingBot.hpp:239), échec de persistance (saveState_, TradingBot.hpp:253).
-  **Acceptation** : chaque cellule de la matrice a un test nommé d'après le scénario ;
-  198+ verts.
-- [ ] **16.** Compléter `tests/unit/test_risk_manager_unit.cpp` (15 tests existants :
-  sizing) : priorités de sortie de `checkExitConditions` (RiskManager.hpp:62 — SL
-  prioritaire sur TP prioritaire sur trailing, gating minHoldDays, peakPrice=0) et
-  bornes (buyPrice≤0). + créer `tests/unit/test_indicators_unit.cpp` : EMA (seed SMA,
-  série trop courte → vide, Indicators.hpp:18), RSI ∈ [0,100], cas plat 0/0→50
-  (Indicators.hpp:84), CrossoverDetector + warmup (Indicators.hpp:120).
-  **Acceptation** : indicateurs cœur testés directement (plus seulement via
-  SwingStrategy) ; nouveau fichier ajouté à `unit_tests` dans CMakeLists.txt.
+- [x] **15.** `tests/unit/test_trading_bot_unit.cpp` → `ac8196f`
+  Matrice runOnce × {achat, vente, rejet, feed vide, marché fermé, désync, restart,
+  panne réseau} complète. Cellules déjà couvertes (Sprints 1-2 + `15eb711`) : marché
+  fermé (`MarketClosedDoesNothing`), feed Ok vide (`EmptyFeedDoesNothing`), CANCELLED
+  (`CancelledBuyDoesNotEnterPosition`), échec de persistance
+  (`SaveStateFailureDoesNotBlockTrading`). **Cellule ajoutée ce sprint** : adoption
+  avec avgPrice=0 → repli sur le prix courant (`AdoptedPositionWithZeroAvgPriceUsesCurrentPrice`,
+  TradingBot.hpp:249) — sinon buyPrice=0 désactiverait les stops. 28 tests TradingBotUnit.
+- [x] **16.** `tests/unit/test_risk_manager_unit.cpp` → `1a38eca` + indicateurs déjà
+  livrés par `15eb711`.
+  **Volet RiskManager (ajouté ce sprint)** : priorités de sortie de
+  `checkExitConditions` (RiskManager.hpp:62) verrouillées — SL > trailing
+  (`StopLossTakesPriorityOverTrailing`) et TP > trailing
+  (`TakeProfitTakesPriorityOverTrailing`) quand les deux conditions sont vraies ;
+  minHoldDays ne gate que le trailing (`StopLossFiresRegardlessOfMinHoldDays`) ;
+  garde peakPrice>0 (`TrailingSkippedWhenPeakPriceZero`) ; borne buyPrice<0
+  (`NoExitWhenBuyPriceNegative`). 20 tests RiskManagerUnit.
+  **Volet indicateurs (déjà couvert par `15eb711`)** : `test_indicators_unit.cpp`
+  (24 tests) — EMA seed SMA + série trop courte → vide, RSI ∈ [0,100] / plat 0/0→50 /
+  saturations, CrossoverDetector + warmup. Indicateurs testés directement, fichier
+  déjà dans `unit_tests`. Rien à réécrire ; vérifié avant d'agir (consigne du sprint).
 
-## 🔵 SPRINT 5 — Durcissement production
+## 🔵 SPRINT 5 — Durcissement production (sprint courant)
+
+> Sprint orienté FinTech/Production : protections runtime réelles (et non plus
+> seulement testées). Dépendances : l'item 21 touche les deux systèmes de logging
+> (`trading::ILogger` ↔ `DbLogger`) et gagne à passer après l'item 18 (le kill-switch
+> produit des événements à journaliser). L'item 22 (CI) est indépendant et devrait
+> passer en premier : il sécurise tous les autres. Items 18/19 marqués « Décision
+> requise » : seuils chiffrés et politique de stop résident à arbitrer avec l'utilisateur.
 
 - [ ] **18.** Kill-switch dans `IRiskManager` : drawdown journalier max, pertes
-  consécutives max, plafond d'ordres/jour.
+  consécutives max, plafond d'ordres/jour. Étendre l'interface `IRiskManager`
+  (Interfaces.hpp) + `RiskManager` (RiskManager.hpp) ; câbler dans `runOnce`
+  (TradingBot.hpp, avant la branche d'entrée en position). **Décision requise** :
+  valeurs par défaut des trois seuils. **Acceptation** : tests rouges (seuil franchi
+  → aucune entrée, position existante laissée à ses stops) ; golden inchangé.
 - [ ] **19.** Stops côté broker (ordre stop résident) en complément du stop logiciel
   (réduit aussi le risque de double-vente sur ordre PENDING, cf. note item 2 et D14).
-  + D15 : donner un `client_order_id` idempotent aux ordres Alpaca (le retry du
-  HttpClient peut re-poster un POST /v2/orders).
+  + D15 : donner un `client_order_id` idempotent aux ordres Alpaca (AlpacaBroker.hpp —
+  le retry du HttpClient peut re-poster un POST /v2/orders). **Décision requise** :
+  stop résident remplaçant ou doublant le stop logiciel.
 - [ ] **20.** Calendrier de marché : `isUsMarketHours` est en UTC-5 fixe
-  (IBKRDataFeed.hpp:219), faux 8 mois/an (EDT) ; horodatages unifiés en UTC.
+  (IBKRDataFeed.hpp:191, commentaire « EST = UTC-5 » à la ligne 200), faux 8 mois/an
+  (EDT) ; horodatages unifiés en UTC. **Acceptation** : test sur une date d'été (DST)
+  où l'ancien calcul ouvrait/fermait le marché à la mauvaise heure.
 - [ ] **21.** Câbler la persistance des trades en prod : `record_trade`/`close_trade` ne
   sont **jamais appelés** dans `main_ibkr.cpp` (table `trades` vide, dashboard sans
   positions — `botState.positions` jamais alimenté). Unifier les deux systèmes de logging
@@ -198,6 +223,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D17 | ✅ | (Sprint 3) `Logger.hpp` utilisait `std::shared_ptr`/`std::vector` sans inclure `<memory>`/`<vector>` — ne compilait que par inclusion transitive (détecté en compilant le header isolément pour le golden) | Corrigé au Sprint 3 (`356ba90`) |
 | D18 | 🟡 | (Sprint 3) L'ATR de l'item 13 est une **approximation clôture-à-clôture** : `IIndicator<double>` ne reçoit que la série des clôtures, pas les high/low — le vrai true range est inaccessible via cette interface. Décision produit : enrichir l'interface (compute sur `vector<Bar>`) ou assumer l'approximation (documentée dans DayIndicators.hpp) | Backlog (décision produit, requis avant tout usage réel de DayTradeStrategy) |
 | D19 | 🟢 | (Sprint 3) `TradingBot::runOnce` code en dur `getBars(symbol, 60)` (TradingBot.hpp:62) alors que le backtest sert une fenêtre de emaSlow+30=51 barres via ReplayDataFeed — la taille de fenêtre influence le seed SMA des EMA, donc les signaux. Bénin tant que les feeds prod renvoient ≥51 barres, mais un `lookback` configurable (RiskConfig ?) unifierait prod et backtest | Sprint 5 (à câbler avec l'item 20, calendrier/données) |
+| D20 | 🟢 | (Sprint 4) Dérive ROADMAP ↔ dépôt : un lot « couverture des fondations » (commit `15eb711`, +~2528 lignes : brokers IBKR/Alpaca, PaperBroker, CsvDataFeed, métriques backtest, Logger, indicateurs) a été mergé hors du cycle `prompt-executer-sprint`. Le décompte de tests du tableau de bord (198) ne le reflétait pas (réel : 344 avant ce sprint). Aucune perte — la couverture est légitime et verte — mais le tableau de bord a menti pendant un sprint. **Garde-fou ajouté** : `prompt-executer-sprint.md` étape 2 exige désormais de recaler « État des tests » sur la sortie réelle de `ctest -N` et de signaler toute dérive ; `prompt-mise-a-jour-roadmap.md` rappelle d'absorber au changelog tout commit mergé hors cycle. La CI (item 22) reste le vrai remède de fond | Corrigé (workflow amendé ce sprint) |
 
 ## Changelog
 
@@ -287,7 +313,74 @@ implicite depuis SwingConfig → composition roots inchangés) ;
 `TradingBot::setExitObserver` (seam backtest). Dépôt : 346 artefacts CLion et
 QQQv1.csv purgés du cache git ; les 4 mains passent `g++ -fsyntax-only` sur Linux.
 
+### Sprint 4 — Tests du moteur (2026-06-10)
+
+**Contexte** : à l'ouverture du sprint, la baseline réelle était **344/344 verte**
+(et non 198 — D20) : le lot de fondations `15eb711`, mergé hors cycle, avait déjà
+livré `test_indicators_unit.cpp` (le livrable indicateurs de l'item 16) et étoffé
+`test_trading_bot_unit.cpp`. Conformément à la consigne du sprint (« compter les cas
+déjà couverts avant d'écrire »), seules les cellules résiduelles ont été ajoutées.
+
+**Commits** (ordre chronologique) :
+- `ac8196f` test(bot) : adoption d'une position broker sans prix moyen (item 15)
+- `1a38eca` test(risk) : priorités de sortie + bornes de checkExitConditions (item 16)
+
+**Tests** : 344 → **350** (6 ajoutés ce sprint).
+- TradingBotUnit 27 → 28 : `AdoptedPositionWithZeroAvgPriceUsesCurrentPrice` (repli
+  avgPrice=0 → prix courant, sinon stops désactivés).
+- RiskManagerUnit 15 → 20 : `NoExitWhenBuyPriceNegative`,
+  `StopLossTakesPriorityOverTrailing`, `TakeProfitTakesPriorityOverTrailing`,
+  `StopLossFiresRegardlessOfMinHoldDays`, `TrailingSkippedWhenPeakPriceZero`.
+
+**Aucun nouveau fichier, aucune interface modifiée** : sprint 100 % additif sur les
+tests. Golden backtest **inchangé** (toujours +9,6706 %, 7 trades — il fait partie
+des 350). Build propre, 0 warning. Workflow amendé (D20) : `prompt-executer-sprint.md`
+et `prompt-mise-a-jour-roadmap.md` dans le commit de clôture.
+
 ## Rétrospectives
+
+### Sprint 4 — Tests du moteur (2026-06-10)
+
+**1. Découpage** : deux items sans dépendance, ordre 15→16 sans surprise. Le sprint
+s'est révélé bien plus petit que prévu côté livraison — l'essentiel des matrices
+était déjà couvert (Sprints 1-2 + `15eb711`). C'est le bon résultat : la valeur du
+sprint n'était pas d'écrire 50 tests mais de PROUVER que chaque cellule de la matrice
+runOnce et chaque priorité de sortie ont un test nommé, puis de combler les trous
+(adoption avgPrice=0, priorités SL/TP > trailing). Les deux trous comblés étaient des
+angles morts réels : avgPrice=0 désactivait les stops, et aucun test ne verrouillait
+l'ordre des `if` de `checkExitConditions` (un réordonnancement serait passé inaperçu).
+
+**2. Suffisance des prompts** : une vraie dérive (D20). La baseline annoncée par le
+tableau de bord (198) était fausse — le dépôt était à 344. Cause : un PR de couverture
+mergé hors du cycle `prompt-executer-sprint`, jamais absorbé au changelog. Le workflow
+ne s'auto-corrigeait pas sur ce point. **Corrigé dans ce commit** : l'étape 2 de
+`prompt-executer-sprint.md` impose maintenant de recaler « État des tests » sur
+`ctest -N` et de signaler toute dérive ; `prompt-mise-a-jour-roadmap.md` (étape 4)
+rappelle d'absorber au changelog tout commit hors cycle. Le reste du workflow
+(baseline verte → trou → test → commit atomique → DoD) a tenu sans improvisation.
+
+**3. À détecter plus tôt** : (a) la dérive D20 aurait été impossible avec la CI
+(item 22) — un workflow qui publie le décompte de `ctest` à chaque merge rend le
+tableau de bord auto-vérifiable ; c'est désormais l'item d'infrastructure le plus
+rentable et il OUVRE le Sprint 5. (b) Le « test rouge » strict n'était pas applicable
+ici (on verrouille du comportement déjà correct, conforme à l'esprit « idéalement »
+du prompt) : les tests de priorité valent comme garde-fous de non-régression
+(EXPECT que « trailing » n'apparaît PAS quand SL/TP doivent l'emporter), pas comme
+reproduction de bug.
+
+**4. Notes** (précédent 81/80/66/58) :
+- **Architecture 81** (=) : sprint purement additif sur les tests, aucune interface
+  touchée — l'architecture n'a ni progressé ni régressé. Les écarts restants (D18
+  interface indicateurs, D19 lookback, item 21 unification logging) sont au Sprint 5.
+- **Qualité 84** (+4) : la matrice runOnce et les priorités de sortie sont désormais
+  intégralement verrouillées par des tests nommés ; le décompte de tests est recalé
+  sur la réalité (350, fin de la dérive D20). Plafonné par l'absence de CI (22) : tant
+  qu'aucun garde-fou automatique ne tourne à chaque push, la qualité reste déclarative.
+- **FinTech 66** (=) : aucune nouvelle protection runtime — le sprint a sécurisé la
+  CONFIANCE dans le moteur existant (stops, priorités, sizing), pas ajouté de capacité.
+  Le saut FinTech viendra du kill-switch (18) et des stops broker (19) au Sprint 5.
+- **Production 58** (=) : rien de déployé n'a changé. La persistance des trades (21)
+  et la CI (22) restent les deux dettes de production les plus visibles.
 
 ### Sprint 3 — Architecture (2026-06-10)
 

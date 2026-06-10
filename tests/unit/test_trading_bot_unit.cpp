@@ -250,6 +250,22 @@ TEST(TradingBotUnit, RestartAdoptsExistingBrokerPosition) {
     EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 400.0);  // prix moyen broker
 }
 
+// Adoption d'une position dont le broker ne renvoie pas de prix moyen
+// (avgPrice=0, ex. réponse partielle) : le prix courant sert de base de coût
+// (TradingBot.hpp:249). Sinon buyPrice=0 désactiverait silencieusement les
+// stops (checkExitConditions:72 retourne nullopt si buyPrice<=0).
+TEST(TradingBotUnit, AdoptedPositionWithZeroAvgPriceUsesCurrentPrice) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 0.0, 9 * 410.0, 0.0});  // avgPrice=0
+
+    h.bot->runOnce();                            // adoption au prix courant
+
+    EXPECT_TRUE(h.bot->state().inPosition);
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice,  410.0);  // repli sur le prix courant
+    EXPECT_DOUBLE_EQ(h.bot->state().peakPrice, 410.0);
+}
+
 // La position adoptée doit être protégée : le stop-loss redevient actif
 TEST(TradingBotUnit, AdoptedPositionStopLossFires) {
     BotHarness h(410.0, "2024-03-08");
