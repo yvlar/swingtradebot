@@ -1,8 +1,0 @@
-2026-03-10 16:44:09 │ INFO  │ TradingBot initialisé │ Stratégie: SwingStrategy_EMA_RSI
-2026-03-10 16:44:09 │ INFO  │ Démarrage du bot — 1 cycle de test
-2026-03-10 16:44:09 │ INFO  │ 2024-01-40 │ $432 │ 🔴 SELL │ RSI suracheté (100)
-2026-03-10 16:44:09 │ INFO  │ Cycle terminé. État: HORS POSITION
-2026-03-10 17:11:10 │ INFO  │ TradingBot initialisé │ Stratégie: SwingStrategy_EMA_RSI
-2026-03-10 17:11:10 │ INFO  │ Démarrage du bot — 1 cycle de test
-2026-03-10 17:11:10 │ INFO  │ 2024-01-40 │ $432 │ 🔴 SELL │ RSI suracheté (100)
-2026-03-10 17:11:10 │ INFO  │ Cycle terminé. État: HORS POSITION
