@@ -14,9 +14,11 @@ une discipline de production : le sprint se termine compilable, testé, commité
 - Commentaires, logs et documentation **en français**.
 - Code header-only dans `include/` (seul `include/core/ws_server.cpp` est un .cpp partagé).
 - Build : CMake (+ vcpkg dans le conteneur `dev.ps1`, ou paquets système Linux —
-  le CMakeLists gère les deux pour SQLite3). Sur un Linux nu, installer d'abord :
-  `apt-get install libboost-dev libboost-system-dev nlohmann-json3-dev
-  libcurl4-openssl-dev libsqlite3-dev libgtest-dev googletest cmake ninja-build`.
+  le CMakeLists gère les deux pour SQLite3). Sur un Linux nu, installer d'abord
+  (l'`update` est obligatoire : un index apt périmé donne des 404 — leçon Sprint 3) :
+  `apt-get update && apt-get install libboost-dev libboost-system-dev
+  nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libgtest-dev googletest
+  cmake ninja-build`.
 - Tests : GTest via `ctest` ; suites `<Component>Unit` / `<Component>Integration`,
   un fichier par composant dans `tests/unit/` / `tests/integration/` ; chaque nouveau
   fichier de test doit être ajouté aux cibles `unit_tests` / `integration_tests` du

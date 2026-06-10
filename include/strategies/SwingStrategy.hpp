@@ -20,6 +20,20 @@ namespace trading {
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
+
+        // Conversion vers la config de risque du bot (item 12) : les composition
+        // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
+        // ne dépende de la stratégie
+        operator RiskConfig() const {
+            RiskConfig r;
+            r.symbol          = symbol;
+            r.stopLossPct     = stopLossPct;
+            r.takeProfitPct   = takeProfitPct;
+            r.trailingStopPct = trailingStopPct;
+            r.riskPerTradePct = riskPerTradePct;
+            r.minHoldDays     = minHoldDays;
+            return r;
+        }
     };
 
 // ─── SwingStrategy ────────────────────────────────────────────────────────────

@@ -31,8 +31,8 @@
 #include <string>
 #include <stdexcept>
 
-static volatile bool g_running = true;
-void on_signal(int) { g_running = false; }
+static volatile std::sig_atomic_t g_running = 1; // type sûr en handler de signal (D8)
+void on_signal(int) { g_running = 0; }
 
 // ── Parse argument ligne de commande ─────────────────────────
 static std::string getArg(int argc, char* argv[],

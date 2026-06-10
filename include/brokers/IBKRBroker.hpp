@@ -16,9 +16,10 @@
 #include <sstream>
 #include <ctime>
 
-using json = nlohmann::json;
-
 namespace trading {
+
+// Alias local au namespace (pas de pollution du scope global — D9)
+using json = nlohmann::json;
 
 class IBKRBroker : public IBroker {   // non-final : les tests substituent request()
 public:

@@ -1,3 +1,0 @@
-C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/CMakeFiles/googletest-populate.dir
-C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/CMakeFiles/edit_cache.dir
-C:/Users/ivess/OneDrive/Documents/Trading/Bot/swing_bot/cmake-build-debug/_deps/googletest-subbuild/CMakeFiles/rebuild_cache.dir

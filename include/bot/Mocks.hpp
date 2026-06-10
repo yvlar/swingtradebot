@@ -13,23 +13,15 @@ class MockDataFeed final : public IDataFeed {
 public:
     // Configure les barres à retourner
     void setBars(std::vector<Bar> bars) { bars_ = std::move(bars); }
-    void setLatestPrice(double p)       { latestPrice_ = p; }
     void setMarketOpen(bool open)       { marketOpen_ = open; }
-    // Simule une panne réseau du feed (item 10) : getBars/getLatestPrice
-    // retournent Err au lieu d'une réponse
+    // Simule une panne réseau du feed (item 10) : getBars retourne Err
+    // au lieu d'une réponse
     void setFeedDown(std::string error) { feedError_ = std::move(error); }
     void setFeedUp()                    { feedError_.reset(); }
 
     Result<std::vector<Bar>> getBars(const std::string&, int) override {
         if (feedError_) return Result<std::vector<Bar>>::Err(*feedError_);
         return Result<std::vector<Bar>>::Ok(bars_);
-    }
-
-    Result<std::optional<double>> getLatestPrice(const std::string&) override {
-        using R = Result<std::optional<double>>;
-        if (feedError_) return R::Err(*feedError_);
-        if (latestPrice_ > 0) return R::Ok(latestPrice_);
-        return R::Ok(std::nullopt);
     }
 
     bool isMarketOpen() override { return marketOpen_; }
@@ -71,7 +63,6 @@ public:
 
 private:
     std::vector<Bar>           bars_;
-    double                     latestPrice_ = 0.0;
     bool                       marketOpen_  = true;
     std::optional<std::string> feedError_;
 

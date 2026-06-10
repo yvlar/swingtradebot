@@ -6,6 +6,8 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <memory>
+#include <vector>
 
 namespace trading {
 

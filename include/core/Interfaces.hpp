@@ -34,10 +34,6 @@ public:
         int                days
     ) = 0;
 
-    // Prix actuel en temps réel
-    // Ok(nullopt) = pas de prix disponible ; Err = panne
-    virtual Result<std::optional<double>> getLatestPrice(const std::string& symbol) = 0;
-
     // Vérifie si le marché est ouvert
     virtual bool isMarketOpen() = 0;
 };

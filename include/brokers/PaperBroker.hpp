@@ -81,7 +81,9 @@ public:
         trade.buyPrice   = position_->avgPrice;
         trade.sellPrice  = price;
         trade.shares     = qty;
-        trade.pnl        = (price - position_->avgPrice) * qty;
+        // P&L net de la commission de vente (cohérent avec le débit du cash)
+        trade.pnl        = (price - position_->avgPrice) * qty
+                           - price * qty * commissionPct_;
         trade.pnlPct     = (price - position_->avgPrice) / position_->avgPrice * 100.0;
         trade.holdDays   = holdDays_;
         trade.exitReason = lastExitReason_;

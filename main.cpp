@@ -1,4 +1,4 @@
-#include "backtest/Backtester.hpp"
+#include "backtest/BackTester.hpp"
 #include "bot/Logger.hpp"
 #include "strategies/SwingStrategy.hpp"
 #include <iostream>

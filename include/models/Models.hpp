@@ -64,6 +64,19 @@ struct Account {
     std::string status;
 };
 
+// ─── RiskConfig — paramètres de risque et d'orchestration du bot ─────────────
+// Découplé de la stratégie (item 12) : TradingBot n'a besoin que du symbole et
+// des règles de gestion du risque — les paramètres d'indicateurs (EMA, RSI…)
+// restent dans la config de la stratégie concernée.
+struct RiskConfig {
+    std::string symbol     = "QQQ";
+    double stopLossPct     = 0.05;  // -5%
+    double takeProfitPct   = 0.10;  // +10%
+    double trailingStopPct = 0.03;  // -3% depuis le pic
+    double riskPerTradePct = 0.02;  // risque 2% du capital par trade
+    int    minHoldDays     = 3;
+};
+
 // ─── BotState — état de position du bot ──────────────────────────────────────
 // Persisté via IStateStore pour survivre aux redémarrages (sinon une position
 // ouverte deviendrait orpheline : plus de stop-loss, plus de suivi).

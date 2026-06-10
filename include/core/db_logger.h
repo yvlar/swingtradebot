@@ -123,7 +123,7 @@ public:
         sqlite3_stmt* stmt = prepare_(sql);
         if (!stmt) return "[]";
         sqlite3_bind_int(stmt, 1, limit);
-        json arr = json::array();
+        nlohmann::json arr = nlohmann::json::array();
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             arr.push_back({
                 {"ts",     (const char*)sqlite3_column_text(stmt, 0)},
@@ -146,7 +146,7 @@ public:
         sqlite3_stmt* stmt = prepare_(sql);
         if (!stmt) return "[]";
         sqlite3_bind_int(stmt, 1, limit);
-        json arr = json::array();
+        nlohmann::json arr = nlohmann::json::array();
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             auto col_str = [&](int i) -> std::string {
                 auto p = sqlite3_column_text(stmt, i);

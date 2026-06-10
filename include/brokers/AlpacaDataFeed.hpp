@@ -19,9 +19,10 @@
 #include <iomanip>
 #include <chrono>
 
-using json = nlohmann::json;
-
 namespace trading {
+
+// Alias local au namespace (pas de pollution du scope global — D9)
+using json = nlohmann::json;
 
 class AlpacaDataFeed final : public IDataFeed {
 public:
@@ -79,24 +80,6 @@ public:
             return R::Ok(std::move(bars));
         } catch (const std::exception& e) {
             return R::Err(std::string("Alpaca getBars: ") + e.what());
-        }
-    }
-
-    // Prix en temps quasi-réel (dernière transaction)
-    // Ok(nullopt) = réponse sans prix exploitable ; Err = panne (item 10)
-    Result<std::optional<double>> getLatestPrice(const std::string& symbol) override {
-        using R = Result<std::optional<double>>;
-        std::string url = baseDataUrl_
-            + "/v2/stocks/" + symbol + "/trades/latest"
-            + "?feed=iex";
-        try {
-            auto resp = get(url);
-            auto j    = json::parse(resp);
-            double p  = j["trade"].value("p", 0.0);
-            if (p > 0) return R::Ok(p);
-            return R::Ok(std::nullopt);
-        } catch (const std::exception& e) {
-            return R::Err(std::string("Alpaca getLatestPrice: ") + e.what());
         }
     }
 

@@ -32,8 +32,8 @@
 #include <string>
 
 // ─── Globals ──────────────────────────────────────────────
-static volatile bool g_running = true;
-void on_signal(int) { g_running = false; }
+static volatile std::sig_atomic_t g_running = 1; // type sûr en handler de signal (D8)
+void on_signal(int) { g_running = 0; }
 
 // ─── Lecture des variables d'environnement ────────────────
 static std::string getEnv(const std::string& key, const std::string& def = "") {

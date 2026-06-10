@@ -4,6 +4,8 @@
 #include "bot/Logger.hpp"
 #include "strategies/SwingStrategy.hpp"
 #include "bot/RiskManager.hpp"
+#include "bot/TradingBot.hpp"
+#include <memory>
 #include <numeric>
 #include <cmath>
 #include <algorithm>
@@ -12,6 +14,33 @@
 #include <sstream>
 
 namespace trading {
+
+// ─── ReplayDataFeed ───────────────────────────────────────────────────────────
+// Rejoue un CsvDataFeed barre par barre pour le Backtester : le curseur fixe
+// la « dernière barre connue » et getBars sert la fenêtre glissante que verrait
+// le bot en production. La fenêtre est bornée par `lookback` (emaSlow + 30,
+// l'historique du backtest d'origine) pour que les EMA — seedées par SMA en
+// début de fenêtre — restent identiques aux valeurs golden (item 17).
+class ReplayDataFeed final : public IDataFeed {
+public:
+    ReplayDataFeed(std::shared_ptr<CsvDataFeed> csv, int lookback)
+        : csv_(std::move(csv)), lookback_(lookback) {}
+
+    void setCursor(size_t index) { cursor_ = index; }
+
+    Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {
+        return Result<std::vector<Bar>>::Ok(
+            csv_->getBarsUpTo(cursor_, std::min(days, lookback_)));
+    }
+
+    // En backtest, le marché est toujours « ouvert »
+    bool isMarketOpen() override { return true; }
+
+private:
+    std::shared_ptr<CsvDataFeed> csv_;
+    size_t cursor_   = 0;
+    int    lookback_;
+};
 
 // ─── BacktestResult ───────────────────────────────────────────────────────────
 struct BacktestResult {
@@ -57,141 +86,52 @@ public:
     {}
 
     // ── Exécution ─────────────────────────────────────────────────────────────
+    // Le backtest fait tourner le VRAI code de production (item 11) :
+    // TradingBot::runOnce + PaperBroker + RiskManager. Plus aucune logique de
+    // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
     BacktestResult run() {
-        auto feed = std::make_shared<CsvDataFeed>(csvPath_);
-        const auto& allBars = feed->allBars();
+        auto csv = std::make_shared<CsvDataFeed>(csvPath_);
+        const auto& allBars = csv->allBars();
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
-        // État du portefeuille
-        double cash       = initialCapital_;
-        int    shares     = 0;
-        double buyPrice   = 0.0;
-        double peakPrice  = 0.0;
-        int    holdDays   = 0;
-        bool   inPos      = false;
-        std::string buyDate;
+        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
+        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_);
+        auto logger = std::make_shared<NullLogger>();
 
-        std::vector<TradeRecord>  trades;
-        std::vector<double>       equityCurve;
-        std::vector<std::string>  equityDates;
+        // Une seule instance de stratégie pour tout le backtest (D6 : elle était
+        // recréée à chaque barre) — evaluate() est sans état, même résultat
+        std::shared_ptr<IStrategy> strategy = SwingStrategy::create(config_);
 
-        RiskManager rm;
+        TradingBot bot(feed, broker, strategy,
+                       std::make_shared<RiskManager>(), logger);
+        bot.setConfig(config_);
+        // La raison de sortie du bot alimente le TradeRecord du broker simulé
+        bot.setExitObserver([&broker](const std::string& reason) {
+            broker->setLastExitReason(reason);
+        });
 
         for (size_t i = 0; i < allBars.size(); ++i) {
             const Bar& bar = allBars[i];
-            double price   = bar.close;
+            broker->setCurrentPrice(bar.close);
+            broker->setCurrentDate(bar.date);
 
-            // Valeur du portefeuille ce jour
-            equityCurve.push_back(cash + shares * price);
-            equityDates.push_back(bar.date);
+            // Valeur du portefeuille ce jour (avant les trades de la barre)
+            broker->equitySnapshot(broker->portfolioValue(), bar.date);
 
+            // Pendant le warmup des indicateurs, on n'ouvre aucune position
             if (static_cast<int>(i) < warmup) continue;
 
-            // Mise à jour du pic si en position
-            if (inPos) {
-                if (price > peakPrice) peakPrice = price;
-                holdDays++;
-            }
-
-            // ── Vérification des sorties ──────────────────────────────────────
-            if (inPos && shares > 0) {
-                double pnlPct    = (price - buyPrice) / buyPrice;
-                double drawdown  = (price - peakPrice) / peakPrice;
-
-                std::string exitReason;
-                if (pnlPct <= -config_.stopLossPct)
-                    exitReason = "stop-loss";
-                else if (pnlPct >= config_.takeProfitPct)
-                    exitReason = "take-profit";
-                else if (holdDays >= config_.minHoldDays && drawdown <= -config_.trailingStopPct)
-                    exitReason = "trailing-stop";
-
-                // Signal de vente (EMA cross ou RSI)
-                if (exitReason.empty() && holdDays >= config_.minHoldDays) {
-                    auto window = feed->getBarsUpTo(i, config_.emaSlow + 30);
-                    auto strat  = SwingStrategy::create(config_);
-                    Signal sig  = strat->evaluate(window);
-                    if (sig.isSell()) exitReason = "signal";
-                }
-
-                if (!exitReason.empty()) {
-                    // ── Vente : calcul propre du cash ─────────────────────────
-                    double proceeds = shares * price * (1.0 - commissionPct_);
-                    cash += proceeds;
-
-                    TradeRecord t;
-                    t.buyDate    = buyDate;
-                    t.sellDate   = bar.date;
-                    t.buyPrice   = buyPrice;
-                    t.sellPrice  = price;
-                    t.shares     = shares;
-                    t.pnl        = (price - buyPrice) * shares - (shares * price * commissionPct_);
-                    t.pnlPct     = pnlPct * 100.0;
-                    t.holdDays   = holdDays;
-                    t.exitReason = exitReason;
-                    t.isWin      = t.pnl > 0;
-                    trades.push_back(t);
-
-                    shares    = 0;
-                    inPos     = false;
-                    holdDays  = 0;
-                    buyPrice  = 0.0;
-                    peakPrice = 0.0;
-                }
-            }
-
-            // ── Entrée en position ────────────────────────────────────────────
-            if (!inPos && cash > price) {
-                auto window = feed->getBarsUpTo(i, config_.emaSlow + 30);
-                auto strat  = SwingStrategy::create(config_);
-                Signal sig  = strat->evaluate(window);
-
-                if (sig.isBuy()) {
-                    // Calcul du sizing basé sur le risque
-                    double riskDollar  = cash * config_.riskPerTradePct;
-                    double riskPerSh   = price * config_.stopLossPct;
-                    int    qty         = std::max(1, static_cast<int>(riskDollar / riskPerSh));
-
-                    // Ne pas dépasser 95% du cash disponible
-                    double maxQty = static_cast<int>((cash * 0.95) / (price * (1.0 + commissionPct_)));
-                    qty = std::min(qty, static_cast<int>(maxQty));
-
-                    if (qty > 0) {
-                        double cost = qty * price * (1.0 + commissionPct_);
-                        // ── Achat : débit du cash ─────────────────────────────
-                        cash     -= cost;
-                        shares    = qty;
-                        buyPrice  = price;
-                        peakPrice = price;
-                        holdDays  = 0;
-                        inPos     = true;
-                        buyDate   = bar.date;
-                    }
-                }
-            }
+            broker->incrementHoldDays();
+            feed->setCursor(i);
+            bot.runOnce();
         }
 
-        // ── Clôture de la position ouverte en fin de backtest ─────────────────
-        if (inPos && shares > 0) {
-            double price    = allBars.back().close;
-            double proceeds = shares * price * (1.0 - commissionPct_);
-            cash += proceeds;
+        // Clôture de la position ouverte en fin de backtest
+        broker->closeOpenPosition();
 
-            TradeRecord t;
-            t.buyDate    = buyDate;
-            t.sellDate   = allBars.back().date;
-            t.buyPrice   = buyPrice;
-            t.sellPrice  = price;
-            t.shares     = shares;
-            t.pnl        = (price - buyPrice) * shares;
-            t.pnlPct     = (price - buyPrice) / buyPrice * 100.0;
-            t.holdDays   = holdDays;
-            t.exitReason = "fin-backtest";
-            t.isWin      = t.pnl > 0;
-            trades.push_back(t);
-        }
-
-        return computeMetrics(cash, allBars, equityCurve, equityDates, trades, warmup);
+        return computeMetrics(broker->cash(), allBars,
+                              broker->equityCurve(), broker->equityDates(),
+                              broker->trades(), warmup);
     }
 
     // ── Rapport console ───────────────────────────────────────────────────────

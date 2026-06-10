@@ -10,16 +10,16 @@
 //
 //  Docs API : https://docs.alpaca.markets/reference/postorder
 // ============================================================
-#pragma once
 #include "core/Interfaces.hpp"
 #include "core/HttpClient.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
 
-using json = nlohmann::json;
-
 namespace trading {
+
+// Alias local au namespace (pas de pollution du scope global — D9)
+using json = nlohmann::json;
 
 class AlpacaBroker final : public IBroker {
 public:

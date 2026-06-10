@@ -9,14 +9,14 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 74        | 68                           |
-| Qualité      | 76        | 60                           |
-| FinTech      | 63        | 38                           |
-| Production   | 55        | 35                           |
+| Architecture | 81        | 68                           |
+| Qualité      | 80        | 60                           |
+| FinTech      | 66        | 38                           |
+| Production   | 58        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 2)
-- **Sprint courant** : Sprint 3 — Architecture (+ item 17 remonté du Sprint 4)
-- **État des tests** : 179/179 verts (155 après Sprint 1 + 24 ajoutés au Sprint 2)
+- **Dernière mise à jour** : 2026-06-10 (clôture Sprint 3)
+- **Sprint courant** : Sprint 4 — Tests du moteur
+- **État des tests** : 198/198 verts (179 après Sprint 2 + 19 ajoutés au Sprint 3)
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -105,51 +105,55 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   `Session::send` poste sur l'executor ; deque → une seule async_write en vol.
   Test rouge RapidBroadcastsAllDeliveredInOrder (abortait : assertion Beast).
 
-## 🟡 SPRINT 3 — Architecture (sprint courant)
+## 🟡 SPRINT 3 — Architecture ✅ (clos le 2026-06-10)
 
-> **Ordre imposé** : l'item 17 (remonté du Sprint 4) se fait AVANT l'item 11 —
-> le refactor du backtester doit être validé par le golden. L'item 13 attend la
-> **décision utilisateur** ; s'il n'y a pas de réponse au moment de l'exécution,
-> le sauter et le reporter.
+- [x] **17.** Golden backtest → `f527318`
+  `BacktesterIntegration` (2 tests) : `Backtester::run()` sur `QQQ.csv`, SwingConfig
+  par défaut, 10 000 $, commission 0,1 %. Valeurs figées : retour total +9,67 %,
+  7 trades (4G/3P, 0 SL / 1 TP / 1 trailing / 5 signal), max DD 2,03 %, Sharpe 0,623,
+  1er achat 2020-10-29, dernière vente 2026-02-12, 1858 points d'équité. Chemin CSV
+  injecté par CMake (`SWINGBOT_QQQ_CSV`).
+- [x] **11.** Le backtest exécute le vrai moteur de prod → `66e84d8`
+  `Backtester::run()` pilote `TradingBot::runOnce` + `PaperBroker` + `RiskManager`
+  via un `ReplayDataFeed` (curseur, fenêtre bornée à emaSlow+30 pour préserver le
+  seed SMA des EMA). Logique dupliquée supprimée ; D6 réglé (une seule instance de
+  stratégie) ; seam `setExitObserver` ; P&L PaperBroker net de la commission de
+  vente. **Golden inchangé au centime** avant/après le refactor.
+- [x] **12.** TradingBot découplé de la stratégie → `bb3cc03`
+  `RiskConfig` (models/Models.hpp) ; conversion implicite depuis `SwingConfig` ;
+  TradingBot.hpp n'inclut plus ni strategies/ ni les implémentations concrètes
+  (RiskManager, Logger) — interfaces uniquement.
+- [x] **13.** Indicateurs day trading créés → `6dd4d4e`
+  `indicators/DayIndicators.hpp` : ATR (approximation clôture-à-clôture, lissage
+  Wilder — voir D18), VWAP (cumulatif par session, pondéré volume), VolumeOscillator
+  (ratio sur moyenne des volumes précédents). 17 tests (`DayIndicatorsUnit`,
+  `DayTradeStrategyUnit`) ; DayTradeStrategy compile et est incluse par un TU de test.
+- [x] **14.** Hygiène → `8fda1c8` (purge git : 346 fichiers cmake-build-debug/.idea
+  + QQQv1.csv) et `356ba90` (casse de main.cpp — les 4 mains passent
+  `g++ -fsyntax-only` —, pragma dupliqué AlpacaBroker, D8 sig_atomic_t, D9 alias
+  json scoped, D16 getLatestPrice supprimé, includes manquants de Logger.hpp/D17).
 
-- [ ] **17.** (remonté du Sprint 4 — dépendance de l'item 11) Test de non-régression
-  du backtest : valeurs golden figées sur `QQQ.csv` (total return, nb trades, max DD)
-  pour détecter toute dérive. **Acceptation** : test d'intégration qui exécute
-  `Backtester::run()` sur `QQQ.csv` et compare aux valeurs figées (tolérance
-  serrée) ; valeurs consignées dans le changelog.
+## 🟢 SPRINT 4 — Tests du moteur (sprint courant)
 
-- [ ] **11.** Le backtest ne teste pas le code de prod : `Backtester::run()` réimplémente
-  sorties + sizing inline (BackTester.hpp:60-195 ; le `RiskManager rm` ligne 78 n'est
-  jamais utilisé) → faire tourner le backtest sur `TradingBot::runOnce` + `PaperBroker` +
-  `RiskManager` réels, supprimer la logique dupliquée (+ D6 : stratégie recréée à chaque
-  barre). **Dépendance** : item 17 d'abord (golden vert avant ET après le refactor).
-- [ ] **12.** Découpler `TradingBot` de `SwingConfig` (TradingBot.hpp:3 inclut la
-  stratégie concrète juste pour sa config) → extraire un `RiskConfig` injecté dans le
-  bot ; les paramètres stratégie restent dans la stratégie.
-  **Acceptation** : TradingBot.hpp n'inclut plus strategies/ ; tests verts inchangés.
-- [ ] **13.** `DayTradeStrategy.hpp:4` inclut `indicators/DayIndicators.hpp` **qui
-  n'existe pas** (ATR, VWAP, VolumeOscillator manquants — le fichier ne compile que parce
-  que rien ne l'inclut). **Décision utilisateur (clôture Sprint 2) : CRÉER les
-  indicateurs** — implémenter ATR, VWAP, VolumeOscillator (IIndicator<T>, tests
-  dans `test_indicators_unit.cpp` ou fichier dédié) et rendre DayTradeStrategy
-  compilable (inclus par au moins un TU de test pour ne plus jamais casser en
-  silence).
-- [ ] **14.** Hygiène : `main.cpp:1` inclut `"backtest/Backtester.hpp"` vs fichier réel
-  `BackTester.hpp` (casse Linux — reconfirmé au Sprint 2 par `g++ -fsyntax-only`) ;
-  `cmake-build-debug/` et `.idea/` encore commités (le `.gitignore` corrigé au Sprint 1
-  n'efface pas l'historique du cache git) ; double `#pragma once` dans
-  AlpacaBroker.hpp:1,13 ; `QQQv1.csv` non référencé (D12) ; D8 (`volatile bool
-  g_running`, main_ibkr.cpp:34) ; D9 (`using json` global, bot_state.h:18) ;
-  D16 (`getLatestPrice` sans consommateur).
+> Pas de dépendance entre les items 15 et 16 ; le golden (item 17) sert de filet
+> global pendant tout le sprint. Compter les cas déjà couverts avant d'écrire :
+> plusieurs scénarios des matrices ci-dessous existent déjà (Sprints 1-2).
 
-## 🟢 SPRINT 4 — Tests du moteur
-
-- [ ] **15.** Compléter `test_trading_bot_unit.cpp` (démarré aux Sprints 1-2) : matrice
-  complète runOnce × {achat, vente, rejet, feed vide, marché fermé, désync, restart,
-  panne réseau}.
-- [ ] **16.** Compléter `test_risk_manager_unit.cpp` (démarré au Sprint 1 : sizing) :
-  priorités de sortie, bornes. + `test_indicators_unit.cpp` : EMA (seed SMA),
-  RSI ∈ [0,100], cas plat 0/0→50, CrossoverDetector + warmup.
+- [ ] **15.** Compléter `tests/unit/test_trading_bot_unit.cpp` (23 tests existants) :
+  matrice complète runOnce × {achat, vente, rejet, feed vide, marché fermé, désync,
+  restart, panne réseau}. Cas manquants identifiés : marché fermé (isMarketOpen=false
+  → aucun appel broker), feed Ok mais vide, ordre CANCELLED, adoption avec avgPrice=0
+  (TradingBot.hpp:239), échec de persistance (saveState_, TradingBot.hpp:253).
+  **Acceptation** : chaque cellule de la matrice a un test nommé d'après le scénario ;
+  198+ verts.
+- [ ] **16.** Compléter `tests/unit/test_risk_manager_unit.cpp` (15 tests existants :
+  sizing) : priorités de sortie de `checkExitConditions` (RiskManager.hpp:62 — SL
+  prioritaire sur TP prioritaire sur trailing, gating minHoldDays, peakPrice=0) et
+  bornes (buyPrice≤0). + créer `tests/unit/test_indicators_unit.cpp` : EMA (seed SMA,
+  série trop courte → vide, Indicators.hpp:18), RSI ∈ [0,100], cas plat 0/0→50
+  (Indicators.hpp:84), CrossoverDetector + warmup (Indicators.hpp:120).
+  **Acceptation** : indicateurs cœur testés directement (plus seulement via
+  SwingStrategy) ; nouveau fichier ajouté à `unit_tests` dans CMakeLists.txt.
 
 ## 🔵 SPRINT 5 — Durcissement production
 
@@ -190,7 +194,10 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D13 | ✅ | (Sprint 1) Le `gitignore` sans point a fait committer `build/` par accident pendant le sprint (commit amendé) — preuve vivante de l'item 14 | Corrigé (`52f9c95`) |
 | D14 | 🟡 | (Sprint 1) Risque résiduel : vente PENDING avec position encore visible au cycle suivant → re-tentative de vente possible. Mitigé par le cOID horaire (1 ordre/side/heure) ; les stops côté broker (item 19) réduiront encore ce risque | Sprint 5 (item 19, noté) |
 | D15 | 🟠 | (Sprint 2) Le retry du HttpClient (item 8) peut re-poster un ordre déjà reçu par le serveur. IBKR est protégé par le cOID idempotent (Sprint 1, item 4) ; **AlpacaBroker n'envoie aucun `client_order_id`** → double-ordre possible sur retry. Sans impact sur la cible compilée (main_ibkr), mais à corriger avant tout usage Alpaca | Sprint 5 (item 19) |
-| D16 | 🟢 | (Sprint 2) `IDataFeed::getLatestPrice` n'a aucun consommateur (aucun appel hors implémentations) — converti à `Result` par cohérence, mais c'est une méthode d'interface morte : la supprimer ou la consommer | Sprint 3 (item 14) |
+| D16 | ✅ | (Sprint 2) `IDataFeed::getLatestPrice` n'a aucun consommateur (aucun appel hors implémentations) — converti à `Result` par cohérence, mais c'est une méthode d'interface morte : la supprimer ou la consommer | Corrigé au Sprint 3 (`356ba90` — supprimée, 5 implémentations retirées) |
+| D17 | ✅ | (Sprint 3) `Logger.hpp` utilisait `std::shared_ptr`/`std::vector` sans inclure `<memory>`/`<vector>` — ne compilait que par inclusion transitive (détecté en compilant le header isolément pour le golden) | Corrigé au Sprint 3 (`356ba90`) |
+| D18 | 🟡 | (Sprint 3) L'ATR de l'item 13 est une **approximation clôture-à-clôture** : `IIndicator<double>` ne reçoit que la série des clôtures, pas les high/low — le vrai true range est inaccessible via cette interface. Décision produit : enrichir l'interface (compute sur `vector<Bar>`) ou assumer l'approximation (documentée dans DayIndicators.hpp) | Backlog (décision produit, requis avant tout usage réel de DayTradeStrategy) |
+| D19 | 🟢 | (Sprint 3) `TradingBot::runOnce` code en dur `getBars(symbol, 60)` (TradingBot.hpp:62) alors que le backtest sert une fenêtre de emaSlow+30=51 barres via ReplayDataFeed — la taille de fenêtre influence le seed SMA des EMA, donc les signaux. Bénin tant que les feeds prod renvoient ≥51 barres, mais un `lookback` configurable (RiskConfig ?) unifierait prod et backtest | Sprint 5 (à câbler avec l'item 20, calendrier/données) |
 
 ## Changelog
 
@@ -253,7 +260,79 @@ Les composition roots non compilés (main_alpaca, main_v2) restent compatibles
 Linux/paquets système (fallback D11 validé de bout en bout) ; pas de golden encore
 (item 17, remonté en tête du Sprint 3).
 
+### Sprint 3 — Architecture (2026-06-10)
+
+**Commits** (ordre chronologique) :
+- `f527318` test(backtest) : golden de non-régression sur QQQ.csv (item 17)
+- `66e84d8` refactor(backtest) : le backtest exécute le vrai moteur de prod (item 11)
+- `bb3cc03` refactor(bot) : découple TradingBot de la stratégie via RiskConfig (item 12)
+- `6dd4d4e` feat(indicators) : ATR, VWAP, VolumeOscillator (item 13)
+- `8fda1c8` chore : purge du cache git — cmake-build-debug/, .idea/, QQQv1.csv (item 14)
+- `356ba90` fix : hygiène du code — casse, pragma, json, sig_atomic_t, interface morte (item 14)
+
+**Tests** : 179 → 198 (19 ajoutés). Nouvelles suites : `BacktesterIntegration` (2,
+golden), `DayIndicatorsUnit` (13), `DayTradeStrategyUnit` (4).
+
+**Valeurs golden figées** (QQQ.csv, SwingConfig défaut, 10 000 $, comm. 0,1 %) :
+retour total **+9,6706 %**, capital final **10 967,06 $**, buy & hold +238,55 %,
+max DD **2,0262 %**, Sharpe **0,6229**, **7 trades** (4 gagnants / 3 perdants ;
+0 stop-loss, 1 take-profit, 1 trailing, 5 signal), 1858 points d'équité.
+Inchangées après le refactor de l'item 11 (c'était le critère).
+
+**Nouveaux fichiers** : `include/indicators/DayIndicators.hpp`,
+`tests/integration/test_backtester_integration.cpp`, 2 fichiers de tests unitaires.
+**Interfaces modifiées** : `IDataFeed::getLatestPrice` supprimée (D16) ;
+`RiskConfig` ajouté (Models.hpp) ; `TradingBot::setConfig(RiskConfig)` (conversion
+implicite depuis SwingConfig → composition roots inchangés) ;
+`TradingBot::setExitObserver` (seam backtest). Dépôt : 346 artefacts CLion et
+QQQv1.csv purgés du cache git ; les 4 mains passent `g++ -fsyntax-only` sur Linux.
+
 ## Rétrospectives
+
+### Sprint 3 — Architecture (2026-06-10)
+
+**1. Découpage** : l'ordre imposé 17→11 était la bonne décision du Sprint 2 — le
+golden a servi de harnais pendant le refactor le plus risqué du projet (réécriture
+complète de `Backtester::run()`) et a permis de PROUVER l'équivalence (mêmes 7
+trades au centime près). L'analyse de parité préalable (fenêtre EMA de 51 barres,
+commission dans le P&L, re-entrée même barre) a évité deux pièges qui auraient
+cassé le golden silencieusement s'il n'avait pas existé. Items 12/13/14 sans
+surprise ; l'item 13 ne s'est pas bloqué car la décision utilisateur avait été
+demandée à la clôture du Sprint 2 — anticiper les décisions d'un sprint sur
+l'autre fonctionne.
+
+**2. Suffisance des prompts** : une improvisation d'infrastructure — l'index apt
+du conteneur était périmé (404 sur libcurl4-openssl-dev), il a fallu
+`apt-get update` avant l'installation. Corrigé dans ce commit :
+`prompt-executer-sprint.md` préfixe la liste apt par `apt-get update`. Le reste du
+workflow s'est déroulé sans ambiguïté ; le « test rouge » de l'item 13 était une
+erreur de compilation (header inexistant), conforme à l'esprit du prompt.
+
+**3. À détecter plus tôt** : (a) D17 (includes manquants de Logger.hpp) ne s'est
+révélé qu'en compilant un header isolément — un check « chaque header compile
+seul » (TU par header ou include-what-you-use) dans la CI (item 22) l'attraperait
+systématiquement ; en attendant, les nouveaux TU de test (item 13) jouent ce rôle
+pour DayTradeStrategy. (b) D18 (ATR dégradé faute de high/low dans l'interface)
+aurait dû être identifié À LA CONCEPTION de l'interface IIndicator — consigné
+comme décision produit AVANT tout usage réel de DayTradeStrategy. (c) La CI
+(item 22) reste le garde-fou le moins cher non installé — c'est maintenant le
+SEUL item d'infrastructure restant.
+
+**4. Notes** (précédent 74/76/63/55) :
+- **Architecture 81** (+7) : les deux gros écarts du backlog sont fermés — le
+  backtest exécute le moteur réel (item 11) et TradingBot ne dépend plus que des
+  interfaces (item 12) ; une interface morte supprimée (D16). Reste : D18
+  (interface indicateurs), lookback codé en dur (D19), unification logging (21).
+- **Qualité 80** (+4) : golden de non-régression en place (le filet le plus
+  rentable du projet), +19 tests, DayTradeStrategy ne peut plus casser en silence,
+  4/4 mains compilables. Manquent : matrices item 15/16, CI.
+- **FinTech 66** (+3) : le rapport de backtest reflète désormais EXACTEMENT le
+  comportement du moteur qui tradera (plus de divergence sizing/sorties) — la
+  confiance dans les chiffres du backtest est une exigence FinTech de base.
+  Aucune nouvelle protection runtime (kill-switch 18, stops broker 19 : Sprint 5).
+- **Production 58** (+3) : dépôt assaini (346 artefacts purgés), handlers de
+  signaux conformes (D8), plus de pollution d'alias global (D9). Manquent
+  toujours : CI (22), persistance des trades en prod (21), calendrier (20).
 
 ### Sprint 2 — Fiabilité / concurrence (2026-06-10)
 

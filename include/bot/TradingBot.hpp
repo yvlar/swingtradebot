@@ -1,13 +1,11 @@
 #pragma once
 #include "core/Interfaces.hpp"
-#include "strategies/SwingStrategy.hpp"
-#include "bot/RiskManager.hpp"
-#include "bot/Logger.hpp"
 #include <memory>
 #include <thread>
 #include <atomic>
 #include <chrono>
 #include <algorithm>
+#include <functional>
 
 namespace trading {
 
@@ -43,7 +41,7 @@ public:
         if (!stateLoaded_) {
             stateLoaded_ = true;
             if (stateStore_) {
-                if (auto persisted = stateStore_->load(swingCfg_.symbol)) {
+                if (auto persisted = stateStore_->load(riskCfg_.symbol)) {
                     state_ = *persisted;
                     logger_->info("État restauré │ inPosition="
                                   + std::string(state_.inPosition ? "oui" : "non")
@@ -61,7 +59,7 @@ public:
         // 1. Récupération des données
         // Panne du feed ≠ « pas de donnée » (item 10) : sur panne, on saute
         // le cycle sans toucher à l'état
-        auto barsRes = dataFeed_->getBars(swingCfg_.symbol, 60);
+        auto barsRes = dataFeed_->getBars(riskCfg_.symbol, 60);
         if (!barsRes.ok()) {
             logger_->error("Panne du data feed (" + barsRes.error()
                            + ") — cycle ignoré");
@@ -86,7 +84,7 @@ public:
         // Panne broker : la position est INCONNUE — ne SURTOUT pas réconcilier
         // (l'ancien nullopt ambigu réinitialisait l'état sur simple panne
         // réseau — item 10) ni trader à l'aveugle : cycle ignoré, état conservé
-        auto posRes = broker_->getPosition(swingCfg_.symbol);
+        auto posRes = broker_->getPosition(riskCfg_.symbol);
         if (!posRes.ok()) {
             logger_->error("Panne broker sur getPosition (" + posRes.error()
                            + ") — cycle ignoré, état conservé");
@@ -114,16 +112,19 @@ public:
 
             auto exitReason = riskManager_->checkExitConditions(
                 price, state_.buyPrice, state_.holdDays, state_.peakPrice,
-                swingCfg_.stopLossPct, swingCfg_.takeProfitPct,
-                swingCfg_.trailingStopPct, swingCfg_.minHoldDays
+                riskCfg_.stopLossPct, riskCfg_.takeProfitPct,
+                riskCfg_.trailingStopPct, riskCfg_.minHoldDays
             );
 
             bool shouldSell = exitReason.has_value()
-                || (signal.isSell() && state_.holdDays >= swingCfg_.minHoldDays);
+                || (signal.isSell() && state_.holdDays >= riskCfg_.minHoldDays);
 
             if (shouldSell) {
                 std::string reason = exitReason.value_or("signal");
-                auto order = broker_->submitSell(swingCfg_.symbol, pos->shares);
+                // Observateur de sortie (backtest) : notifié AVANT la soumission
+                // pour que le broker simulé enregistre la raison dans le trade
+                if (exitObserver_) exitObserver_(reason);
+                auto order = broker_->submitSell(riskCfg_.symbol, pos->shares);
                 // Seul un fill confirmé clôt la position côté bot.
                 // PENDING : la position broker disparaîtra une fois l'ordre exécuté
                 // (réconciliation au cycle suivant) ; REJECTED/échec : on conserve
@@ -149,8 +150,8 @@ public:
 
             int shares = riskManager_->positionSize(
                 account.cash, price,
-                swingCfg_.stopLossPct,
-                swingCfg_.riskPerTradePct
+                riskCfg_.stopLossPct,
+                riskCfg_.riskPerTradePct
             );
             if (shares <= 0) {
                 logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
@@ -161,7 +162,7 @@ public:
                 return;
             }
 
-            auto order = broker_->submitBuy(swingCfg_.symbol, shares);
+            auto order = broker_->submitBuy(riskCfg_.symbol, shares);
             // Seul un fill confirmé ouvre la position côté bot, au prix RÉEL
             // d'exécution. PENDING : l'état ne bouge pas, la réconciliation avec
             // la position broker fera foi au cycle suivant.
@@ -207,10 +208,16 @@ public:
     }
 
     // ── Accesseurs pour les tests ─────────────────────────────────────────────
-    const BotState&    state()    const { return state_; }
-    const SwingConfig& config()   const { return swingCfg_; }
-    void setState(const BotState& s)     { state_ = s; }
-    void setConfig(const SwingConfig& c) { swingCfg_ = c; }
+    const BotState&   state()  const { return state_; }
+    const RiskConfig& config() const { return riskCfg_; }
+    void setState(const BotState& s)    { state_ = s; }
+    void setConfig(const RiskConfig& c) { riskCfg_ = c; }
+
+    // Seam pour le backtest : raison de sortie transmise au broker simulé
+    // juste avant chaque ordre de vente (TradeRecord du rapport)
+    void setExitObserver(std::function<void(const std::string&)> obs) {
+        exitObserver_ = std::move(obs);
+    }
 
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
@@ -221,9 +228,10 @@ private:
     std::shared_ptr<IStateStore>  stateStore_;
 
     BotState    state_;
-    SwingConfig swingCfg_;
+    RiskConfig  riskCfg_;
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
+    std::function<void(const std::string&)> exitObserver_;
 
     // ── Réconciliation état interne ↔ position broker ─────────────────────────
     // La position broker fait foi : couvre le redémarrage (état perdu ou
@@ -253,7 +261,7 @@ private:
     }
 
     void saveState_() {
-        if (stateStore_ && !stateStore_->save(swingCfg_.symbol, state_))
+        if (stateStore_ && !stateStore_->save(riskCfg_.symbol, state_))
             logger_->error("Échec de la persistance de l'état du bot");
     }
 
