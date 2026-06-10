@@ -31,6 +31,17 @@ public:
         loadAll();
     }
 
+    // Construction depuis des barres déjà en mémoire (item 7.1) : permet au
+    // harnais de validation de servir une SOUS-FENÊTRE du dataset sans
+    // relire/reparcourir le CSV. Les barres sont supposées déjà triées et
+    // « ajustées » à la source (la colonne Adj Close a été choisie en amont).
+    struct FromBars {};
+    CsvDataFeed(std::vector<Bar> bars, FromBars)
+        : csvPath_("<mémoire>"), useAdjustedClose_(true), bars_(std::move(bars)) {
+        if (bars_.empty())
+            throw std::runtime_error("CsvDataFeed: aucune barre fournie");
+    }
+
     // Retourne les N dernières barres (ou moins si pas assez de données)
     // Données locales : jamais de panne → toujours Ok (item 10)
     Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {

@@ -100,10 +100,19 @@ public:
     // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
     BacktestResult run() {
         auto csv = std::make_shared<CsvDataFeed>(csvPath_);
-        const auto& allBars = csv->allBars();
+        return runOn(csv->allBars());
+    }
+
+    // Exécute le backtest sur une série de barres FOURNIE (item 7.1) : utilisé
+    // par le harnais de validation pour rejouer une sous-fenêtre du dataset
+    // (in-sample / out-of-sample, walk-forward) sans relire le CSV. `run()`
+    // délègue ici avec la totalité du CSV → golden inchangé.
+    BacktestResult runOn(const std::vector<Bar>& allBars) {
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
-        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
+        auto feed   = std::make_shared<ReplayDataFeed>(
+            std::make_shared<CsvDataFeed>(allBars, CsvDataFeed::FromBars{}),
+            config_.emaSlow + 30);
         auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
                                                     slippagePct_);
         auto logger = std::make_shared<NullLogger>();
