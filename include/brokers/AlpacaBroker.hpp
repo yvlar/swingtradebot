@@ -21,7 +21,7 @@ namespace trading {
 // Alias local au namespace (pas de pollution du scope global — D9)
 using json = nlohmann::json;
 
-class AlpacaBroker final : public IBroker {
+class AlpacaBroker : public IBroker {   // non-final : les tests substituent httpRequest()
 public:
     AlpacaBroker(std::string apiKey,
                  std::string apiSecret,
@@ -193,7 +193,7 @@ private:
     std::string request(const std::string& method,
                         const std::string& path,
                         const std::string& body) {
-        std::string response = http_.request(method, baseUrl_ + path, body, {
+        std::string response = httpRequest(method, baseUrl_ + path, body, {
             "APCA-API-KEY-ID: "     + apiKey_,
             "APCA-API-SECRET-KEY: " + apiSecret_,
             "Content-Type: application/json",
@@ -207,6 +207,16 @@ private:
                 + ": " + j["message"].get<std::string>());
 
         return response;
+    }
+
+protected:
+    // HTTP bas niveau — virtuel pour la substitution dans les tests
+    // unitaires (aucun réseau), même pattern qu'IBKRBroker
+    virtual std::string httpRequest(const std::string& method,
+                                    const std::string& url,
+                                    const std::string& body,
+                                    const std::vector<std::string>& headers) {
+        return http_.request(method, url, body, headers);
     }
 };
 

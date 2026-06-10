@@ -141,3 +141,43 @@ TEST(HttpClientUnit, PersistentTransportErrorExhaustsRetriesThenThrows) {
     EXPECT_THROW(c.request("GET", "https://x/api"), std::runtime_error);
     EXPECT_EQ(c.attempts, 4);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Wrappers get/post/del — méthode HTTP correcte
+// ════════════════════════════════════════════════════════════
+
+namespace {
+
+// Client qui enregistre méthode/URL/corps et répond toujours 200
+class MethodRecordingClient : public HttpClient {
+public:
+    using HttpClient::HttpClient;
+    std::vector<std::string> methods;
+    std::string lastBody;
+
+protected:
+    HttpResponse performOnce(const std::string& method, const std::string&,
+                             const std::string& body,
+                             const std::vector<std::string>&) override {
+        methods.push_back(method);
+        lastBody = body;
+        return {200, "ok"};
+    }
+    void sleepFor(std::chrono::milliseconds) override {}
+};
+
+} // namespace
+
+TEST(HttpClientUnit, GetPostDelWrappersUseCorrectMethod) {
+    MethodRecordingClient c;
+
+    EXPECT_EQ(c.get ("http://x/a"),         "ok");
+    EXPECT_EQ(c.post("http://x/b", "corps"), "ok");
+    EXPECT_EQ(c.del ("http://x/c"),         "ok");
+
+    ASSERT_EQ(c.methods.size(), 3u);
+    EXPECT_EQ(c.methods[0], "GET");
+    EXPECT_EQ(c.methods[1], "POST");
+    EXPECT_EQ(c.methods[2], "DELETE");
+    EXPECT_EQ(c.lastBody, "");          // le corps du POST n'atteint pas DELETE
+}

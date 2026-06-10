@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <chrono>
+#include <fstream>
 #include "core/state_store.h"
 
 using namespace trading;
@@ -79,4 +80,35 @@ TEST_F(StateStoreUnit, SymbolsAreIsolated) {
     SqliteStateStore store(path_);
     ASSERT_TRUE(store.save("QQQ", sampleState()));
     EXPECT_FALSE(store.load("SPY").has_value());
+}
+
+// ════════════════════════════════════════════════════════════
+//  Branches d'erreur SQLite — fichier corrompu, schéma en conflit
+// ════════════════════════════════════════════════════════════
+
+// Un fichier qui n'est pas une base SQLite : l'open paresseux passe,
+// c'est le CREATE TABLE du constructeur qui échoue → exception claire
+TEST_F(StateStoreUnit, GarbageFileThrowsOnConstruction) {
+    {
+        std::ofstream f(path_);
+        f << "ceci n'est pas une base sqlite";
+    }
+    EXPECT_THROW(SqliteStateStore store(path_), std::runtime_error);
+}
+
+// Table bot_state préexistante avec un schéma incompatible :
+// les prepare échouent → load nullopt, save false — jamais de crash
+TEST_F(StateStoreUnit, ConflictingSchemaFailsSoftly) {
+    {
+        sqlite3* raw = nullptr;
+        ASSERT_EQ(sqlite3_open(path_.c_str(), &raw), SQLITE_OK);
+        ASSERT_EQ(sqlite3_exec(raw,
+            "CREATE TABLE bot_state (symbol TEXT PRIMARY KEY);",
+            nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(raw);
+    }
+
+    SqliteStateStore store(path_);   // CREATE IF NOT EXISTS : no-op silencieux
+    EXPECT_FALSE(store.save("QQQ", sampleState()));
+    EXPECT_FALSE(store.load("QQQ").has_value());
 }

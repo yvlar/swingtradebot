@@ -7,6 +7,8 @@ build/
 cmake-build-debug/
 cmake-build-release/
 cmake-build-*/
+build-*/
+Testing/
 *.o
 *.obj
 *.a
@@ -14,6 +16,9 @@ cmake-build-*/
 *.so
 *.dll
 *.exe
+*.gcda
+*.gcno
+*.gcov
 
 # ── CMake ─────────────────────────────────────────────────
 CMakeCache.txt

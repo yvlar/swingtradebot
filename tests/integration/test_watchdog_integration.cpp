@@ -127,3 +127,48 @@ TEST_F(WatchdogIntegration, AlertCallbackNotCalledConcurrently) {
     wd.stop();
     EXPECT_EQ(max_concurrent.load(), 1);
 }
+// ════════════════════════════════════════════════════════════
+//  Envoi d'alertes réel — webhook local, échec SMTP non bloquant
+// ════════════════════════════════════════════════════════════
+#include "../support/MiniHttpServer.hpp"
+
+// Le webhook Discord/Slack est réellement POSTé (curl) sur un serveur local
+TEST_F(WatchdogIntegration, WebhookDeliveredToLocalServer) {
+    MiniHttpServer server(204, "");
+    cfg_.webhook_enabled = true;
+    cfg_.webhook_url     = server.url("/webhook");
+    cfg_.alert_timeout_sec = 3;
+
+    Watchdog wd(cfg_, state_);
+    wd.start();                       // jamais de heartbeat → alerte
+
+    ASSERT_TRUE(server.waitForRequests(1, 10'000));
+    wd.stop();
+
+    const std::string raw = server.requests()[0];
+    EXPECT_NE(raw.find("POST /webhook"),                  std::string::npos);
+    EXPECT_NE(raw.find("Content-Type: application/json"), std::string::npos);
+    // Payload compatible Discord ("content") ET Slack ("text")
+    EXPECT_NE(raw.find("\"content\""),                    std::string::npos);
+    EXPECT_NE(raw.find("\"text\""),                       std::string::npos);
+    EXPECT_NE(raw.find("SWING BOT ALERTE"),               std::string::npos);
+}
+
+// SMTP injoignable (port fermé) : l'envoi échoue proprement,
+// le watchdog survit et le callback d'alerte est quand même appelé
+TEST_F(WatchdogIntegration, EmailFailureDoesNotBlockWatchdog) {
+    cfg_.email_enabled     = true;
+    cfg_.smtp_url          = "smtp://127.0.0.1:1";   // rien n'écoute ici
+    cfg_.alert_timeout_sec = 2;
+
+    std::atomic<int> alerts{0};
+    Watchdog wd(cfg_, state_);
+    wd.on_alert([&](const std::string&){ alerts++; });
+    wd.start();
+
+    for (int i = 0; i < 100 && alerts.load() == 0; ++i)
+        std::this_thread::sleep_for(100ms);
+    wd.stop();
+
+    EXPECT_GE(alerts.load(), 1);     // l'échec d'envoi n'a pas gelé la boucle
+}

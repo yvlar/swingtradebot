@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <fstream>
 #include "core/db_logger.h"
 
 using json = nlohmann::json;
@@ -186,4 +187,33 @@ TEST_F(DbLoggerUnit, SuccessfulWritesReturnTrue) {
     EXPECT_TRUE(db_->snapshot_equity(10000.0, 0.0, 1));
     EXPECT_TRUE(db_->record_signal(
         {"QQQ", "LONG", 3, 28.5, 472.30, 2.85, 466.60, 483.70}, 1));
+}
+
+// ════════════════════════════════════════════════════════════
+//  Compléments de couverture — fichier corrompu, lectures avec données
+// ════════════════════════════════════════════════════════════
+
+// Fichier non-SQLite : le CREATE TABLE du constructeur échoue → exception
+TEST_F(DbLoggerUnit, GarbageFileThrowsOnConstruction) {
+    std::string garbage = db_path_ + ".garbage";
+    {
+        std::ofstream f(garbage);
+        f << "ceci n'est pas une base sqlite";
+    }
+    EXPECT_THROW(DbLogger lg(garbage), std::runtime_error);
+    fs::remove(garbage);
+}
+
+// Aller-retour complet : les valeurs snapshotées ressortent dans le JSON
+TEST_F(DbLoggerUnit, EquityHistoryRoundTripValues) {
+    db_->snapshot_equity(10'000.0, 0.0,  1);
+    db_->snapshot_equity(10'150.5, 1.5,  2);
+
+    auto arr = nlohmann::json::parse(db_->equity_history_json());
+    ASSERT_EQ(arr.size(), 2u);
+    // Ordre chronologique après reverse : le plus ancien d'abord
+    EXPECT_DOUBLE_EQ(arr[0]["equity"].get<double>(), 10'000.0);
+    EXPECT_DOUBLE_EQ(arr[1]["equity"].get<double>(), 10'150.5);
+    EXPECT_DOUBLE_EQ(arr[1]["pnl"].get<double>(),    1.5);
+    EXPECT_EQ(arr[1]["cycle"].get<int>(), 2);
 }

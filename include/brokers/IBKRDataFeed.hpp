@@ -39,7 +39,7 @@ static const std::map<std::string, std::string> KNOWN_CONIDS = {
     {"AMZN", "3691937"},
 };
 
-class IBKRDataFeed final : public IDataFeed {
+class IBKRDataFeed : public IDataFeed {   // non-final : les tests substituent request()
 public:
     // gatewayUrl : adresse du CP Gateway (défaut localhost:5000)
     // paper=true : utilise le compte paper trading d'IBKR
@@ -206,7 +206,16 @@ private:
 
     // ── HTTP GET via le client commun (code HTTP vérifié, retry) ──
     std::string get(const std::string& url) {
-        return http_.get(url);
+        return request("GET", url, "");
+    }
+
+protected:
+    // HTTP bas niveau — virtuel pour la substitution dans les tests
+    // unitaires (aucun réseau), même pattern qu'IBKRBroker
+    virtual std::string request(const std::string& method,
+                                const std::string& url,
+                                const std::string& body) {
+        return http_.request(method, url, body);
     }
 };
 

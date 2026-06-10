@@ -403,3 +403,62 @@ TEST(TradingBotUnit, FeedRecoveryResumesTrading) {
     EXPECT_EQ(h.broker->buyCount(), 1);
     EXPECT_TRUE(h.bot->state().inPosition);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Compléments de couverture — refus du risk manager,
+//  persistance en échec, statut d'ordre annulé
+// ════════════════════════════════════════════════════════════
+
+// Compte non ACTIVE : le sizing passe mais isTradeAllowed refuse → aucun ordre
+TEST(TradingBotUnit, TradeNotAllowedByRiskManagerSubmitsNoOrder) {
+    BotHarness h;
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setAccount({10'000.0, 10'000.0, "SUSPENDED"});
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 0);
+}
+
+// L'échec de persistance est consigné mais ne doit JAMAIS bloquer le trading
+TEST(TradingBotUnit, SaveStateFailureDoesNotBlockTrading) {
+    BotHarness h;
+    h.store->setSaveFails(true);
+    h.strategy->setSignal(SignalType::BUY);
+
+    EXPECT_NO_THROW(h.bot->runOnce());
+    EXPECT_EQ(h.broker->buyCount(), 1);
+    EXPECT_TRUE(h.store->saved().empty());
+}
+
+// Ordre annulé par le broker : pas d'entrée en position, nouvel essai possible
+TEST(TradingBotUnit, CancelledBuyDoesNotEnterPosition) {
+    BotHarness h;
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::CANCELLED);
+
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->buyCount(), 1);
+
+    // Toujours hors position : le signal BUY suivant retente l'achat
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->buyCount(), 2);
+}
+
+// Vente PENDING (via stop-loss, prioritaire sur minHoldDays) : la position
+// est conservée et la sortie sera retentée au cycle suivant
+TEST(TradingBotUnit, PendingSellKeepsPosition) {
+    BotHarness h;
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                                    // entre en position @420
+
+    h.setLastBar(390.0, "2024-03-02");                   // -7 % → stop-loss
+    h.broker->setSubmitResult(OrderStatus::PENDING);
+
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->sellCount(), 1);
+
+    h.setLastBar(388.0, "2024-03-03");                   // toujours sous le stop
+    h.bot->runOnce();                                    // position conservée → re-vend
+    EXPECT_EQ(h.broker->sellCount(), 2);
+}
