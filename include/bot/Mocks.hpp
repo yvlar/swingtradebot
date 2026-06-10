@@ -184,4 +184,31 @@ private:
     double                     fillPrice_    = 420.0;
 };
 
+// ─── MockStateStore ───────────────────────────────────────────────────────────
+// Persistance en mémoire — enregistre chaque save pour vérification
+class MockStateStore final : public IStateStore {
+public:
+    void preload(BotState s)   { preloaded_ = std::move(s); }
+    void setSaveFails(bool f)  { saveFails_ = f; }
+
+    std::optional<BotState> load(const std::string&) override { return preloaded_; }
+
+    bool save(const std::string&, const BotState& s) override {
+        if (saveFails_) return false;
+        saved_.push_back(s);
+        return true;
+    }
+
+    const std::vector<BotState>& saved() const { return saved_; }
+    std::optional<BotState> lastSaved() const {
+        if (saved_.empty()) return std::nullopt;
+        return saved_.back();
+    }
+
+private:
+    std::optional<BotState> preloaded_;
+    std::vector<BotState>   saved_;
+    bool                    saveFails_ = false;
+};
+
 } // namespace trading::mocks

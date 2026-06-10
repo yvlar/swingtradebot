@@ -16,16 +16,17 @@ namespace {
 
 // ── Harnais : TradingBot câblé sur mocks, accès direct aux collaborateurs ──
 struct BotHarness {
-    std::shared_ptr<MockDataFeed>  feed     = std::make_shared<MockDataFeed>();
-    std::shared_ptr<MockBroker>    broker   = std::make_shared<MockBroker>();
-    std::shared_ptr<MockStrategy>  strategy = std::make_shared<MockStrategy>();
-    std::shared_ptr<RiskManager>   risk     = std::make_shared<RiskManager>();
-    std::shared_ptr<NullLogger>    logger   = std::make_shared<NullLogger>();
-    std::unique_ptr<TradingBot>    bot;
+    std::shared_ptr<MockDataFeed>   feed     = std::make_shared<MockDataFeed>();
+    std::shared_ptr<MockBroker>     broker   = std::make_shared<MockBroker>();
+    std::shared_ptr<MockStrategy>   strategy = std::make_shared<MockStrategy>();
+    std::shared_ptr<RiskManager>    risk     = std::make_shared<RiskManager>();
+    std::shared_ptr<NullLogger>     logger   = std::make_shared<NullLogger>();
+    std::shared_ptr<MockStateStore> store    = std::make_shared<MockStateStore>();
+    std::unique_ptr<TradingBot>     bot;
 
     explicit BotHarness(double lastClose = 420.0, const std::string& lastDate = "2024-03-01") {
         feed->setBars(barsEndingAt(lastClose, lastDate));
-        bot = std::make_unique<TradingBot>(feed, broker, strategy, risk, logger);
+        bot = std::make_unique<TradingBot>(feed, broker, strategy, risk, logger, store);
     }
 
     // 60 barres plates qui se terminent au prix/date voulus
@@ -229,6 +230,86 @@ TEST(TradingBotUnit, SellSignalWaitsForRealTradingDays) {
     h.setLastBar(402.0, "2024-03-07");           // J+2
     h.bot->runOnce();
     EXPECT_EQ(h.broker->sellCount(), 1);         // holdDays=2 → vente autorisée
+}
+
+// ════════════════════════════════════════════════════════════
+//  Sprint 1 item 1 — réconciliation état ↔ position broker
+// ════════════════════════════════════════════════════════════
+
+// BUG : après un redémarrage, l'état mémoire est vierge (inPosition=false)
+// alors que le broker détient une position → la branche de sortie ne
+// s'exécutait plus jamais : position SANS stop-loss pour toujours.
+TEST(TradingBotUnit, RestartAdoptsExistingBrokerPosition) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+
+    h.bot->runOnce();                            // 1er cycle après « restart »
+
+    EXPECT_TRUE(h.bot->state().inPosition);      // position adoptée
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 400.0);  // prix moyen broker
+}
+
+// La position adoptée doit être protégée : le stop-loss redevient actif
+TEST(TradingBotUnit, AdoptedPositionStopLossFires) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+    h.bot->runOnce();                            // adoption
+    ASSERT_TRUE(h.bot->state().inPosition);
+
+    h.setLastBar(368.0, "2024-03-11");           // -8 % sous le prix moyen
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->sellCount(), 1);         // stop-loss déclenché
+    EXPECT_FALSE(h.bot->state().inPosition);
+}
+
+// Sens inverse (découverte D3) : l'état dit « en position » mais le broker
+// n'a plus rien (fermée à la main) → l'état restait bloqué pour toujours,
+// plus aucune entrée possible.
+TEST(TradingBotUnit, PositionGoneAtBrokerResetsState) {
+    BotHarness h(420.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->setState({true, 400.0, 420.0, 3, "2024-03-07"});
+    h.broker->setPosition(std::nullopt);
+
+    h.bot->runOnce();
+
+    EXPECT_FALSE(h.bot->state().inPosition);     // état réconcilié
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 0.0);
+}
+
+// L'état persisté est rechargé au premier cycle (redémarrage avec store)
+TEST(TradingBotUnit, StateRestoredFromStoreOnFirstCycle) {
+    BotHarness h(404.0, "2024-03-08");
+    h.store->preload({true, 400.0, 405.0, 2, "2024-03-07"});
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 404.0, 9 * 4.0});
+    h.strategy->setSignal(SignalType::HOLD);
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.bot->state().inPosition);
+    EXPECT_DOUBLE_EQ(h.bot->state().buyPrice, 400.0);
+    EXPECT_EQ(h.bot->state().holdDays, 3);       // 2 persistés + nouvelle date
+}
+
+// Chaque mutation d'état (entrée, sortie) doit être persistée
+TEST(TradingBotUnit, EntryAndExitArePersisted) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // achat
+
+    ASSERT_TRUE(h.store->lastSaved().has_value());
+    EXPECT_TRUE(h.store->lastSaved()->inPosition);
+    EXPECT_DOUBLE_EQ(h.store->lastSaved()->buyPrice, 420.0);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(368.0, "2024-03-05");           // -12 % → stop-loss
+    h.bot->runOnce();
+
+    ASSERT_TRUE(h.store->lastSaved().has_value());
+    EXPECT_FALSE(h.store->lastSaved()->inPosition);  // reset persisté
 }
 
 // Cas nominal : vente FILLED sur stop-loss → état réinitialisé

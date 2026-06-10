@@ -64,4 +64,15 @@ struct Account {
     std::string status;
 };
 
+// ─── BotState — état de position du bot ──────────────────────────────────────
+// Persisté via IStateStore pour survivre aux redémarrages (sinon une position
+// ouverte deviendrait orpheline : plus de stop-loss, plus de suivi).
+struct BotState {
+    bool   inPosition = false;
+    double buyPrice   = 0.0;
+    double peakPrice  = 0.0;
+    int    holdDays   = 0;          // jours de BOURSE depuis l'entrée (pas cycles)
+    std::string lastBarDate;        // date de la dernière barre comptée
+};
+
 } // namespace trading
