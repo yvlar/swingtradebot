@@ -80,6 +80,15 @@ public:
             " │ " + signalStr(signal) + " │ " + signal.reason
         );
 
+        // Bookkeeping journalier du kill-switch (item 18) : au changement de
+        // jour de bourse, on remet à zéro les compteurs journaliers et on fige
+        // l'équité de référence de la séance (base du drawdown journalier).
+        if (bars.back().date != killSwitchDay_) {
+            killSwitchDay_  = bars.back().date;
+            ordersToday_    = 0;
+            dayStartEquity_ = broker_->getAccount().equity;
+        }
+
         // 3. Gestion de la position ouverte
         // Panne broker : la position est INCONNUE — ne SURTOUT pas réconcilier
         // (l'ancien nullopt ambigu réinitialisait l'état sur simple panne
@@ -125,6 +134,7 @@ public:
                 // pour que le broker simulé enregistre la raison dans le trade
                 if (exitObserver_) exitObserver_(reason);
                 auto order = broker_->submitSell(riskCfg_.symbol, pos->shares);
+                ordersToday_++;  // tout ordre soumis compte au plafond (item 18)
                 // Seul un fill confirmé clôt la position côté bot.
                 // PENDING : la position broker disparaîtra une fois l'ordre exécuté
                 // (réconciliation au cycle suivant) ; REJECTED/échec : on conserve
@@ -133,6 +143,10 @@ public:
                     double fillPrice = order->price    > 0 ? order->price    : price;
                     int    fillQty   = order->quantity > 0 ? order->quantity : pos->shares;
                     double pnl = (fillPrice - state_.buyPrice) * fillQty;
+                    // Série de pertes consécutives pour le kill-switch (item 18) :
+                    // un trade perdant l'allonge, un gagnant la remet à zéro
+                    if (pnl < 0) consecutiveLosses_++;
+                    else         consecutiveLosses_ = 0;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
                     state_ = BotState{};  // reset
@@ -147,6 +161,16 @@ public:
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
             auto account = broker_->getAccount();
+
+            // Kill-switch (item 18) : si un garde-fou est franchi, on ne prend
+            // AUCUNE nouvelle position. Les positions déjà ouvertes sont gérées
+            // plus haut (branche de sortie) et conservent leurs stops.
+            if (auto halt = riskManager_->checkKillSwitch(
+                    riskCfg_.killSwitch, dayStartEquity_, account.equity,
+                    consecutiveLosses_, ordersToday_)) {
+                logger_->warn("🛑 Kill-switch (" + *halt + ") — entrée bloquée");
+                return;
+            }
 
             int shares = riskManager_->positionSize(
                 account.cash, price,
@@ -163,6 +187,7 @@ public:
             }
 
             auto order = broker_->submitBuy(riskCfg_.symbol, shares);
+            ordersToday_++;  // tout ordre soumis compte au plafond (item 18)
             // Seul un fill confirmé ouvre la position côté bot, au prix RÉEL
             // d'exécution. PENDING : l'état ne bouge pas, la réconciliation avec
             // la position broker fera foi au cycle suivant.
@@ -232,6 +257,14 @@ private:
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
     std::function<void(const std::string&)> exitObserver_;
+
+    // ── Compteurs du kill-switch (item 18) ────────────────────────────────────
+    // Réinitialisés au changement de jour de bourse (sauf la série de pertes
+    // consécutives, qui est un compteur de tendance, pas journalier).
+    std::string killSwitchDay_;        // jour de bourse courant
+    double      dayStartEquity_ = 0.0; // équité de référence en début de séance
+    int         ordersToday_    = 0;   // ordres soumis dans la journée
+    int         consecutiveLosses_ = 0;// trades perdants d'affilée
 
     // ── Réconciliation état interne ↔ position broker ─────────────────────────
     // La position broker fait foi : couvre le redémarrage (état perdu ou

@@ -64,6 +64,17 @@ struct Account {
     std::string status;
 };
 
+// ─── KillSwitchConfig — garde-fous de coupure d'urgence (item 18) ─────────────
+// Trois seuils qui BLOQUENT toute nouvelle ENTRÉE quand la séance dérape (une
+// position déjà ouverte reste gérée par ses stops). Valeurs par défaut :
+// profil « modéré » arbitré avec l'utilisateur. Un seuil ≤ 0 désactive le
+// garde-fou correspondant.
+struct KillSwitchConfig {
+    double maxDailyDrawdownPct  = 0.05;  // -5% d'équité sur la journée → stop entrées
+    int    maxConsecutiveLosses = 4;     // 4 trades perdants d'affilée → stop entrées
+    int    maxOrdersPerDay      = 10;    // 10 ordres soumis dans la journée → stop entrées
+};
+
 // ─── RiskConfig — paramètres de risque et d'orchestration du bot ─────────────
 // Découplé de la stratégie (item 12) : TradingBot n'a besoin que du symbole et
 // des règles de gestion du risque — les paramètres d'indicateurs (EMA, RSI…)
@@ -75,6 +86,7 @@ struct RiskConfig {
     double trailingStopPct = 0.03;  // -3% depuis le pic
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;
+    KillSwitchConfig killSwitch;    // garde-fous de coupure (item 18)
 };
 
 // ─── BotState — état de position du bot ──────────────────────────────────────

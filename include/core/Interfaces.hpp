@@ -131,6 +131,17 @@ public:
         double trailingStopPct,
         int    minHoldDays
     ) const = 0;
+
+    // Kill-switch (item 18) : retourne la raison de coupure si un garde-fou
+    // est franchi (→ aucune nouvelle ENTRÉE), nullopt si les entrées sont
+    // permises. Ne concerne JAMAIS une position déjà ouverte.
+    virtual std::optional<std::string> checkKillSwitch(
+        const KillSwitchConfig& cfg,
+        double dayStartEquity,
+        double currentEquity,
+        int    consecutiveLosses,
+        int    ordersToday
+    ) const = 0;
 };
 
 } // namespace trading
