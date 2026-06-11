@@ -53,12 +53,29 @@ TEST(StrategyV2Integration, TrendConfigDrawdownStaysControlledAt90Pct) {
     EXPECT_NEAR(oos.maxDrawdownPct, 4.61, 0.20);
 }
 
-// Le TIMING seul (sorties refondues, sizing 2 %) améliore nettement la prod…
-TEST(StrategyV2Integration, TimingAloneImprovesOnProdAtConservativeSizing) {
-    auto prodOos = wf(ibkrProdConfig()).anchoredSplit(0.7).folds[1].result;
-    auto v2Oos   = wf(v2TimingOnly()).anchoredSplit(0.7).folds[1].result;
+// Acceptation de l'item 9.0 : la config de PROD (celle que main_ibkr.cpp injecte
+// via ibkrProdConfig) EST la V2 — sorties refondues + sizing 90 %. Ce test scelle
+// le déploiement : si quelqu'un fait diverger la prod de la config validée OOS,
+// il échoue.
+TEST(StrategyV2Integration, ProdConfigIsTheV2) {
+    const SwingConfig prod = ibkrProdConfig();
+    const SwingConfig v2   = swingTrendConfig();
+    EXPECT_DOUBLE_EQ(prod.takeProfitPct,     v2.takeProfitPct);      // 0 (8.2)
+    EXPECT_EQ       (prod.sellOnRsiOverbought, v2.sellOnRsiOverbought); // false (8.4)
+    EXPECT_DOUBLE_EQ(prod.targetExposurePct, v2.targetExposurePct);  // 0,90 (9.0b)
+    EXPECT_EQ       (prod.emaFast,  v2.emaFast);
+    EXPECT_EQ       (prod.emaSlow,  v2.emaSlow);
+    EXPECT_DOUBLE_EQ(prod.targetExposurePct, 0.90);
+    EXPECT_DOUBLE_EQ(prod.takeProfitPct,     0.0);
+    EXPECT_FALSE    (prod.sellOnRsiOverbought);
+}
 
-    EXPECT_GT(v2Oos.totalReturnPct, prodOos.totalReturnPct * 1.5);
+// Le TIMING seul (sorties refondues, sizing 2 %) améliore nettement la V1…
+TEST(StrategyV2Integration, TimingAloneImprovesOnLegacyAtConservativeSizing) {
+    auto legacyOos = wf(legacyProdConfig()).anchoredSplit(0.7).folds[1].result;
+    auto v2Oos     = wf(v2TimingOnly()).anchoredSplit(0.7).folds[1].result;
+
+    EXPECT_GT(v2Oos.totalReturnPct, legacyOos.totalReturnPct * 1.5);
     EXPECT_NEAR(v2Oos.totalReturnPct, 13.21, 0.10);
 }
 

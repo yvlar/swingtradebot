@@ -59,7 +59,7 @@ inline SwingConfig swingTrendConfig() {
 // et documenté le delta dans ROADMAP.md. L'externalisation complète (fichier
 // JSON validé au démarrage) est l'item 9.1.
 inline SwingConfig ibkrProdConfig() {
-    return legacyProdConfig();  // ← bascule V2 au commit suivant (item 9.0)
+    return swingTrendConfig();  // item 9.0 : la prod EST la V2
 }
 
 } // namespace trading

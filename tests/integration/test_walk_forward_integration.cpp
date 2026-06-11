@@ -1,9 +1,10 @@
-// ─── Tests d'intégration : WalkForward — verdict OUT-OF-SAMPLE (item 7.1) ────
-// Fige le comportement hors-échantillon de la config de PRODUCTION sur QQQ.csv
-// (commission 0,1 % + slippage 5 bps). Ces chiffres sont le cœur de la question
-// « fait-on de l'argent ? » : ils montrent que l'edge in-sample ne tient PAS en
-// OOS. Toute refonte de stratégie (Sprint 8) devra renverser ce verdict ICI,
-// pas seulement sur le golden in-sample.
+// ─── Tests d'intégration : WalkForward — témoin D30 archivé (item 7.1) ───────
+// Fige le comportement hors-échantillon de la config HÉRITÉE V1 (legacyProdConfig)
+// sur QQQ.csv (commission 0,1 % + slippage 5 bps). C'était le verdict fondateur
+// D30 : « l'edge in-sample ne tient pas en OOS » — RENVERSÉ par la V2 au Sprint 8
+// (le verdict de la prod actuelle est figé dans test_strategy_v2_integration :
+// +46,5 % vs B&H +39,4 % en OOS). Conservé comme témoin : si ces chiffres
+// bougent, c'est le harnais lui-même (pas la stratégie) qui a dérivé.
 //
 // ⚠️ Rappel D28 : QQQ.csv n'est pas total-return (Close == Adj Close) — le B&H
 // réel serait encore plus haut, donc l'écart OOS est SOUS-estimé. Le verdict
@@ -15,15 +16,15 @@
 using namespace trading;
 
 namespace {
-WalkForward prodWalkForward() {
-    return WalkForward(ibkrProdConfig(), SWINGBOT_QQQ_CSV, 10'000.0, 0.001, 0.0005);
+WalkForward legacyWalkForward() {
+    return WalkForward(legacyProdConfig(), SWINGBOT_QQQ_CSV, 10'000.0, 0.001, 0.0005);
 }
 } // namespace
 
-// Split ancré 70/30 : la config prod sous-performe massivement le Buy & Hold
+// Split ancré 70/30 : la config V1 sous-performe massivement le Buy & Hold
 // sur la période RÉCENTE qu'elle n'a pas servi à se calibrer.
-TEST(WalkForwardIntegration, AnchoredSplitProdConfigLosesOutOfSample) {
-    auto r = prodWalkForward().anchoredSplit(0.7);
+TEST(WalkForwardIntegration, AnchoredSplitLegacyConfigLosesOutOfSample) {
+    auto r = legacyWalkForward().anchoredSplit(0.7);
     ASSERT_EQ(r.folds.size(), 2u);
 
     const auto& is  = r.folds[0].result;
@@ -48,8 +49,8 @@ TEST(WalkForwardIntegration, AnchoredSplitProdConfigLosesOutOfSample) {
 // Walk-forward roulant 4 segments : un seul segment bat le B&H, et c'est le
 // segment BAISSIER (2020-10 → 2022-07, B&H négatif) — la stratégie « gagne » en
 // étant hors marché, pas en captant de la hausse. Aucun edge directionnel.
-TEST(WalkForwardIntegration, RollingProdConfigBeatsBuyHoldOnlyInBearSegment) {
-    auto r = prodWalkForward().rolling(4);
+TEST(WalkForwardIntegration, RollingLegacyConfigBeatsBuyHoldOnlyInBearSegment) {
+    auto r = legacyWalkForward().rolling(4);
     ASSERT_EQ(r.folds.size(), 4u);
     EXPECT_EQ(r.oosCount, 4);
 
