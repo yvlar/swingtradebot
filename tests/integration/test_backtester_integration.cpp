@@ -40,6 +40,10 @@ trading::BacktestResult runProdConfigBacktest() {
 // (slippage 2 bps + demi-spread 0,5 bp par côté, défauts du Backtester)
 // dégrade chaque fill. Mêmes 7 trades, capital final 10 967,06 → 10 952,89 $
 // (−14,17 $, soit −0,14 pt de retour) — coût pur, aucun signal modifié.
+// Sprint 6.3 (D7) : passage à Adj Close — delta NUL sur ce dataset, car
+// QQQ.csv a été exporté avec Adj Close == Close sur les 1858 lignes (aucune
+// info de dividende — voir D29). Le B&H +238,55 % reste donc HORS dividendes
+// tant que le CSV n'est pas ré-exporté en série total-return.
 TEST(BacktesterIntegration, GoldenPerformanceOnQqqCsv) {
     const auto r = runGoldenBacktest();
 
