@@ -12,6 +12,7 @@
 // ============================================================
 #include "core/Interfaces.hpp"
 #include "core/HttpClient.hpp"
+#include "core/market_calendar.h"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
@@ -188,20 +189,10 @@ private:
     }
 
     // ── Vérification horaire marché US (fallback) ────────────
+    // Délègue au calendrier UTC/DST commun (item 20) : l'ancien calcul
+    // codait UTC-5 en dur (faux 8 mois/an en EDT) et ouvrait dès 9h00.
     static bool isUsMarketHours() {
-        auto now = std::chrono::system_clock::now();
-        std::time_t t = std::chrono::system_clock::to_time_t(now);
-        std::tm tm{};
-#ifdef _WIN32
-        gmtime_s(&tm, &t);
-#else
-        gmtime_r(&t, &tm);
-#endif
-        // EST = UTC-5 (ou UTC-4 en été)
-        int hour_est = (tm.tm_hour - 5 + 24) % 24;
-        int wday     = tm.tm_wday; // 0=dim, 6=sam
-        if (wday == 0 || wday == 6) return false; // weekend
-        return (hour_est >= 9 && (hour_est < 16 || (hour_est == 9 && tm.tm_min >= 30)));
+        return isUsEquityMarketOpenUtc(std::time(nullptr));
     }
 
     // ── HTTP GET via le client commun (code HTTP vérifié, retry) ──
