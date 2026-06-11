@@ -7,6 +7,7 @@
 #include "bot/TradingBot.hpp"
 #include <memory>
 #include <numeric>
+#include <limits>
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
@@ -29,9 +30,17 @@ public:
 
     void setCursor(size_t index) { cursor_ = index; }
 
+    // Sous-période (Sprint 7.1, D24) : aucune barre antérieure à windowStart
+    // ne doit être servie — sinon le seed SMA des EMA « verrait » des données
+    // hors fenêtre et les signaux divergeraient d'un backtest sur la fenêtre
+    // seule. windowStart = 0 (défaut) = comportement historique inchangé.
+    void setWindowStart(size_t index) { windowStart_ = index; }
+
     Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {
+        const int maxDays = cursor_ >= windowStart_
+            ? static_cast<int>(cursor_ - windowStart_) + 1 : 0;
         return Result<std::vector<Bar>>::Ok(
-            csv_->getBarsUpTo(cursor_, std::min(days, lookback_)));
+            csv_->getBarsUpTo(cursor_, std::min({days, lookback_, maxDays})));
     }
 
     // En backtest, le marché est toujours « ouvert »
@@ -39,7 +48,8 @@ public:
 
 private:
     std::shared_ptr<CsvDataFeed> csv_;
-    size_t cursor_   = 0;
+    size_t cursor_      = 0;
+    size_t windowStart_ = 0;
     int    lookback_;
 };
 
@@ -108,11 +118,23 @@ public:
     // TradingBot::runOnce + PaperBroker + RiskManager. Plus aucune logique de
     // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
     BacktestResult run() {
+        return run(0, std::numeric_limits<size_t>::max());
+    }
+
+    // Replay d'une sous-période [beginIndex, endIndex) du CSV (Sprint 7.1,
+    // D24) : socle du walk-forward. La fenêtre est traitée comme une série
+    // autonome — warmup relatif à beginIndex, Buy & Hold et équité bornés à
+    // la fenêtre, et AUCUNE barre antérieure servie à la stratégie (voir
+    // ReplayDataFeed::setWindowStart). run(0, taille) ≡ run().
+    BacktestResult run(size_t beginIndex, size_t endIndex) {
         auto csv = std::make_shared<CsvDataFeed>(csvPath_);
         const auto& allBars = csv->allBars();
+        endIndex   = std::min(endIndex, allBars.size());
+        beginIndex = std::min(beginIndex, endIndex);
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
         auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
+        feed->setWindowStart(beginIndex);
         auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
                                                     slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();
@@ -129,7 +151,7 @@ public:
             broker->setLastExitReason(reason);
         });
 
-        for (size_t i = 0; i < allBars.size(); ++i) {
+        for (size_t i = beginIndex; i < endIndex; ++i) {
             const Bar& bar = allBars[i];
             broker->setCurrentPrice(bar.close);
             broker->setCurrentDate(bar.date);
@@ -138,7 +160,7 @@ public:
             broker->equitySnapshot(broker->portfolioValue(), bar.date);
 
             // Pendant le warmup des indicateurs, on n'ouvre aucune position
-            if (static_cast<int>(i) < warmup) continue;
+            if (static_cast<int>(i - beginIndex) < warmup) continue;
 
             broker->incrementHoldDays();
             feed->setCursor(i);
@@ -148,7 +170,9 @@ public:
         // Clôture de la position ouverte en fin de backtest
         broker->closeOpenPosition();
 
-        return computeMetrics(broker->cash(), allBars,
+        const std::vector<Bar> windowBars(allBars.begin() + beginIndex,
+                                          allBars.begin() + endIndex);
+        return computeMetrics(broker->cash(), windowBars,
                               broker->equityCurve(), broker->equityDates(),
                               broker->trades(), warmup);
     }
