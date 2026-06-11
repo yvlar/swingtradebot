@@ -170,6 +170,27 @@ TEST(RiskManagerUnit, TakeProfitTakesPriorityOverTrailing) {
     EXPECT_EQ(r->find("trailing"), std::string::npos);
 }
 
+// ── Item 8.2 : take-profit désactivable (« laisser courir les gagnants ») ──
+// takeProfitPct <= 0 = sentinelle « pas de take-profit fixe » : un gain de +50 %
+// ne déclenche AUCUNE sortie (le trailing/structure pilotera la sortie).
+TEST(RiskManagerUnit, TakeProfitDisabledWhenPctNonPositive) {
+    RiskManager rm;
+    // +50 % depuis l'achat, pas de drawdown depuis le pic → sans TP, aucune sortie
+    auto r = rm.checkExitConditions(600.0, 400.0, 10, 600.0,
+                                    0.05, /*takeProfitPct=*/0.0, 0.03, 3);
+    EXPECT_FALSE(r.has_value());
+}
+
+// Et le take-profit désactivé ne neutralise PAS les stops : un trailing reste actif.
+TEST(RiskManagerUnit, DisabledTakeProfitStillAllowsTrailingExit) {
+    RiskManager rm;
+    // +12,5 % depuis l'achat mais -10 % depuis le pic → trailing sort (TP off)
+    auto r = rm.checkExitConditions(450.0, 400.0, 5, 500.0,
+                                    0.05, /*takeProfitPct=*/0.0, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("trailing"), std::string::npos);
+}
+
 // Les stops protègent dès le jour 0 : minHoldDays ne gate QUE le trailing
 // (cf. TrailingStopOnlyAfterMinHoldDays), jamais le stop-loss.
 TEST(RiskManagerUnit, StopLossFiresRegardlessOfMinHoldDays) {

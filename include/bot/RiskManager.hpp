@@ -77,8 +77,11 @@ public:
         if (pnlPct <= -stopLossPct)
             return "stop-loss (" + formatPct(pnlPct) + ")";
 
-        // 2. Take-profit
-        if (pnlPct >= takeProfitPct)
+        // 2. Take-profit (item 8.2 « laisser courir les gagnants ») :
+        // takeProfitPct <= 0 = sentinelle « pas de TP fixe » — la sortie est
+        // alors pilotée par le trailing/structure, ce qui laisse les tendances
+        // courir au lieu d'écrêter les gagnants à un seuil arbitraire.
+        if (takeProfitPct > 0.0 && pnlPct >= takeProfitPct)
             return "take-profit (" + formatPct(pnlPct) + ")";
 
         // 3. Trailing stop (seulement après minHoldDays)
