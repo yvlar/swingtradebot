@@ -9,32 +9,34 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 84        | 68                           |
-| Qualité      | 87        | 60                           |
-| FinTech      | 76        | 38                           |
+| Architecture | 85        | 68                           |
+| Qualité      | 89        | 60                           |
+| FinTech      | 80        | 38                           |
 | Production   | 71        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-11 (clôture Sprint 6 — vérité du backtest & réalisme)
-- **Sprint courant** : Sprint 7 — Harnais de validation (prouver l'edge)
+- **Dernière mise à jour** : 2026-06-11 (clôture Sprint 7 — harnais de validation)
+- **Sprint courant** : Sprint 8 — Refonte de la stratégie pour capter la tendance
 
-> ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
+> ### ⚠️ Rentabilité : NON PROUVÉE — et le harnais du Sprint 7 le DÉMONTRE
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
-> capacité à gagner de l'argent. Depuis le Sprint 6, la mesure dit enfin la vérité
-> (coûts réalistes, métriques d'objectif, config prod backtestée) — et la vérité
-> reste mauvaise : sur QQQ.csv (~2019→2026), la config défaut rend **+9,53 %** et
-> la config de production **+36,32 %** quand **Buy & Hold rend +238,55 %** — un
-> alpha de **−229** et **−202 points** respectivement. Bonne nouvelle du Sprint 6 :
-> la config prod (jamais backtestée jusqu'ici, D21) s'avère MEILLEURE que la config
-> défaut (Sharpe 1,81 vs 0,61, 11 trades dont 10 gagnants) ; mauvaise nouvelle : le
-> B&H est encore SOUS-ESTIMÉ car QQQ.csv ne porte aucun dividende (D29). Aucun edge
-> n'est démontré hors-échantillon — c'est l'objet des **Sprints 7-8**.
+> capacité à gagner de l'argent. Le Sprint 7 a livré l'outillage de jugement
+> (walk-forward IS/OOS, multi-actifs total-return, grille à plateau, Monte-Carlo)
+> et le verdict est désormais **hors-échantillon et dividendes compris** :
+> sur la série total-return propre (`data/QQQ_TR.csv`), le **B&H vaut +262,08 %**
+> (et non +238,55 % — D29 quantifié) quand la config prod ne rend que **+4,21 %**
+> (alpha ≈ −258 pts !) — l'écart flatteur du QQQ.csv historique venait des
+> dividendes absents ET de ~68 barres fabriquées (jours fériés, D30). Le
+> walk-forward verrouille un alpha OOS moyen **négatif** sur les deux configs,
+> et la relation « prod > défaut » du Sprint 6 ne tient PAS sur données propres
+> (D31). Aucun edge nulle part : la refonte (**Sprint 8**) sera jugée par ce
+> harnais, en OOS uniquement.
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **20**  | La config prod est désormais MESURÉE honnêtement (+36,32 % net de coûts, alpha −202 pts) et bat la config défaut — mais aucune validation hors-échantillon, et le B&H de référence est encore sous-estimé (dividendes absents, D29). |
-- **État des tests** : 396/396 verts (346 unitaires + 50 intégration). +18 ce
-  sprint (378 → 396), aucune dérive hors cycle (`ctest -N` valait bien 378 à
-  l'ouverture). Détail au changelog Sprint 6.
+> | **Rentabilité** | **15**  | La mesure est complète (OOS, dividendes, multi-actifs, distribution) et le verdict est PIRE que cru : alpha ≈ −258 pts sur données propres, aucun edge sur 4 actifs, p5 du bootstrap à −13,4 %. La note baisse car la connaissance monte — le chiffre du Sprint 6 flattait. |
+- **État des tests** : 450/450 verts (382 unitaires + 68 intégration). +54 ce
+  sprint (396 → 450), aucune dérive hors cycle (`ctest -N` valait bien 396 à
+  l'ouverture). Détail au changelog Sprint 7.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -302,61 +304,87 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   Adj Close == Close sur 1858/1858 lignes → delta structurellement nul (D29, le
   vrai correctif est un ré-export total-return, affecté au Sprint 7).
 
-# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) — **sprint courant**
+# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) ✅ (clos le 2026-06-11)
 
 > Aucune confiance dans un paramètre sans validation hors-échantillon. Ce sprint
-> construit l'outillage qui permettra de juger toute modif du Sprint 8 **honnêtement**.
-> Dépend du Sprint 6 (coûts/métriques justes) — satisfait. Point d'entrée du code :
-> `Backtester::run()` (`include/backtest/BackTester.hpp:110`) et les métriques de
-> `computeMetrics` (`BackTester.hpp:265`). Ordre conseillé **7.1 → 7.4 → 7.2 → 7.3** :
-> le walk-forward (7.1) est le socle de jugement ; les données multi-actifs (7.4,
-> avec le ré-export total-return D29) doivent exister AVANT de lancer la grille
-> (7.2) pour ne pas optimiser sur un seul actif sans dividendes ; le bootstrap
-> (7.3) consomme les trades produits par 7.1/7.2.
+> a construit l'outillage qui jugera toute modif du Sprint 8 **honnêtement**.
+> Ordre réalisé 7.1 → 7.4 → 7.2 → 7.3, conforme au plan (le walk-forward comme
+> socle, les données total-return AVANT la grille, le bootstrap en dernier).
 
-- [ ] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv :
-  fenêtres glissantes (`Backtester` rejoué sur des sous-périodes du CSV — la fenêtre
-  bornée de `ReplayDataFeed`, BackTester.hpp:25, sert déjà des sous-séries).
-  **Acceptation** : rapport IS vs OOS par fenêtre (retour, alpha, Sharpe/Sortino de
-  6.4) ; un edge qui ne tient qu'en IS est explicitement signalé « sur-ajusté ».
-- [ ] **7.4** (D29) **Multi-actifs + données total-return** : charger plusieurs CSV
-  (ex. SPY, IWM, MDY) et ré-exporter des séries où `Adj Close ≠ Close` (dividendes
-  réels). Ajouter un garde-fou de qualité de données : avertir si un CSV a
-  `Adj Close == Close` sur toutes ses lignes (symptôme D29). **Acceptation** : la
-  stratégie est évaluée sur ≥ 3 actifs, dividendes comptés, garde-fou testé.
-- [ ] **7.2** Optimiseur de grille de paramètres (`SwingConfig` : emaFast/emaSlow/
-  rsiBuyMax/rsiSellMin/SL/TP) avec **sélection robuste** (plateau de performance,
-  pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres ; le choix
-  retenu est un plateau (voisinage stable), jugé en OOS (7.1), jamais en IS.
-- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de
-  drawdown (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du
-  retour sur les trades du backtest, avec graine aléatoire fixée (reproductible).
+- [x] **7.1** (D24) Walk-forward IS/OOS → `14f20d4`
+  `Backtester::run(begin, end)` rejoue une sous-période comme série autonome
+  (étanchéité prouvée au centime : fenêtre sur CSV complet ≡ CSV de la fenêtre
+  seule, via `ReplayDataFeed::setWindowStart`) ; `WalkForwardAnalyzer`
+  (backtest/WalkForward.hpp) : fenêtres [IS | OOS] contiguës, rapport par
+  fenêtre (retour/alpha/Sharpe/Sortino), signal « sur-ajusté » par fenêtre et
+  global. Goldens figés (QQQ.csv, IS 504/OOS 126, 10 fenêtres) : alpha OOS
+  moyen NÉGATIF sur les deux configs — aucun edge démontré, verrouillé.
+- [x] **7.4** (D29) Multi-actifs + total-return + garde-fou → `e8f7c09`
+  `tools/export_total_return_csv.py` (API chart Yahoo) →
+  `data/{SPY,IWM,MDY,QQQ_TR}.csv` (4 × 1790 barres, chaque ligne avec
+  `Adj Close ≠ Close`, figées par les goldens). `CsvDataFeed::hasDividendInfo`
+  + avertissement stderr si `Adj Close ≡ Close` partout (testé, et le QQQ.csv
+  historique le déclenche). Stratégie évaluée sur 4 actifs : aucun ne bat son
+  B&H. D29 quantifié : B&H QQQ total-return = +262,08 % (vs +238,55 %).
+- [x] **7.2** Optimiseur de grille à sélection robuste → `4ef60a4`
+  `GridOptimizer` (backtest/GridOptimizer.hpp) : produit cartésien ParamGrid,
+  score robuste = moyenne du voisinage ±1 pas (le plateau bat le pic isolé —
+  verrouillé par test), carte de sensibilité par paramètre, scores IS
+  uniquement puis verdict OOS du choix (jamais l'inverse). Golden sur
+  QQQ_TR.csv : 12 combos, toutes à alpha IS < −100 pts — la grille MESURE
+  l'absence d'edge, elle ne la sauve pas.
+- [x] **7.3** Monte-Carlo / bootstrap des trades → `e4fd21c`
+  `MonteCarloBootstrap` (backtest/MonteCarlo.hpp) : rééchantillonnage avec
+  remise des pnlPct nets, p5/p50/p95 du retour/CAGR/drawdown, graine fixée
+  (mt19937 + modulo, goldens portables). Golden (prod sur QQQ_TR, 23 trades,
+  1000 chemins, graine 42) : retour p5 −13,39 % / p50 +20,85 % / p95 +73,12 %,
+  drawdown p50 12,27 % — le risque de séquence que le chemin unique cachait.
 
-# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent)
+# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance — **sprint courant**
 
-> Le sprint qui doit **transformer −229 pts d'alpha en alpha positif (ou neutre à moindre
-> drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**, jamais en IS.
-> Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour des stops/VWAP corrects.
+> Le sprint qui doit **transformer ≈ −258 pts d'alpha (données propres, D30/D31) en
+> alpha positif (ou neutre à moindre drawdown)**. Chaque item est jugé par le harnais
+> du Sprint 7 en **OOS**, jamais en IS, et sur les séries total-return de `data/`
+> (le QQQ.csv historique — barres fabriquées D30, sans dividendes D29 — ne sert
+> plus qu'aux goldens de non-régression). Prérequis : E7/D18 (indicateurs sur
+> `vector<Bar>`) pour des stops/VWAP corrects — c'est l'item 8.0.
+> Ordre conseillé **8.0 → 8.1 → 8.3 → 8.2 → 8.4 → 8.5** : l'interface d'abord
+> (tout le reste consomme des barres), puis le filtre de régime (8.1) qui gate
+> 8.4 et conditionne la lecture d'alpha des autres items.
+>
+> ⚠️ **Décisions requises à l'ouverture** (poser les deux questions AVANT 8.1) :
+> 1. (DoD) Cible chiffrée : la stratégie retenue doit battre le B&H OOS, OU le
+>    sous-performer de moins de **X %** avec un drawdown réduit — arbitrer X.
+> 2. (D31) Config de référence du jugement : la relation « prod > défaut » ne
+>    tient pas sur données propres — repartir de la config DÉFAUT, de la config
+>    PROD, ou laisser la grille (7.2) choisir le plateau de départ ?
 
-- [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
-  disponibles) ; vrai ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour,
-  DayTradeStrategy migrée.
+- [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)`
+  (`Interfaces.hpp:85`, `Bar` à `Models.hpp:9`) : high/low/volume disponibles ;
+  vrai ATR/true-range, VWAP correct (`DayIndicators.hpp`). **Acceptation** : golden
+  ATR mis à jour, DayTradeStrategy migrée.
 - [ ] **8.1** (D26) **Filtre de régime** : n'ouvrir long que si tendance de fond haussière
-  (ex. prix > SMA200 / pente positive). **Acceptation OOS** : participation aux tendances ↑,
-  whipsaws de range ↓ ; alpha net OOS > version actuelle.
+  (ex. prix > SMA200 / pente positive). **Acceptation OOS** (walk-forward 7.1 sur
+  `data/*.csv`) : participation aux tendances ↑, whipsaws de range ↓ ; alpha net OOS
+  > version actuelle.
 - [ ] **8.2** (D26) **Laisser courir les gagnants** : retirer/assouplir le take-profit fixe
   (`RiskManager.hpp:81`), sortie pilotée par trailing/structure. **Acceptation OOS** :
   gain moyen des gagnants ↑ sans dégrader le profit factor net.
-- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-99`) : entrer
-  sur la force (breakout/momentum), pas exiger `RSI < 55`. **Acceptation OOS** : nombre de
-  trades et exposition ↑, expectancy nette ≥ 0.
-- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** (gate par 8.1).
+- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-99`, le
+  gate RSI à la ligne 97) : entrer sur la force (breakout/momentum), pas exiger
+  `RSI < 55`. **Acceptation OOS** : nombre de trades et exposition ↑, expectancy
+  nette ≥ 0.
+- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière**
+  (`SwingStrategy.hpp:110`, gate par le régime de 8.1).
 - [ ] **8.5** **Réduire le cash drag** : re-entrée / rester investi tant que le régime tient.
-  **Acceptation OOS** : % de temps investi ↑, alpha net ↑.
+  **Acceptation OOS** : % de temps investi ↑ (mesuré par pctTimeInvested de 6.4),
+  alpha net ↑.
 
 > **Definition of Done du Sprint 8** (en plus de la DoD standard) : la stratégie retenue
 > **bat le Buy & Hold net de coûts en out-of-sample** OU le sous-performe de moins de X %
-> avec un drawdown sensiblement réduit (cible chiffrée à arbitrer — **Décision requise**).
+> avec un drawdown sensiblement réduit (X = Décision requise n° 1 ci-dessus).
+> Le verdict est rendu par le harnais du Sprint 7 : walk-forward (7.1) sur ≥ 3 actifs
+> total-return (7.4), réglages choisis au plateau (7.2), distribution du risque (7.3).
 > Sinon le sprint conclut « pas d'edge démontré » et on ne déploie PAS — c'est un résultat
 > valide (ne jamais mettre d'argent réel sur un edge non prouvé).
 
@@ -401,14 +429,65 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:122-132` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | ✅ Côté mesure : corrigé au Sprint 6 (6.1, `146e362` — ProdConfig.hpp source unique + golden prod, qui s'avère MEILLEURE que la config défaut). L'externalisation JSON reste au Sprint 9 (9.1) |
 | D22 | 🟠 | (Méta-audit) Backtest optimiste : `PaperBroker` exécute au close **sans slippage**, commission seule (`PaperBroker.hpp:29-31,47,73`). Tout edge mesuré est surévalué ; en prod les fills IBKR sont au marché. Un edge marginal peut être négatif net de slippage/spread | ✅ Corrigé au Sprint 6 (6.2, `713d2d8` — fills dégradés, défauts 2 + 0,5 bps ; à réexaminer par actif au Sprint 7.4) |
 | D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | ✅ Corrigé au Sprint 6 (6.4, `9803349` — métriques + verdict beatsBuyHold affiché dans le rapport) |
-| D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
+| D24 | ✅ | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | ✅ Corrigé au Sprint 7 (`14f20d4` walk-forward, `e8f7c09` multi-actifs, `4ef60a4` grille plateau, `e4fd21c` bootstrap) — le harnais existe et VERROUILLE l'absence d'edge OOS actuelle ; le Sprint 8 est jugé par lui |
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D27 | 🟡 | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Bénin tant que le stop logiciel tourne ; à combler pour une vraie symétrie entrée/adoption | Sprint 9 (mise en prod) ou backlog |
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
-| D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Sprint 7 (avec le chargement multi-CSV de 7.4) |
+| D29 | ✅ | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | ✅ Corrigé au Sprint 7 (7.4, `e8f7c09`) : `data/QQQ_TR.csv` total-return + garde-fou `hasDividendInfo` — B&H réel +262,08 %, soit +23,5 pts de plus que mesuré. Le QQQ.csv historique reste en place pour les goldens legacy (voir D30) |
+| D30 | 🟠 | (Sprint 7) **QQQ.csv contient ~68 barres FABRIQUÉES** : ~8-10 lignes/an tombent des jours fériés US (MLK, 4 juillet, Thanksgiving, Noël…) avec OHLCV plausibles — 260-262 barres/an au lieu de ~252. Ce n'est pas un export brut de bourse : les goldens legacy (items 17, 6.1) tournent sur ~3,7 % de données synthétiques (indicateurs et B&H légèrement faussés). Découvert en comparant au ré-export Yahoo (1858 vs 1790 barres sur la même période). Les séries `data/` sont propres ; tout JUGEMENT se fait dessus désormais. Re-baser les goldens legacy sur QQQ_TR = changement de comportement volontaire, à décider quand le Sprint 8 touchera la stratégie | Sprint 8 (jugement sur `data/` ; re-basage des goldens legacy = décision à l'ouverture, avec D31) |
+| D31 | 🟠 | (Sprint 7) **La relation « prod > défaut » (6.1) ne tient PAS sur données propres** : sur `data/QQQ_TR.csv` la config prod rend +4,21 % contre +4,86 % au défaut (et 2 actifs sur 4 chacune en multi-actifs) — l'avantage +36,32 % vs +9,53 % observé au Sprint 6 était spécifique au QQQ.csv historique (dividendes absents + barres fabriquées D30). Symptôme de réglages fragiles/sur-ajustés, exactement ce que D26 annonce. Le test côte à côte de 6.1 reste vert (il verrouille le dataset legacy) ; la « Décision requise » qu'il prévoyait est OUVERTE : config de référence du Sprint 8 à arbitrer | Sprint 8 (Décision requise n° 2 à l'ouverture) |
 
 ## Changelog
+
+### Sprint 7 — Harnais de validation (2026-06-11)
+
+**Baseline réelle à l'ouverture** : **396/396 verte**, conforme au tableau de bord
+(`ctest -N` = 396, aucune dérive hors cycle).
+
+**Commits** (ordre chronologique = ordre d'exécution 7.1 → 7.4 → 7.2 → 7.3) :
+- `14f20d4` feat(backtest) : walk-forward IS/OOS — replay de sous-période + verdict sur-ajustement (item 7.1, D24)
+- `e8f7c09` feat(data) : multi-actifs total-return + garde-fou D29 — SPY, IWM, MDY, QQQ dividendes compris (item 7.4, D29)
+- `4ef60a4` feat(backtest) : optimiseur de grille à sélection robuste — plateau, sensibilité, verdict OOS (item 7.2)
+- `e4fd21c` feat(backtest) : Monte-Carlo bootstrap des trades — distribution retour/CAGR/drawdown, graine fixée (item 7.3, D24)
+
+**Tests** : 396 → **450** (+54 : +36 unitaires, +18 intégration). Nouvelles
+suites : `WalkForwardUnit` (10) + `BacktesterSubPeriodUnit` (4),
+`GridOptimizerUnit` (8), `MonteCarloUnit` (9), `WalkForwardIntegration` (4),
+`MultiAssetIntegration` (6), `GridOptimizerIntegration` (5),
+`MonteCarloIntegration` (3). Étendue : `CsvDataFeedUnit` +5 (garde-fou D29).
+Rouges réels : header inexistant pour 7.1/7.2/7.3, méthode inexistante pour le
+garde-fou 7.4.
+
+**Goldens legacy INCHANGÉS** (QQQ.csv : défaut +9,5289 %, prod +36,3189 % —
+critère du replay de sous-période : `run(0, taille) ≡ run()`). **Nouveaux
+goldens figés** (tous le 2026-06-11) :
+- Walk-forward QQQ.csv (IS 504 / OOS 126, 10 fenêtres) : défaut edge IS 3/10,
+  OOS 5/10, alpha moyen IS −32,86 / OOS −1,95 pts ; prod 4/10, 5/10,
+  −27,65 / −1,82 pts. Alpha OOS moyen < 0 verrouillé (aucun edge démontré).
+- Multi-actifs (config prod / défaut sur 4 actifs total-return) : aucun ne bat
+  son B&H ; B&H QQQ_TR +262,08 % (D29 quantifié : +23,5 pts cachés).
+- Grille (QQQ_TR, 12 combos EMA×TP, IS 70 %) : choix plateau EMA 5/30 TP 10 %,
+  alpha IS −139,53 pts, verdict OOS −2,48 % / alpha −39,05 pts.
+- Monte-Carlo (prod sur QQQ_TR, 23 trades, 1000 chemins, graine 42) : retour
+  p5 −13,39 / p50 +20,85 / p95 +73,12 %, drawdown p50 12,27 %.
+
+**Nouveaux fichiers** : `include/backtest/WalkForward.hpp`,
+`include/backtest/GridOptimizer.hpp`, `include/backtest/MonteCarlo.hpp`,
+`tools/export_total_return_csv.py`, `data/{SPY,IWM,MDY,QQQ_TR}.csv`,
+4 fichiers de tests.
+**Interfaces modifiées** (toutes additives, rétro-compatibles) :
+- `Backtester::run(size_t begin, size_t end)` (surcharge ; `run()` inchangé).
+- `ReplayDataFeed::setWindowStart(size_t)` (défaut 0 = comportement historique).
+- `CsvDataFeed::hasDividendInfo()` + avertissement stderr D29 au chargement.
+- CMake : `SWINGBOT_DATA_DIR` injecté aux tests d'intégration ; `.gitignore` :
+  exception `!data/*.csv`.
+
+**Enseignement central du sprint** : le harnais ne sauve pas la stratégie, il
+la juge — et le verdict est sans appel : sur données propres (total-return,
+sans barres fabriquées), l'alpha de la config prod retombe de −202 à ≈ −258 pts
+et sa supériorité sur la config défaut disparaît (D30/D31). Tout le Sprint 8
+sera mesuré par cet outillage, en OOS uniquement.
 
 ### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
 
@@ -609,6 +688,66 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 7 — Harnais de validation (2026-06-11)
+
+**1. Découpage** : bon calibre (4 items, un module chacun, zéro couplage non
+prévu). L'ordre conseillé 7.1 → 7.4 → 7.2 → 7.3 a tenu et ses deux dépendances
+étaient réelles : la grille (7.2) a bien été jugée sur la série total-return de
+7.4 (sans quoi elle aurait optimisé sur des données sans dividendes ET à barres
+fabriquées — D30 n'était même pas connu au moment du plan), et le bootstrap
+(7.3) consomme les trades du backtest sur ces mêmes données. Le socle
+`run(begin, end)` de 7.1 a été réutilisé tel quel par 7.2 — aucune duplication.
+Aucune « Décision requise » dans ce sprint : aucun blocage utilisateur.
+
+**2. Suffisance des prompts** : aucune improvisation de workflow. La liste apt,
+le recalage `ctest -N` (396 = tableau de bord, pas de dérive) et la discipline
+du test rouge se sont appliqués tels quels (rouges réels : header/méthode
+inexistants pour les 4 items). Deux incidents d'exécution sans impact dépôt,
+réglés par les garde-fous existants : un `cmake` lancé par erreur À LA RACINE
+(build in-source) a pollué le répertoire de travail — nettoyé immédiatement,
+et l'inspection `git status --short` AVANT commit (leçon Sprint 1) a confirmé
+qu'aucun artefact n'a été stagé ; et un test unitaire de plateau dont la série
+synthétique était mal choisie (le VOISIN du pic héritait du pic dans sa
+moyenne) — corrigé en séparant pic et plateau, preuve que le test testait
+vraiment le critère. **Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt** : (a) **D30 est la leçon du sprint** — comme D29 au
+Sprint 6, un défaut de DONNÉES (barres de jours fériés fabriquées) a survécu à
+six sprints parce que personne n'avait compté les barres par an ; il n'est
+apparu qu'en comparant au ré-export Yahoo (1858 vs 1790 barres). Le garde-fou
+générique « la qualité des données se teste comme le code » devrait inclure un
+check de calendrier (barres/an ≈ 252, pas de jours fériés US) — peu coûteux
+maintenant que `market_calendar.h` existe ; ajouté au backlog implicite du
+Sprint 8 via D30. (b) D31 (la supériorité de la config prod ne généralise pas)
+aurait été visible dès le Sprint 6 si le côte à côte 6.1 avait tourné sur un
+2e dataset — le harnais multi-actifs rend désormais ce genre d'angle mort
+impossible. (c) Le coût des nouveaux goldens est resté maîtrisé (suite
+complète : ~14 s), mais la multiplication des backtests d'intégration (18
+nouveaux tests) finira par peser : surveiller la durée à la prochaine clôture.
+
+**4. Notes** (précédent 84/87/76/71, Rentabilité 20) :
+- **Architecture 85** (+1) : trois modules orthogonaux qui ne touchent ni les
+  interfaces trading:: ni le moteur — le harnais consomme le Backtester par
+  une surcharge additive ; logique pure (fenêtres, plateau, percentiles)
+  séparée de l'exécution, testable sans CSV. Plafonné par D18 (8.0) et
+  l'externalisation config (9.1).
+- **Qualité 89** (+2) : +54 tests, 4 rouges réels avant implémentation, chaque
+  module avec goldens d'intégration ET tests unitaires purs ; l'étanchéité du
+  replay de sous-période est prouvée au centime (le test le plus important du
+  sprint : sans elle, tout le walk-forward mentirait). Plafonné par la durée
+  croissante de la suite et la couverture des composition roots.
+- **FinTech 80** (+4) : l'infrastructure de jugement est le cœur FinTech de ce
+  projet — IS/OOS, plateau anti-sur-ajustement, distribution du risque de
+  séquence, données total-return. La mesure est désormais complète ET le
+  verdict honnête (aucun edge). Pour dépasser 85 : un edge démontré (Sprint 8).
+- **Production 71** (=) : rien de déployé n'a changé — le harnais est de
+  l'outillage hors-ligne. La marche restante est inchangée (Sprint 9).
+- **Rentabilité 15** (−5) : la note BAISSE alors que la connaissance MONTE :
+  sur données propres, l'alpha prod est ≈ −258 pts (pas −202), la config prod
+  perd son avantage (D31), et le bootstrap montre un p5 à −13,4 %. Le chiffre
+  du Sprint 6 flattait sans le savoir ; celui-ci est le vrai point de départ
+  du Sprint 8.
 
 ### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
 
