@@ -40,16 +40,22 @@ struct MonteCarloResult {
 
 class MonteCarlo {
 public:
-    // Rendements de trade RELATIFS À L'ÉQUITÉ (et non au seul montant de la
-    // position) : `pnl$ / capital initial`. C'est la bonne grandeur à composer —
-    // utiliser `pnlPct` (rendement sur position) surévaluerait massivement la
-    // distribution, car le bot n'est investi qu'une fraction du temps et size à
-    // 2 % de risque (la somme des pnl/capital ≈ le retour total du backtest).
+    // Rendements de trade RELATIFS À L'ÉQUITÉ AU MOMENT DU TRADE (composée :
+    // capital initial + Σ pnl des trades précédents) — ainsi le produit des
+    // (1+r) dans l'ordre original redonne EXACTEMENT équité finale / initiale,
+    // et le p50 du bootstrap reste du même ordre que le retour réel. D36 :
+    // l'ancien `pnl / capital initial` gonflait les trades tardifs dès que
+    // l'équité croissait — latent à +36 % de retour total (p50 +43,6 % vs réel
+    // +36,1 %), absurde à +538 % avec la V2 (p50 +4178 %). `pnlPct` (rendement
+    // sur position) resterait pire encore : il ignore la fraction investie.
     static std::vector<double> tradeReturns(const BacktestResult& r) {
         std::vector<double> out;
         out.reserve(r.trades.size());
-        const double cap = r.initialCapital > 0 ? r.initialCapital : 1.0;
-        for (const auto& t : r.trades) out.push_back(t.pnl / cap);
+        double equity = r.initialCapital > 0 ? r.initialCapital : 1.0;
+        for (const auto& t : r.trades) {
+            out.push_back(equity > 0 ? t.pnl / equity : 0.0);
+            equity += t.pnl;
+        }
         return out;
     }
 

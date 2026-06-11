@@ -3,18 +3,14 @@
 
 namespace trading {
 
-// ─── Config de production IBKR — source unique (item 6.1 / D21) ──────────────
-// Cette fonction est la SEULE définition des paramètres tradés par
-// main_ibkr.cpp, et elle est validée par le golden de non-régression
-// « prod » (test_backtester_integration.cpp). Avant ce partage, la config de
-// prod était dupliquée dans main_ibkr.cpp et n'était couverte par AUCUN
-// backtest : le live tradait des paramètres jamais validés (découverte D21).
-//
-// Toute modification ici fait échouer le golden prod : re-figer les valeurs
-// uniquement après avoir relancé le backtest et documenté le delta dans
-// ROADMAP.md. L'externalisation complète (fichier JSON validé au démarrage)
-// est l'item 9.1.
-inline SwingConfig ibkrProdConfig() {
+// ─── Config héritée (V1, archivée) — témoin du verdict D30 ───────────────────
+// L'ancienne config de production (avant le Sprint 8) : take-profit fixe 15 %,
+// vente sur RSI > 80, sizing risk-based 2 %. Conservée comme TÉMOIN : les goldens
+// d'archive (walk-forward D30, grille 7.2, Monte-Carlo 7.3) la rejouent pour que
+// les leçons des Sprints 6-7 (« aucun edge OOS », « tuner ne sauve pas une
+// structure cassée », « cash drag décisif ») restent vérifiables. Ne plus la
+// trader : elle perd contre le Buy & Hold en OOS (D30).
+inline SwingConfig legacyProdConfig() {
     SwingConfig cfg;
     cfg.symbol          = "QQQ";
     cfg.emaFast         = 13;
@@ -30,8 +26,8 @@ inline SwingConfig ibkrProdConfig() {
     return cfg;
 }
 
-// ─── Config V2 « suivi de tendance » (Sprint 8 — refonte des sorties) ─────────
-// Même déclencheur d'entrée que la prod, mais SORTIES refondues : pas de
+// ─── Config V2 « suivi de tendance » (Sprints 8-9) ────────────────────────────
+// Même déclencheur d'entrée que la V1, mais SORTIES refondues : pas de
 // take-profit fixe (8.2) et pas de vente sur RSI suracheté (8.4). La synergie de
 // ces deux changements laisse les gagnants courir jusqu'au trailing au lieu de
 // les écrêter — au banc, l'alpha OOS passe de −13,5 à +14,9 pts et 4/4 segments
@@ -44,11 +40,26 @@ inline SwingConfig ibkrProdConfig() {
 // pour un maxDD backtest ~4,5 %, en gardant un coussin de cash de 10 %. Vol-targeting
 // et Kelly écartés (sans gain mesuré / strictement pires). Décision utilisateur.
 inline SwingConfig swingTrendConfig() {
-    SwingConfig cfg = ibkrProdConfig();
+    SwingConfig cfg = legacyProdConfig();
     cfg.takeProfitPct       = 0.0;    // 8.2 : pas de take-profit fixe
     cfg.sellOnRsiOverbought = false;  // 8.4 : ne pas vendre sur RSI seul
     cfg.targetExposurePct   = 0.90;   // 9.0b : exposition fixe 90 %
     return cfg;
+}
+
+// ─── Config de production IBKR — source unique (item 6.1 / D21) ──────────────
+// Cette fonction est la SEULE définition des paramètres tradés par
+// main_ibkr.cpp, et elle est validée par les goldens « prod »
+// (test_backtester_integration.cpp) et OOS (test_strategy_v2_integration.cpp).
+//
+// Depuis l'item 9.0 (Sprint 9), la prod EST la V2 : première config qui bat le
+// Buy & Hold en out-of-sample (OOS +46,5 % vs +39,4 %, alpha +7,2 pts, maxDD
+// 4,6 % — verdict figé dans test_strategy_v2_integration). Toute modification ici
+// fait échouer les goldens : re-figer uniquement après avoir relancé le backtest
+// et documenté le delta dans ROADMAP.md. L'externalisation complète (fichier
+// JSON validé au démarrage) est l'item 9.1.
+inline SwingConfig ibkrProdConfig() {
+    return legacyProdConfig();  // ← bascule V2 au commit suivant (item 9.0)
 }
 
 } // namespace trading

@@ -83,16 +83,36 @@ TEST(MonteCarloUnit, NonPositivePathsYieldsZeroedResult) {
     EXPECT_EQ(r.samples, 0);
 }
 
-// Helper : extraction des rendements de trade RELATIFS À L'ÉQUITÉ
-// (pnl$ / capital initial), pas le rendement sur position.
-TEST(MonteCarloUnit, TradeReturnsAreEquityRelative) {
+// Helper : extraction des rendements de trade relatifs à l'équité AU MOMENT du
+// trade (composée : initial + Σ pnl des trades précédents), pas au capital
+// initial. D36 : l'ancien pnl/capitalInitial gonflait les trades tardifs dès que
+// l'équité croissait (latent à +36 % de retour total, énorme à +538 % avec la V2).
+TEST(MonteCarloUnit, TradeReturnsAreRelativeToEquityAtTradeTime) {
     BacktestResult br;
     br.initialCapital = 10'000.0;
-    TradeRecord t1; t1.pnl =  1'000.0;   // +10 % de l'équité
-    TradeRecord t2; t2.pnl =   -500.0;   // -5 % de l'équité
+    TradeRecord t1; t1.pnl =  1'000.0;   // +10 % de 10 000
+    TradeRecord t2; t2.pnl =   -500.0;   // -500 / 11 000 = -4,5454… %
     br.trades = {t1, t2};
     auto tr = MonteCarlo::tradeReturns(br);
     ASSERT_EQ(tr.size(), 2u);
     EXPECT_DOUBLE_EQ(tr[0], 0.10);
-    EXPECT_DOUBLE_EQ(tr[1], -0.05);
+    EXPECT_DOUBLE_EQ(tr[1], -500.0 / 11'000.0);
 }
+
+// Propriété d'identité : composer les rendements extraits dans l'ordre original
+// redonne EXACTEMENT équité finale / équité initiale. C'est cette propriété qui
+// garantit que le p50 du bootstrap est du même ordre que le retour réel.
+TEST(MonteCarloUnit, TradeReturnsComposeBackToFinalEquity) {
+    BacktestResult br;
+    br.initialCapital = 10'000.0;
+    TradeRecord a; a.pnl =  5'000.0;   // équité 10k → 15k
+    TradeRecord b; b.pnl = 15'000.0;   // 15k → 30k (gros trade tardif)
+    TradeRecord c; c.pnl = -3'000.0;   // 30k → 27k
+    br.trades = {a, b, c};
+    auto tr = MonteCarlo::tradeReturns(br);
+    ASSERT_EQ(tr.size(), 3u);
+    double equity = 1.0;
+    for (double r : tr) equity *= (1.0 + r);
+    EXPECT_NEAR(equity, 27'000.0 / 10'000.0, 1e-12);
+}
+
