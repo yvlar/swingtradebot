@@ -8,6 +8,7 @@
 #include <memory>
 #include <numeric>
 #include <cmath>
+#include <cstdio>
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
@@ -52,6 +53,13 @@ struct BacktestResult {
     double maxDrawdownPct   = 0.0;
     double sharpeRatio      = 0.0;
     double volatilityPct    = 0.0;
+    // ── Métriques d'objectif (Sprint 6.4, D23) : « faire de l'argent » =
+    // alpha net vs Buy & Hold à drawdown maîtrisé, pas « retour positif »
+    double cagrPct          = 0.0;   // croissance annualisée composée
+    double sortinoRatio     = 0.0;   // Sharpe pénalisant la seule volatilité basse
+    double calmarRatio      = 0.0;   // CAGR / max drawdown
+    double pctTimeInvested  = 0.0;   // % des barres post-warmup passées en position
+    bool   beatsBuyHold     = false; // verdict : bat le Buy & Hold net de coûts ?
     int    totalTrades      = 0;
     int    winningTrades    = 0;
     int    losingTrades     = 0;
@@ -173,6 +181,18 @@ public:
         row("Sharpe Ratio",       fmtD(r.sharpeRatio, 3));
         row("Volatilite (ann.)",  pct(r.volatilityPct));
 
+        // L'objectif est explicite (D23) : battre le Buy & Hold net de coûts,
+        // pas seulement finir positif
+        std::cout << "\n  OBJECTIF — BAT-ON LE BUY & HOLD ?\n";
+        lineDash();
+        row("CAGR",               pct(r.cagrPct));
+        row("Sortino",            fmtD(r.sortinoRatio, 3));
+        row("Calmar",             fmtD(r.calmarRatio, 3));
+        row("Temps investi",      pct(r.pctTimeInvested));
+        row("Verdict",            r.beatsBuyHold
+                                      ? "BAT le Buy & Hold (net de couts)"
+                                      : "NE BAT PAS le Buy & Hold");
+
         std::cout << "\n  STATISTIQUES DES TRADES\n";
         lineDash();
         row("Trades total",       std::to_string(r.totalTrades));
@@ -261,7 +281,7 @@ public:
             r.maxDrawdownPct = std::max(r.maxDrawdownPct, dd);
         }
 
-        // Sharpe + Volatilité (rendements journaliers annualisés)
+        // Sharpe + Volatilité + Sortino (rendements journaliers annualisés)
         if (equityCurve.size() > warmup + 1) {
             std::vector<double> rets;
             for (size_t i = warmup + 1; i < equityCurve.size(); ++i)
@@ -282,8 +302,43 @@ public:
                 r.sharpeRatio   = stddev > 0
                     ? (mean * 252.0) / (stddev * std::sqrt(252.0))
                     : 0.0;
+
+                // Sortino (D23) : seule la volatilité BASSE est un risque.
+                // Déviation basse = √(Σ min(0, ret)² / N), cible 0, N = tous
+                // les rendements. Aucun rendement négatif → sentinelle 999
+                // (convention du profit factor) si la moyenne est positive.
+                double downVar = 0;
+                for (double x : rets) if (x < 0) downVar += x * x;
+                downVar /= rets.size();
+                const double downDev = std::sqrt(downVar);
+                r.sortinoRatio = downDev > 0
+                    ? (mean * 252.0) / (downDev * std::sqrt(252.0))
+                    : (mean > 0 ? 999.0 : 0.0);
             }
         }
+
+        // ── CAGR (D23) : durée réelle via les dates d'équité si possible,
+        // sinon repli « N barres ≈ N/252 années »
+        double years = 0.0;
+        if (equityDates.size() >= 2) {
+            const long d0 = daysSinceEpoch_(equityDates.front());
+            const long d1 = daysSinceEpoch_(equityDates.back());
+            if (d0 >= 0 && d1 > d0) years = (d1 - d0) / 365.25;
+        }
+        if (years <= 0.0 && equityCurve.size() > 1)
+            years = static_cast<double>(equityCurve.size()) / 252.0;
+        if (years > 0.0 && initialCapital_ > 0 && finalCash > 0)
+            r.cagrPct = (std::pow(finalCash / initialCapital_, 1.0 / years) - 1.0)
+                        * 100.0;
+
+        // Calmar (D23) : rendement annualisé par unité de drawdown subi
+        r.calmarRatio = r.maxDrawdownPct > 0
+            ? r.cagrPct / r.maxDrawdownPct
+            : (r.cagrPct > 0 ? 999.0 : 0.0);
+
+        // Verdict explicite (D23) : le retour de la stratégie est net des
+        // commissions (PaperBroker) — « faire de l'argent » = battre le B&H
+        r.beatsBuyHold = r.totalReturnPct > r.buyHoldReturnPct;
 
         // Stats trades
         double totalWinPnl = 0, totalLossPnl = 0;
@@ -317,10 +372,35 @@ public:
         if (r.losingTrades  > 0) r.avgLossPct = totalLossPct / r.losingTrades;
         r.profitFactor = totalLossPnl > 0 ? totalWinPnl / totalLossPnl : 999.0;
 
+        // % du temps investi (D23) : jours détenus / barres post-warmup —
+        // mesure le cash drag (T4 : hors position l'essentiel du temps)
+        const size_t barsPostWarmup =
+            equityCurve.size() > static_cast<size_t>(warmup)
+                ? equityCurve.size() - static_cast<size_t>(warmup) : 0;
+        if (barsPostWarmup > 0)
+            r.pctTimeInvested = std::min(100.0,
+                100.0 * totalHold / static_cast<double>(barsPostWarmup));
+
         return r;
     }
 
 private:
+    // Convertit « YYYY-MM-DD » en jours depuis l'époque civile (algorithme
+    // days_from_civil de Howard Hinnant) ; -1 si le format est invalide
+    static long daysSinceEpoch_(const std::string& date) {
+        int y = 0, m = 0, d = 0;
+        if (date.size() < 10
+            || std::sscanf(date.c_str(), "%d-%d-%d", &y, &m, &d) != 3
+            || m < 1 || m > 12 || d < 1 || d > 31)
+            return -1;
+        y -= m <= 2;
+        const long     era = (y >= 0 ? y : y - 399) / 400;
+        const unsigned yoe = static_cast<unsigned>(y - era * 400);
+        const unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2u) / 5u + d - 1;
+        const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        return era * 146097 + static_cast<long>(doe) - 719468;
+    }
+
     static std::string fmt(double v) {
         std::ostringstream s;
         s << std::fixed << std::setprecision(2) << v;
