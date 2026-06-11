@@ -40,6 +40,23 @@ public:
         return std::max(0, shares);
     }
 
+    // Item 9.0b : sizing à fraction fixe (exposition cible). Le sizing de la V2
+    // (suivi de tendance) : on vise une fraction fixe du capital (ex. 90 %), car le
+    // timing — pas le stop — porte l'edge, et le risk-based bridait l'exposition à
+    // ~28 %/position (frein distinct du timing, D34). Toujours capé par le plafond
+    // de capital (marge broker).
+    int positionSizeFixedExposure(
+        double capital,
+        double price,
+        double exposurePct
+    ) const override {
+        if (capital <= 0 || price <= 0 || exposurePct <= 0)
+            return 0;
+        double frac   = std::min(exposurePct, maxCapitalUsagePct_);
+        int    shares = static_cast<int>((capital * frac) / price);
+        return std::max(0, shares);
+    }
+
     // Vérifie qu'on n'est pas déjà en position, que le compte est actif
     // et que le coût total de l'ordre tient dans le cash disponible
     bool isTradeAllowed(

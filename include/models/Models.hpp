@@ -85,6 +85,9 @@ struct RiskConfig {
     double takeProfitPct   = 0.10;  // +10%
     double trailingStopPct = 0.03;  // -3% depuis le pic
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
+    // Item 9.0b : si > 0, sizing à fraction fixe (exposition cible) au lieu du
+    // risk-based — le sizing de la V2 (suivi de tendance). 0 = risk-based (défaut).
+    double targetExposurePct = 0.0;
     int    minHoldDays     = 3;
     KillSwitchConfig killSwitch{};  // coupe-circuit de risque (item 18)
 };

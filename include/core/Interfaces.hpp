@@ -111,6 +111,15 @@ public:
         double riskPerTradePct
     ) const = 0;
 
+    // Sizing à fraction fixe (item 9.0b) : vise une exposition cible (fraction du
+    // capital), indépendamment de la distance au stop — contrairement au risk-based.
+    // Capté par le plafond de capital. Activé quand RiskConfig.targetExposurePct > 0.
+    virtual int positionSizeFixedExposure(
+        double capital,
+        double price,
+        double exposurePct
+    ) const = 0;
+
     // Vérifie si le trade respecte les règles de risque
     // (dont coût total = price × qty ≤ cash disponible)
     virtual bool isTradeAllowed(

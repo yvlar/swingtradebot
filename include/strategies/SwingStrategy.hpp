@@ -19,6 +19,9 @@ namespace trading {
         double takeProfitPct      = 0.10;  // +10%
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
+        // Item 9.0b : si > 0, sizing à fraction fixe (exposition cible) au lieu du
+        // risk-based. 0 = risk-based (défaut historique).
+        double targetExposurePct  = 0.0;
         int    minHoldDays        = 3;
         // Item 8.4 : si false, ne PAS vendre sur RSI suracheté seul (rester dans
         // la tendance ; seul un croisement baissier sortira). Défaut true =
@@ -35,6 +38,7 @@ namespace trading {
             r.takeProfitPct   = takeProfitPct;
             r.trailingStopPct = trailingStopPct;
             r.riskPerTradePct = riskPerTradePct;
+            r.targetExposurePct = targetExposurePct;
             r.minHoldDays     = minHoldDays;
             return r;
         }

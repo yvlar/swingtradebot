@@ -65,6 +65,26 @@ TEST(RiskManagerUnit, PositionSizeCappedByAvailableCapital) {
     EXPECT_EQ(rm.positionSize(1'000.0, 100.0, 0.01, 0.50), 9);
 }
 
+// ── Item 9.0b : sizing à fraction fixe (exposition cible, indépendant du stop) ──
+TEST(RiskManagerUnit, FixedExposureSizesToTargetFraction) {
+    RiskManager rm;
+    // 90 % de 10 000 $ à 100 $ = 90 actions (ignore le stop, contrairement au risk-based)
+    EXPECT_EQ(rm.positionSizeFixedExposure(10'000.0, 100.0, 0.90), 90);
+}
+
+TEST(RiskManagerUnit, FixedExposureCappedByMaxCapitalUsage) {
+    RiskManager rm;  // maxCapitalUsagePct par défaut = 0,95
+    // Cible 99 % mais le plafond de capital (95 %) prime → 95 actions
+    EXPECT_EQ(rm.positionSizeFixedExposure(10'000.0, 100.0, 0.99), 95);
+}
+
+TEST(RiskManagerUnit, FixedExposureZeroOnInvalidInputs) {
+    RiskManager rm;
+    EXPECT_EQ(rm.positionSizeFixedExposure(0.0,     100.0, 0.90), 0);
+    EXPECT_EQ(rm.positionSizeFixedExposure(10'000.0,  0.0, 0.90), 0);
+    EXPECT_EQ(rm.positionSizeFixedExposure(10'000.0, 100.0, 0.0),  0);
+}
+
 // ════════════════════════════════════════════════════════════
 //  isTradeAllowed — autorisation (dont coût total ≤ cash)
 // ════════════════════════════════════════════════════════════

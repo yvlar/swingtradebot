@@ -189,11 +189,15 @@ public:
                 return;
             }
 
-            int shares = riskManager_->positionSize(
-                account.cash, price,
-                riskCfg_.stopLossPct,
-                riskCfg_.riskPerTradePct
-            );
+            // Item 9.0b : sizing à fraction fixe (exposition cible) si configuré
+            // — le sizing de la V2 (suivi de tendance) ; sinon risk-based (défaut).
+            int shares = riskCfg_.targetExposurePct > 0.0
+                ? riskManager_->positionSizeFixedExposure(
+                      account.cash, price, riskCfg_.targetExposurePct)
+                : riskManager_->positionSize(
+                      account.cash, price,
+                      riskCfg_.stopLossPct,
+                      riskCfg_.riskPerTradePct);
             if (shares <= 0) {
                 logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
                 return;

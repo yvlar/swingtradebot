@@ -37,14 +37,17 @@ inline SwingConfig ibkrProdConfig() {
 // les écrêter — au banc, l'alpha OOS passe de −13,5 à +14,9 pts et 4/4 segments
 // battent le B&H (voir research/prototype_exits.py).
 //
-// ⚠️ riskPerTradePct reste à 2 % : à cette exposition (~28 %/position) l'edge de
-// TIMING ne se traduit PAS encore en dollars battant le B&H — le passage à
-// l'échelle (sizing) est une décision délibérée du Sprint 9. La validation OOS
-// du timing (test_strategy_v2_integration) s'évalue donc à pleine exposition.
+// Sizing (item 9.0b) : fraction fixe 90 % de l'exposition. Le risk-based bridait
+// l'exposition à ~28 %/position (frein distinct du timing, D34) ; le timing — pas
+// le stop — porte l'edge, donc on vise une exposition fixe. Niveau 90 % arbitré au
+// banc (research/prototype_sizing.py) : bat le B&H en OOS avec marge (~+10 pts, 4/4)
+// pour un maxDD backtest ~4,5 %, en gardant un coussin de cash de 10 %. Vol-targeting
+// et Kelly écartés (sans gain mesuré / strictement pires). Décision utilisateur.
 inline SwingConfig swingTrendConfig() {
     SwingConfig cfg = ibkrProdConfig();
-    cfg.takeProfitPct      = 0.0;    // 8.2 : pas de take-profit fixe
-    cfg.sellOnRsiOverbought = false; // 8.4 : ne pas vendre sur RSI seul
+    cfg.takeProfitPct       = 0.0;    // 8.2 : pas de take-profit fixe
+    cfg.sellOnRsiOverbought = false;  // 8.4 : ne pas vendre sur RSI seul
+    cfg.targetExposurePct   = 0.90;   // 9.0b : exposition fixe 90 %
     return cfg;
 }
 
