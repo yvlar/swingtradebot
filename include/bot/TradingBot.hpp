@@ -9,6 +9,19 @@
 
 namespace trading {
 
+// ─── TradeFill — événement de fill confirmé (item 21) ────────────────────────
+// Transmis au composition root pour journaliser les trades (DbLogger
+// record_trade/close_trade) et alimenter le dashboard (BotState::positions).
+// Émis UNIQUEMENT sur un fill confirmé : achat ouvrant, vente clôturant.
+struct TradeFill {
+    OrderSide   side;             // BUY = ouverture, SELL = clôture
+    std::string symbol;
+    int         quantity = 0;
+    double      price    = 0.0;   // prix de fill réel
+    double      pnl      = 0.0;   // P&L $ (significatif à la vente)
+    std::string reason;           // raison de sortie (vente) ; "" à l'achat
+};
+
 // ─── TradingBot ───────────────────────────────────────────────────────────────
 // (BotState vit dans models/Models.hpp, persisté via IStateStore)
 // Orchestrateur principal. Dépend UNIQUEMENT des interfaces (DIP).
@@ -149,6 +162,9 @@ public:
                     else         consecutiveLosses_ = 0;
                     logger_->info("🔴 VENTE (" + reason + ") │ P&L: $" +
                                   std::to_string(static_cast<int>(pnl)));
+                    if (tradeObserver_)
+                        tradeObserver_({OrderSide::SELL, riskCfg_.symbol,
+                                        fillQty, fillPrice, pnl, reason});
                     state_ = BotState{};  // reset
                     saveState_();
                 } else {
@@ -202,6 +218,9 @@ public:
                 saveState_();
                 logger_->info("🟢 ACHAT │ " + std::to_string(fillQty) +
                               " parts × $" + std::to_string(static_cast<int>(fillPrice)));
+                if (tradeObserver_)
+                    tradeObserver_({OrderSide::BUY, riskCfg_.symbol,
+                                    fillQty, fillPrice, 0.0, ""});
             } else if (order.has_value() && order->status == OrderStatus::PENDING) {
                 logger_->warn("Ordre d'achat en attente d'exécution — "
                               "réconciliation au prochain cycle");
@@ -244,6 +263,14 @@ public:
         exitObserver_ = std::move(obs);
     }
 
+    // Observateur de cycle de vie des trades (item 21) : notifié sur chaque
+    // fill CONFIRMÉ (achat ouvrant, vente clôturant) pour journalisation
+    // (DbLogger) et dashboard. Le composition root y branche record_trade/
+    // close_trade et BotState::positions.
+    void setTradeObserver(std::function<void(const TradeFill&)> obs) {
+        tradeObserver_ = std::move(obs);
+    }
+
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
     std::shared_ptr<IBroker>      broker_;
@@ -257,6 +284,7 @@ private:
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
     std::function<void(const std::string&)> exitObserver_;
+    std::function<void(const TradeFill&)>   tradeObserver_;
 
     // ── Compteurs du kill-switch (item 18) ────────────────────────────────────
     // Réinitialisés au changement de jour de bourse (sauf la série de pertes

@@ -462,6 +462,56 @@ TEST(TradingBotUnit, CancelledBuyDoesNotEnterPosition) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Sprint 5 item 21 — observateur de cycle de vie des trades
+//  (alimente DbLogger record_trade/close_trade + dashboard en prod)
+// ════════════════════════════════════════════════════════════
+
+// L'observateur reçoit un fill BUY à l'ouverture, puis un fill SELL à la
+// clôture avec le P&L et la raison de sortie — uniquement sur fills confirmés.
+TEST(TradingBotUnit, TradeObserverFiresOnEntryAndExit) {
+    BotHarness h(420.0, "2024-03-01");
+    std::vector<TradeFill> fills;
+    h.bot->setTradeObserver([&](const TradeFill& f) { fills.push_back(f); });
+
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setFillPrice(420.0);
+    h.bot->runOnce();                                // achat @420
+
+    ASSERT_EQ(fills.size(), 1u);
+    EXPECT_EQ(fills[0].side,     OrderSide::BUY);
+    EXPECT_EQ(fills[0].symbol,   "QQQ");
+    EXPECT_EQ(fills[0].quantity, 9);
+    EXPECT_DOUBLE_EQ(fills[0].price, 420.0);
+    EXPECT_TRUE(fills[0].reason.empty());
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(380.0, "2024-03-05");               // -9,5% → stop-loss
+    h.broker->setFillPrice(380.0);
+    h.bot->runOnce();                                // vente @380
+
+    ASSERT_EQ(fills.size(), 2u);
+    EXPECT_EQ(fills[1].side,     OrderSide::SELL);
+    EXPECT_EQ(fills[1].quantity, 9);
+    EXPECT_DOUBLE_EQ(fills[1].price, 380.0);
+    EXPECT_DOUBLE_EQ(fills[1].pnl, (380.0 - 420.0) * 9);   // P&L réel négatif
+    EXPECT_NE(fills[1].reason.find("stop-loss"), std::string::npos);
+}
+
+// Un ordre NON exécuté (rejeté, en attente) ne doit PAS notifier l'observateur :
+// le dashboard et la table trades ne reflètent que des fills réels.
+TEST(TradingBotUnit, TradeObserverSilentOnUnfilledOrder) {
+    BotHarness h(420.0, "2024-03-01");
+    std::vector<TradeFill> fills;
+    h.bot->setTradeObserver([&](const TradeFill& f) { fills.push_back(f); });
+
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+    h.bot->runOnce();
+
+    EXPECT_TRUE(fills.empty());
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 5 item 18 — kill-switch : coupe les ENTRÉES, jamais les sorties
 // ════════════════════════════════════════════════════════════
 

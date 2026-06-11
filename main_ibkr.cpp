@@ -34,6 +34,24 @@
 static volatile std::sig_atomic_t g_running = 1; // type sûr en handler de signal (D8)
 void on_signal(int) { g_running = 0; }
 
+// ── Adaptateur trading::ILogger → DbLogger (item 21) ─────────
+// Unifie les deux systèmes de journalisation : chaque log du bot atterrit
+// AUSSI dans la table `logs` SQLite, en plus de la console. Branché via un
+// CompositeLogger au composition root.
+class DbLogSink final : public trading::ILogger {
+public:
+    explicit DbLogSink(DbLogger& db) : db_(db) {}
+    void info (const std::string& m) override { write("INFO ", m); }
+    void warn (const std::string& m) override { write("WARN ", m); }
+    void error(const std::string& m) override { write("ERROR", m); }
+    void debug(const std::string& m) override { write("DEBUG", m); }
+private:
+    DbLogger& db_;
+    void write(const std::string& level, const std::string& msg) {
+        db_.log({level, msg, trading::currentTimestamp()});
+    }
+};
+
 // ── Parse argument ligne de commande ─────────────────────────
 static std::string getArg(int argc, char* argv[],
                            const std::string& flag,
@@ -141,7 +159,10 @@ int main(int argc, char* argv[]) {
     auto broker   = std::make_shared<trading::IBKRBroker>(accountId, gatewayUrl);
     auto strategy = trading::SwingStrategy::create(cfg);
     auto riskMgr  = std::make_shared<trading::RiskManager>();
-    auto logger   = std::make_shared<trading::ConsoleLogger>();
+    // Journalisation unifiée (item 21) : console + persistance SQLite (table logs)
+    auto logger   = std::make_shared<trading::CompositeLogger>();
+    logger->addLogger(std::make_shared<trading::ConsoleLogger>());
+    logger->addLogger(std::make_shared<DbLogSink>(db));
     // Persistance de l'état de position : survit aux redémarrages
     // (réconciliée avec la position broker à chaque cycle)
     auto stateStore = std::make_shared<trading::SqliteStateStore>("swingbot_ibkr_state.db");
@@ -159,6 +180,34 @@ int main(int argc, char* argv[]) {
     // ── Bot principal ─────────────────────────────────────────
     trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr, logger, stateStore);
     bot.setConfig(cfg);
+
+    // ── Persistance des trades + dashboard (item 21) ──────────
+    // Chaque fill confirmé alimente la table `trades` (record_trade/close_trade,
+    // jamais appelées auparavant) et la liste des positions du dashboard.
+    bot.setTradeObserver([&](const trading::TradeFill& f) {
+        if (f.side == trading::OrderSide::BUY) {
+            double sl = f.price * (1.0 - cfg.stopLossPct);
+            double tp = f.price * (1.0 + cfg.takeProfitPct);
+            db.record_trade(cfg.symbol, "buy", f.quantity, f.price, sl, tp, "open");
+
+            std::lock_guard<std::mutex> lk(botState.mtx);
+            botState.positions.clear();
+            PositionData p;
+            p.symbol        = f.symbol;
+            p.side          = "long";
+            p.qty           = f.quantity;
+            p.avg_entry     = f.price;
+            p.stop_loss     = sl;
+            p.take_profit   = tp;
+            p.current_price = f.price;
+            botState.positions.push_back(p);
+        } else {  // SELL : clôture du trade ouvert
+            db.close_trade(cfg.symbol, f.price, f.pnl);
+
+            std::lock_guard<std::mutex> lk(botState.mtx);
+            botState.positions.clear();
+        }
+    });
 
     std::signal(SIGINT,  on_signal);
     std::signal(SIGTERM, on_signal);
