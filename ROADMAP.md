@@ -16,27 +16,32 @@
 
 - **Dernière mise à jour** : 2026-06-11 (clôture Sprint 8 — refonte des sorties)
 - **Sprint courant** : Sprint 9 — Mise en production de la V2 + passage à l'échelle (sizing).
-  Sprint 8 clos : la refonte des sorties (8.2/8.4) renverse D30, la V2 **bat le B&H en OOS**
-  (premier edge directionnel prouvé). Items entrée/régime (8.0/8.1/8.3/8.5) reportés — le
-  banc montre qu'ils n'ajoutent pas d'alpha OOS robuste (D34). Reliquat item 19 en Sprint 9.5.
+  **Item 9.0b ✅** : sizing arbitré (fraction fixe 90 %, D35) — la V2 @90 % bat le B&H en OOS
+  **en dollars** (+7,2 pts, maxDD 4,6 %). Reste : 9.0 (basculer `main_ibkr` + re-figer goldens),
+  9.1-9.4 (config JSON, lookback, calendrier, re-calibration). Sprint 8 clos (refonte sorties,
+  D30 renversé). Items entrée/régime reportés (D34). Reliquat item 19 en Sprint 9.5.
 
-> ### ✅ Rentabilité : edge OOS PROUVÉ (timing) — reste à le capter en dollars (sizing, S9)
-> **Renversement du Sprint 8.** La refonte des sorties (8.2 take-profit fixe désactivé +
-> 8.4 vente RSI suracheté désactivée) produit la config **V2** (`swingTrendConfig`), qui
-> est la **première stratégie à battre le Buy & Hold en out-of-sample** : à exposition
-> comparable (timing isolé), OOS **+48,73 % vs B&H +39,39 %** — alpha **+9,3 pts**, 3/4
-> segments roulants (banc Python : 4/4). D30 (« aucun edge OOS ») est renversé.
+> ### ✅ Rentabilité : edge OOS PROUVÉ **et capté en dollars** (sizing 9.0b) — reste à déployer
+> **Renversement du Sprint 8, capté au Sprint 9.** La refonte des sorties (8.2 TP fixe off +
+> 8.4 vente RSI off) produit la config **V2** (`swingTrendConfig`) — premier edge directionnel
+> OOS du projet. Le **sizing à fraction fixe 90 %** (item 9.0b) traduit cet edge en dollars :
+> OOS **+46,54 % vs B&H +39,39 %** — alpha **+7,2 pts**, maxDD **4,61 %**, Sharpe 1,79, 3/4
+> segments. D30 (« aucun edge OOS ») est renversé, ET battu en dollars au sizing de déploiement.
 >
-> **Nuance honnête (D34)** : au sizing de prod (2 % de risque ≈ 28 %/position), l'edge de
-> timing ne bat **pas encore** le B&H en dollars (OOS V2 +13,2 % vs +39,4 %) — mais il
-> **double** le retour de la prod (+6,6 %). L'écart restant est du **sizing**, pas du
-> timing : le passage à l'échelle est l'objet du **Sprint 9 (9.0b)**. Biais D28 (B&H
-> sous-estimé ~0,55 %/an) toujours présent mais largement couvert par les +9,3 pts.
+> **Décomposition des deux leviers** : le TIMING seul (sorties refondues, sizing 2 %) double
+> la prod (+13,2 % vs +6,6 %) mais reste sous le B&H — l'exposition ~28 %/position bride ;
+> le SIZING (90 %, 9.0b) referme l'écart. Le drawdown reste minuscule car le timing contrôle
+> déjà le risque (D35). Biais D28 (B&H sous-estimé ~0,55 %/an) couvert par les +7,2 pts.
+>
+> **Réserves** : (a) pas encore déployé — `main_ibkr.cpp` trade toujours l'ancienne config
+> (item 9.0) ; (b) mono-actif/mono-régime QQQ (D31), OOS partiellement synthétique → maxDD
+> ~5 % **optimiste** pour le risque de queue (D35) ; (c) suivre le drawdown réel en paper
+> avant tout capital significatif.
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **44** (15 audit, 22 après 6.1, 25 après S6, 28 après S7) | **+16 (S8)** : passage du « aucun edge OOS » (D30) au **premier edge OOS prouvé** — la V2 bat le B&H hors-échantillon (timing isolé, alpha +9,3 pts, robuste 3-4/4 segments). Le saut récompense un edge directionnel DÉMONTRÉ, pas supposé. Plafonné à 44 car : (a) pas encore capté en dollars au sizing prod (S9.0b) ni déployé (S9.0) ; (b) toujours mono-actif/mono-régime QQQ (D31) ; (c) biais total-return D28. Atteindra ~60+ après déploiement + sizing validés en OOS. |
-- **État des tests** : 418/418 verts (359 unitaires + 59 intégration, après Sprint 8),
+> | **Rentabilité** | **52** (15 audit → 28 après S7, 44 après S8) | **+8 (item 9.0b)** : l'edge OOS prouvé au S8 est désormais **capté en dollars** au sizing de déploiement — la V2 @90 % bat le B&H en OOS (+7,2 pts) avec un drawdown maîtrisé (4,6 %), méthode de sizing choisie sur preuve (fraction fixe ; vol-target/Kelly écartés, D35). Plafonné à 52 car : (a) **pas encore déployé** dans `main_ibkr` (item 9.0) ; (b) mono-actif/mono-régime QQQ, maxDD optimiste pour le risque de queue (D31/D35) ; (c) biais D28. Atteindra ~60+ après déploiement effectif + suivi paper du drawdown réel. |
+- **État des tests** : 422/422 verts (362 unitaires + 60 intégration, après S8 + item 9.0b),
   recalé sur `ctest -N`. La CI GitHub Actions (item 22) vérifie ce décompte à chaque push.
   Rappel D20 : le « 198 » de la clôture Sprint 3 ignorait un lot de fondations mergé
   hors cycle (`15eb711`) — d'où le recalage systématique.
@@ -401,13 +406,12 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   `swingTrendConfig()`. **Acceptation** : re-figer les goldens prod (WalkForward/grid/MC +
   golden backtest prod) avec les nouvelles valeurs, delta documenté ; le verdict prod OOS
   passe de « perd » (D30) à la V2. Les 4 mains compilent.
-- [ ] **9.0b** (D34) **Arbitrer le sizing** : à 2 % de risque, l'edge de timing ne bat pas le
-  B&H en dollars (OOS V2 +13,2 % vs B&H +39,4 %) ; à pleine exposition il le bat (+48,7 %).
-  Décider le `riskPerTradePct` cible (ex. fraction de Kelly, vol-targeting, ou exposition
-  fixe ↑) et le **valider en OOS** (alpha net > 0 ET drawdown acceptable). **Garde-fou** :
-  pas de sizing au-delà de ce que le walk-forward + Monte-Carlo (7.3) tolèrent en drawdown.
-  **Décision requise** : méthode de sizing (Kelly fractionnaire vs exposition fixe vs
-  vol-target).
+- [x] **9.0b** (D34/D35) **Arbitrer le sizing** → `2c6010f`. Banc (`prototype_sizing.py`) :
+  exposition fixe monotone (bat le B&H dès ~80-95 %), vol-target sans gain (Sharpe 1,83 vs
+  1,80), Kelly strictement pire (Sharpe 1,23). **Décision utilisateur : fraction fixe 90 %**.
+  Implémenté : `IRiskManager::positionSizeFixedExposure` + `targetExposurePct`. Validé OOS
+  (C++) : V2 @90 % **+46,54 % vs B&H +39,39 %** (alpha +7,16, maxDD 4,61 %, Sharpe 1,79,
+  3/4). `riskPerTradePct` (risk-based) reste le défaut ; le sizing fixe est opt-in.
 - [ ] **9.1** Externaliser la config (fichier JSON **validé** au démarrage) ; fin de la dérive
   prod ≠ backtest (E1/D21). **Acceptation** : la config de prod EST chargée par le golden.
 - [ ] **9.2** (D19) Lookback configurable unifié prod/backtest (`TradingBot.hpp:62`).
@@ -479,6 +483,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D29 | 🟡 | (Sprint 5) Les compteurs du kill-switch (equity de début de jour, ordres/jour, pertes consécutives — TradingBot.hpp) sont **en mémoire** : un redémarrage en cours de journée les remet à zéro, affaiblissant la coupure (drawdown journalier réévalué depuis l'equity du redémarrage, série de pertes oubliée). Acceptable pour une boucle de 60 min, mais à persister (via `IStateStore`, à côté de l'état de position) pour une protection robuste | Sprint 9.5 (migration de schéma de l'item 19) |
+| D35 | 🟢 | (Sprint 9, banc `prototype_sizing.py`) **Le sizing optimal de la V2 est simple : fraction fixe.** Comparaison OOS de l'exposition fixe (50/75/95/100 %), du vol-targeting (10/15/20 %) et du Kelly fractionnaire (0,25/0,5) : (a) l'exposition fixe est **monotone** (plus on expose, plus l'alpha monte) et bat le B&H dès ~80-95 % ; (b) le **maxDD reste minuscule** (~5 % à 100 %) car le timing — sorties au trailing, ~56 % de temps investi — contrôle déjà le risque ; (c) le **vol-targeting n'apporte rien** (Sharpe 1,83 vs 1,80 : vol de QQQ stable + DD déjà bas) et ajoute un paramètre à surajuster + du turnover ; (d) le **Kelly est strictement pire** (Sharpe 1,23, μ/σ² glissant bruité). Décision : **exposition fixe 90 %** (bat le B&H avec marge, coussin cash 10 %). ⚠️ Le maxDD ~5 % est **optimiste** (OOS partiellement synthétique D28/D31, pas de krach, barres journalières sans stop intraday) → prudence sur le risque de queue, suivre le drawdown réel en paper avant tout capital significatif | Sprint 9 (9.0b ✅ `2c6010f`) |
 | D34 | 🟢 | (Sprint 8, banc + C++ `WalkForward`) **L'edge venait des SORTIES, pas de l'entrée.** Une fois la refonte des sorties (8.2 TP off + 8.4 vente RSI off) en place : (a) toucher à l'entrée **n'ajoute aucun alpha OOS robuste** — retirer le gate `RSI<65` est un **no-op** (le gate ne mord pas sur cette période, alpha OOS identique) ; (b) le filtre de régime SMA200 *ajouté* détruit l'edge (3,3 % investi, alpha −40,8 %) → re-confirmation D32, il faut *remplacer* l'entrée, pas la gater ; (c) EMA 5/20 fait un peu mieux (+18,3 vs +14,9) mais c'est un pic OOS isolé = **sur-ajustement** (à faire via l'optimiseur de grille 7.2 sur l'IS, pas un pick OOS). **Verdict C++** : V2 à pleine exposition OOS **+48,73 % vs B&H +39,39 %** (alpha +9,3, 3/4) → DoD atteinte ; à sizing 2 % +13,21 % (double la prod +6,56 %) mais sous le B&H → l'**écart de sizing** (D32-c) est le dernier frein, distinct du timing | Sprint 9 (9.0 déploiement V2 + 9.0b sizing) |
 | D33 | 🟢 | (Banc VectorBT `research/vbt_adapter.py`) **Le croisement EMA 13/21 NU bat le B&H en OOS.** Sans take-profit fixe, sans sortie RSI, sans stops : IS alpha +101,8 pts, **OOS alpha +3,8 pts** (3 trades) — première config OOS-positive observée. ⚠️ Pour un verdict « gagne », le biais D28 joue CONTRE nous (B&H sous-estimé ~0,55 %/an) : marge réelle mince, à confirmer en walk-forward roulant puis en C++ via `WalkForward`. Direction limpide pour le Sprint 8 : **les sorties actuelles (TP fixe, vente RSI) détruisent l'edge de tendance** — refondre les sorties (8.2/8.4) AVANT de toucher à l'entrée | Sprint 8 (priorise 8.2/8.4) |
 | D32 | 🟢 | (Banc Python `research/`) **Read de prototypage Sprint 8** : (a) le filtre de régime SMA200 *ajouté par-dessus* l'entrée actuelle (croisement EMA + RSI<65) sur-filtre → 3,3 % investi, alpha OOS −40,8 % : le régime doit **remplacer** la logique d'entrée (8.3), pas s'y empiler ; (b) levier le plus net seul = **8.4** (ne pas vendre sur RSI, alpha OOS −8,7 % vs −13,5 %) ; (c) à pleine exposition la config prod fait +207 % (vs +36 % en C++ sizé à 2 %) → le **sizing conservateur est un frein distinct du timing**. À confirmer en portant le gagnant en C++ et en re-jugeant via `WalkForward` | Sprint 8 (oriente 8.1/8.3/8.4 + arbitrage sizing) |
@@ -739,6 +744,22 @@ changement du moteur de trading (gates pur-config).
 8.1 (régime — sur-filtre en gate, D32/D34), 8.3 (entrée — no-op sur cette période, D34),
 8.5 (cash drag — déjà 24 %→56 % par les sorties). Le banc montre qu'ils n'ajoutent pas
 d'alpha OOS robuste : **ne pas ajouter de complexité sans contrepartie mesurée**.
+
+### Sprint 9 — Mise en production + sizing (EN COURS, 2026-06-11)
+
+**Commits** :
+- `68b8923` feat(research) : prototype banc du position sizing (9.0b — exploration)
+- `2c6010f` feat(risk) : sizing à fraction fixe 90 % pour la V2 (9.0b — implémentation)
+
+**Item 9.0b ✅** — sizing arbitré et implémenté. Tests : 418 → **422** (+3 unitaires
+RiskManager `positionSizeFixedExposure`, +1 intégration V2). Split : 362 unit + 60 integ.
+Méthode = **fraction fixe 90 %** (banc : vol-target sans gain, Kelly pire — D35). Verdict
+C++ V2 @90 % : OOS **+46,54 % vs B&H +39,39 %** (alpha +7,16, maxDD 4,61 %, Sharpe 1,79,
+3/4). `targetExposurePct=0` (défaut) = risk-based inchangé → **goldens existants verts**.
+
+**Reste au Sprint 9** : 9.0 (basculer `main_ibkr` sur la V2 + re-figer les goldens prod),
+9.1 (config JSON validée), 9.2 (lookback unifié), 9.3 (calendrier marché/barres clôturées),
+9.4 (re-calibration walk-forward documentée).
 
 ## Rétrospectives
 
