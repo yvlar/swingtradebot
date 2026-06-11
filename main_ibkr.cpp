@@ -17,6 +17,7 @@
 #include "bot/Logger.hpp"
 #include "bot/RiskManager.hpp"
 #include "strategies/SwingStrategy.hpp"
+#include "strategies/ProdConfig.hpp"
 #include "core/bot_state.h"
 #include "core/ws_server.h"
 #include "core/db_logger.h"
@@ -118,18 +119,9 @@ int main(int argc, char* argv[]) {
     }
 
     // ── Configuration de la stratégie ─────────────────────────
-    trading::SwingConfig cfg;
-    cfg.symbol          = "QQQ";
-    cfg.emaFast         = 13;
-    cfg.emaSlow         = 21;
-    cfg.rsiPeriod       = 14;
-    cfg.rsiBuyMax       = 65.0;
-    cfg.rsiSellMin      = 80.0;
-    cfg.stopLossPct     = 0.07;
-    cfg.takeProfitPct   = 0.15;
-    cfg.trailingStopPct = 0.03;
-    cfg.riskPerTradePct = 0.02;
-    cfg.minHoldDays     = 2;
+    // Source unique : ProdConfig.hpp — la même config est backtestée par le
+    // golden « config prod » (D21). Ne pas redéfinir les paramètres ici.
+    trading::SwingConfig cfg = trading::prodSwingConfig();
 
     // ── Infrastructure ────────────────────────────────────────
     BotState botState;

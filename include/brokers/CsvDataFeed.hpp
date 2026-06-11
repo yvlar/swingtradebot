@@ -107,12 +107,20 @@ private:
             if (tokens[i] == "null" || tokens[i].empty()) return std::nullopt;
 
         try {
+            // Rendement TOTAL (Sprint 6.3, D7) : Adj Close intègre dividendes
+            // et splits — c'est la série servie à la stratégie ET au Buy &
+            // Hold. Open/high/low sont mis à l'échelle par le même facteur
+            // d'ajustement pour garder une série cohérente (ranges, stops).
+            const double close    = std::stod(tokens[4]);
+            const double adjClose = std::stod(tokens[5]);
+            const double f        = close > 0 ? adjClose / close : 1.0;
+
             Bar b;
             b.date   = tokens[0];
-            b.open   = std::stod(tokens[1]);
-            b.high   = std::stod(tokens[2]);
-            b.low    = std::stod(tokens[3]);
-            b.close  = std::stod(tokens[4]);  // utilise Close (pas Adj Close)
+            b.open   = std::stod(tokens[1]) * f;
+            b.high   = std::stod(tokens[2]) * f;
+            b.low    = std::stod(tokens[3]) * f;
+            b.close  = adjClose;
             b.volume = tokens.size() > 6 ? std::stol(tokens[6]) : 0L;
             return b;
         } catch (...) {

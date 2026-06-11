@@ -9,33 +9,32 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 83        | 68                           |
-| Qualité      | 86        | 60                           |
-| FinTech      | 74        | 38                           |
-| Production   | 70        | 35                           |
+| Architecture | 84        | 68                           |
+| Qualité      | 87        | 60                           |
+| FinTech      | 76        | 38                           |
+| Production   | 71        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-11 (clôture Sprint 5 — durcissement production)
-- **Sprint courant** : Sprint 6 — Vérité du backtest & réalisme (rentabilité, fondations)
+- **Dernière mise à jour** : 2026-06-11 (clôture Sprint 6 — vérité du backtest & réalisme)
+- **Sprint courant** : Sprint 7 — Harnais de validation (prouver l'edge)
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
-> capacité à gagner de l'argent. Le golden de non-régression (item 17) le dit
-> noir sur blanc : sur QQQ.csv (~2018→2026), la stratégie rend **+9,67 %** quand
-> **Buy & Hold rend +238,55 %** — un **alpha de −229 points**. Le bot transforme un
-> des plus grands marchés haussiers de l'histoire en quasi-stagnation, en restant
-> en cash l'essentiel du temps (7 trades en ~5 ans). De plus, **la config qui tourne
-> en production (`main_ibkr.cpp:122-132`) n'est PAS celle validée par le golden** —
-> le live trade des paramètres jamais backtestés (voir D21). Tant que ce n'est pas
-> corrigé, « le but est de faire de l'argent » n'est pas servi. C'est l'objet des
-> **Sprints 6-9** (voir le méta-audit ci-dessous). Une 5e dimension est ajoutée au
-> tableau de bord :
+> capacité à gagner de l'argent. Depuis le Sprint 6, la mesure dit enfin la vérité
+> (coûts réalistes, métriques d'objectif, config prod backtestée) — et la vérité
+> reste mauvaise : sur QQQ.csv (~2019→2026), la config défaut rend **+9,53 %** et
+> la config de production **+36,32 %** quand **Buy & Hold rend +238,55 %** — un
+> alpha de **−229** et **−202 points** respectivement. Bonne nouvelle du Sprint 6 :
+> la config prod (jamais backtestée jusqu'ici, D21) s'avère MEILLEURE que la config
+> défaut (Sharpe 1,81 vs 0,61, 11 trades dont 10 gagnants) ; mauvaise nouvelle : le
+> B&H est encore SOUS-ESTIMÉ car QQQ.csv ne porte aucun dividende (D29). Aucun edge
+> n'est démontré hors-échantillon — c'est l'objet des **Sprints 7-8**.
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **15**  | Alpha −229 pts vs B&H ; aucune validation hors-échantillon ; config prod ≠ config testée. Le seul chiffre prouvé est une sous-performance massive. |
-- **État des tests** : 378/378 verts (331 unitaires + 47 intégration). +28 ce
-  sprint (350 → 378), aucune dérive hors cycle (D20 résolu : la baseline réelle
-  `ctest -N` valait bien 350 à l'ouverture). Détail au changelog Sprint 5.
+> | **Rentabilité** | **20**  | La config prod est désormais MESURÉE honnêtement (+36,32 % net de coûts, alpha −202 pts) et bat la config défaut — mais aucune validation hors-échantillon, et le B&H de référence est encore sous-estimé (dividendes absents, D29). |
+- **État des tests** : 396/396 verts (346 unitaires + 50 intégration). +18 ce
+  sprint (378 → 396), aucune dérive hors cycle (`ctest -N` valait bien 378 à
+  l'ouverture). Détail au changelog Sprint 6.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -271,48 +270,67 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 
 ---
 
-# 🟣 SPRINT 6 — Vérité du backtest & réalisme (rentabilité, fondations) — **sprint courant**
+# 🟣 SPRINT 6 — Vérité du backtest & réalisme ✅ (clos le 2026-06-11)
 
 > **On ne peut pas améliorer ce qu'on mesure mal.** Avant toute refonte de stratégie,
 > le backtest doit dire la vérité : config réelle, coûts réels, dividendes, et une
-> métrique d'objectif explicite. Dépendances : 6.2/6.3 modifient le golden (item 17) —
-> figer un **nouveau golden** documenté dans le même commit. 6.1 est le plus urgent
-> (un éventuel money-loser tourne en prod aujourd'hui). Ordre conseillé
-> **6.1 → 6.4 → 6.2 → 6.3** : 6.1 et 6.4 n'altèrent pas le golden (mesure + reporting),
-> 6.2 puis 6.3 le déplacent — figer le nouveau golden au même commit avec
-> justification chiffrée du delta. Golden actuel à préserver/justifier : +9,6706 %,
-> 10 967,06 $, B&H +238,55 %, 7 trades, max DD 2,0262 %, Sharpe 0,6229.
+> métrique d'objectif explicite. Ordre réalisé : 6.1 → 6.4 → 6.2 → 6.3, conforme au
+> plan (6.1/6.4 sans effet golden, 6.2 re-fige les goldens, 6.3 delta nul — D29).
 
-- [ ] **6.1** (D21) Backtester la **config de production** (`main_ibkr.cpp:122-132`) et
-  figer un 2e golden. **Acceptation** : un test affiche côte à côte golden défaut vs
-  golden prod ; si la config prod sous-performe la config défaut, ouvrir une
-  **Décision requise** (aligner la prod sur la config validée, ou continuer à valider
-  la config prod). Aucune config non backtestée ne doit pouvoir partir en live.
-- [ ] **6.2** (D22) Modèle de coûts réaliste dans `PaperBroker` (`PaperBroker.hpp:47,73`) :
-  slippage paramétrable (bps) + demi-spread, en plus de la commission. **Acceptation** :
-  test rouge (mêmes trades, capital final inférieur slippage > 0) ; nouveau golden figé.
-- [ ] **6.3** (D7) Rendement total : utiliser `Adj Close` (`CsvDataFeed.hpp:115`) pour la
-  stratégie ET le Buy & Hold (dividendes réinvestis). **Acceptation** : B&H recalculé,
-  documenté ; golden mis à jour avec justification du delta.
-- [ ] **6.4** (D23) Métriques d'objectif dans `BacktestResult` : CAGR, **alpha net vs B&H**,
-  Sortino, Calmar, % de temps investi, et un verdict booléen « bat B&H net de coûts ».
-  **Acceptation** : tests unitaires des formules sur séries synthétiques.
+- [x] **6.1** (D21) Config de production backtestée → `146e362`
+  `ProdConfig.hpp` = source UNIQUE de la config live (consommée par main_ibkr.cpp
+  ET par le golden — modifier les paramètres live casse le golden). 2e golden figé :
+  +36,50 % (re-figé +36,3189 % après 6.2), 11 trades (10G/1P), Sharpe 1,81. Test
+  côte à côte défaut vs prod : la prod SURPERFORME le défaut → la « Décision
+  requise » (prod sous-performante) ne s'est PAS déclenchée ; le test verrouille
+  la relation et signalera toute inversion future.
+- [x] **6.4** (D23) Métriques d'objectif → `9803349`
+  `BacktestResult` : cagrPct (durée réelle via dates d'équité), sortinoRatio,
+  calmarRatio, pctTimeInvested (mesure du cash drag T4), beatsBuyHold (verdict
+  net de coûts). `printReport` affiche « OBJECTIF — BAT-ON LE BUY & HOLD ? ».
+  9 tests unitaires sur séries synthétiques calculées à la main.
+- [x] **6.2** (D22) Modèle de coûts réaliste → `713d2d8`
+  `PaperBroker(capital, commission, slippageBps, halfSpreadBps)` : fills dégradés
+  défavorablement (achat au-dessus du close, vente en dessous). Défauts Backtester
+  conservateurs : 2 bps + 0,5 bp par côté. Test rouge d'acceptation (mêmes trades,
+  capital inférieur). Goldens re-figés au même commit : défaut +9,6706 → +9,5289 %
+  (−14,17 $), prod +36,5015 → +36,3189 % (−18,26 $) — coût pur, zéro signal modifié.
+- [x] **6.3** (D7) Rendement total via Adj Close → `0f3f5d6`
+  `CsvDataFeed` sert Adj Close (stratégie ET B&H), open/high/low mis à l'échelle
+  par le facteur d'ajustement (ranges/stops cohérents). Test rouge : inversion du
+  verrou UsesCloseNotAdjClose. Goldens INCHANGÉS et documentés : QQQ.csv a
+  Adj Close == Close sur 1858/1858 lignes → delta structurellement nul (D29, le
+  vrai correctif est un ré-export total-return, affecté au Sprint 7).
 
-# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge)
+# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) — **sprint courant**
 
 > Aucune confiance dans un paramètre sans validation hors-échantillon. Ce sprint
 > construit l'outillage qui permettra de juger toute modif du Sprint 8 **honnêtement**.
-> Dépend du Sprint 6 (coûts/métriques justes).
+> Dépend du Sprint 6 (coûts/métriques justes) — satisfait. Point d'entrée du code :
+> `Backtester::run()` (`include/backtest/BackTester.hpp:110`) et les métriques de
+> `computeMetrics` (`BackTester.hpp:265`). Ordre conseillé **7.1 → 7.4 → 7.2 → 7.3** :
+> le walk-forward (7.1) est le socle de jugement ; les données multi-actifs (7.4,
+> avec le ré-export total-return D29) doivent exister AVANT de lancer la grille
+> (7.2) pour ne pas optimiser sur un seul actif sans dividendes ; le bootstrap
+> (7.3) consomme les trades produits par 7.1/7.2.
 
-- [ ] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv (fenêtres
-  glissantes). **Acceptation** : rapport IS vs OOS ; un edge qui ne tient qu'en IS est
-  signalé comme sur-ajusté.
-- [ ] **7.2** Optimiseur de grille de paramètres avec **sélection robuste** (plateau de
-  performance, pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres.
-- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de drawdown
-  (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du retour.
-- [ ] **7.4** **Multi-actifs** : charger plusieurs CSV (ex. SPY, IWM, MDY) pour tester la
-  généralisation hors QQQ. **Acceptation** : la stratégie est évaluée sur ≥ 3 actifs.
+- [ ] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv :
+  fenêtres glissantes (`Backtester` rejoué sur des sous-périodes du CSV — la fenêtre
+  bornée de `ReplayDataFeed`, BackTester.hpp:25, sert déjà des sous-séries).
+  **Acceptation** : rapport IS vs OOS par fenêtre (retour, alpha, Sharpe/Sortino de
+  6.4) ; un edge qui ne tient qu'en IS est explicitement signalé « sur-ajusté ».
+- [ ] **7.4** (D29) **Multi-actifs + données total-return** : charger plusieurs CSV
+  (ex. SPY, IWM, MDY) et ré-exporter des séries où `Adj Close ≠ Close` (dividendes
+  réels). Ajouter un garde-fou de qualité de données : avertir si un CSV a
+  `Adj Close == Close` sur toutes ses lignes (symptôme D29). **Acceptation** : la
+  stratégie est évaluée sur ≥ 3 actifs, dividendes comptés, garde-fou testé.
+- [ ] **7.2** Optimiseur de grille de paramètres (`SwingConfig` : emaFast/emaSlow/
+  rsiBuyMax/rsiSellMin/SL/TP) avec **sélection robuste** (plateau de performance,
+  pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres ; le choix
+  retenu est un plateau (voisinage stable), jugé en OOS (7.1), jamais en IS.
+- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de
+  drawdown (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du
+  retour sur les trades du backtest, avec graine aléatoire fixée (reproductible).
 
 # 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent)
 
@@ -366,7 +384,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D4 | 🟠 | ws_server.cpp:54-62 : `async_write` concurrent sans queue d'écriture (UB Beast si deux broadcasts se chevauchent) | Sprint 2 |
 | D5 | 🟡 | P&L de vente calculé au prix du signal, pas au prix de fill (TradingBot.hpp:85) | Sprint 1 (item 2) |
 | D6 | 🟡 | Backtester recrée `SwingStrategy::create()` à chaque barre (BackTester.hpp:112,146) | Sprint 3 (item 11) |
-| D7 | 🟡 | CsvDataFeed utilise `Close` et non `Adj Close` (CsvDataFeed.hpp:119) → dividendes QQQ ignorés dans le backtest et la comparaison Buy&Hold | Backlog (décision produit) |
+| D7 | ✅ | CsvDataFeed utilise `Close` et non `Adj Close` (CsvDataFeed.hpp:119) → dividendes QQQ ignorés dans le backtest et la comparaison Buy&Hold | Corrigé au Sprint 6 (6.3, `0f3f5d6`) — mécanisme en place, mais delta nul sur le QQQ.csv actuel (voir D29) |
 | D8 | 🟢 | `volatile bool g_running` dans les handlers de signaux (main_ibkr.cpp:32, main_v2, main_alpaca) — devrait être `volatile std::sig_atomic_t` | Sprint 3 (item 14) |
 | D9 | 🟢 | `using json = nlohmann::json;` au scope global dans bot_state.h:18 (pollution de tous les TU qui l'incluent) | Sprint 3 (item 14) |
 | D10 | 🟢 | `IBKRBroker::lastError_` écrit mais jamais exposé ; `fetchFirstAccountId` ignore le code retour curl (IBKRBroker.hpp:101) | Sprint 2 (item 8) |
@@ -380,16 +398,63 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D18 | 🟡 | (Sprint 3) L'ATR de l'item 13 est une **approximation clôture-à-clôture** : `IIndicator<double>` ne reçoit que la série des clôtures, pas les high/low — le vrai true range est inaccessible via cette interface. Décision produit : enrichir l'interface (compute sur `vector<Bar>`) ou assumer l'approximation (documentée dans DayIndicators.hpp) | Backlog (décision produit, requis avant tout usage réel de DayTradeStrategy) |
 | D19 | 🟢 | (Sprint 3) `TradingBot::runOnce` code en dur `getBars(symbol, 60)` (TradingBot.hpp:62) alors que le backtest sert une fenêtre de emaSlow+30=51 barres via ReplayDataFeed — la taille de fenêtre influence le seed SMA des EMA, donc les signaux. Bénin tant que les feeds prod renvoient ≥51 barres, mais un `lookback` configurable (RiskConfig ?) unifierait prod et backtest | **Re-priorisé Sprint 9 (9.2)** : l'item 20 du Sprint 5 s'est limité au calendrier/DST (aucun changement de fenêtre de données) ; le lookback unifié appartient à la mise en prod de la stratégie validée (E5), pas au durcissement runtime |
 | D20 | 🟢 | (Sprint 4) Dérive ROADMAP ↔ dépôt : un lot « couverture des fondations » (commit `15eb711`, +~2528 lignes : brokers IBKR/Alpaca, PaperBroker, CsvDataFeed, métriques backtest, Logger, indicateurs) a été mergé hors du cycle `prompt-executer-sprint`. Le décompte de tests du tableau de bord (198) ne le reflétait pas (réel : 344 avant ce sprint). Aucune perte — la couverture est légitime et verte — mais le tableau de bord a menti pendant un sprint. **Garde-fou ajouté** : `prompt-executer-sprint.md` étape 2 exige désormais de recaler « État des tests » sur la sortie réelle de `ctest -N` et de signaler toute dérive ; `prompt-mise-a-jour-roadmap.md` rappelle d'absorber au changelog tout commit mergé hors cycle. La CI (item 22) reste le vrai remède de fond | Corrigé (workflow amendé ce sprint) |
-| D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:122-132` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | Sprint 6 (6.1) puis Sprint 9 (9.1) |
-| D22 | 🟠 | (Méta-audit) Backtest optimiste : `PaperBroker` exécute au close **sans slippage**, commission seule (`PaperBroker.hpp:29-31,47,73`). Tout edge mesuré est surévalué ; en prod les fills IBKR sont au marché. Un edge marginal peut être négatif net de slippage/spread | Sprint 6 (6.2) |
-| D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | Sprint 6 (6.4) |
+| D21 | 🔴 | (Méta-audit) **La config qui tourne en prod n'est pas celle validée par le golden.** `main_ibkr.cpp:122-132` : EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — alors que le golden (item 17) valide les défauts de `SwingConfig` (9/21, 55/70, 5 %/10 %, 3). Le live trade des paramètres **jamais backtestés** : leur performance et leurs stops sont inconnus. Risque financier direct | ✅ Côté mesure : corrigé au Sprint 6 (6.1, `146e362` — ProdConfig.hpp source unique + golden prod, qui s'avère MEILLEURE que la config défaut). L'externalisation JSON reste au Sprint 9 (9.1) |
+| D22 | 🟠 | (Méta-audit) Backtest optimiste : `PaperBroker` exécute au close **sans slippage**, commission seule (`PaperBroker.hpp:29-31,47,73`). Tout edge mesuré est surévalué ; en prod les fills IBKR sont au marché. Un edge marginal peut être négatif net de slippage/spread | ✅ Corrigé au Sprint 6 (6.2, `713d2d8` — fills dégradés, défauts 2 + 0,5 bps ; à réexaminer par actif au Sprint 7.4) |
+| D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | ✅ Corrigé au Sprint 6 (6.4, `9803349` — métriques + verdict beatsBuyHold affiché dans le rapport) |
 | D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D27 | 🟡 | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Bénin tant que le stop logiciel tourne ; à combler pour une vraie symétrie entrée/adoption | Sprint 9 (mise en prod) ou backlog |
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
+| D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Sprint 7 (avec le chargement multi-CSV de 7.4) |
 
 ## Changelog
+
+### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
+
+**Baseline réelle à l'ouverture** : **378/378 verte**, conforme au tableau de bord
+(`ctest -N` = 378, aucune dérive hors cycle).
+
+**Commits** (ordre chronologique = ordre d'exécution 6.1 → 6.4 → 6.2 → 6.3) :
+- `146e362` test(backtest) : golden de la config de production + source unique ProdConfig (item 6.1, D21)
+- `9803349` feat(backtest) : métriques d'objectif — CAGR, Sortino, Calmar, temps investi, verdict vs B&H (item 6.4, D23)
+- `713d2d8` feat(backtest) : modèle de coûts réaliste — slippage + demi-spread dans PaperBroker (item 6.2, D22)
+- `0f3f5d6` feat(data) : rendement total — CsvDataFeed sert Adj Close, OHL mis à l'échelle (item 6.3, D7)
+
+**Tests** : 378 → **396** (+18). Étendues : `BacktesterIntegration` 2 → 5 (+2 goldens
+prod, +1 côte à côte défaut/prod), `BacktesterMetricsUnit` +9 (CAGR dates réelles +
+repli, Sortino déviation basse + sentinelles, Calmar + sentinelle, % temps investi,
+verdict, rapport), `PaperBrokerUnit` +4 (fills dégradés achat/vente, acceptation
+« mêmes trades capital inférieur », compat slippage nul), `CsvDataFeedUnit` +2 net
+(verrou UsesCloseNotAdjClose INVERSÉ en UsesAdjCloseForTotalReturn + mise à l'échelle
+OHL + cas Adj == Close).
+
+**Valeurs golden re-figées** (Sprint 6.2, justification : coûts réalistes 2 bps
+slippage + 0,5 bp demi-spread par côté, mêmes trades, coût pur sans changement de
+signal) :
+- Config défaut : retour total **+9,5289 %** (était +9,6706), capital final
+  **10 952,89 $** (−14,17 $), 7 trades inchangés (4G/3P, 0 SL / 1 TP / 1 trailing /
+  5 signal), max DD **2,0647 %**, Sharpe **0,6138**, B&H +238,55 % inchangé.
+- Config prod (NOUVEAU golden, item 6.1) : retour total **+36,3189 %**, capital
+  final **13 631,89 $**, 11 trades (10G/1P, 0 SL / 4 TP / 2 trailing / 5 signal),
+  max DD **1,9845 %**, Sharpe **1,8099**, 1er achat 2019-06-18.
+- Sprint 6.3 (Adj Close) : delta **nul** — QQQ.csv a `Adj Close == Close` sur ses
+  1858 lignes (D29) ; le mécanisme est en place et testé sur CSV synthétique.
+
+**Nouveaux fichiers** : `include/strategies/ProdConfig.hpp`.
+**Interfaces modifiées** (toutes rétro-compatibles, paramètres par défaut) :
+- `PaperBroker(capital, commission, slippageBps = 0, halfSpreadBps = 0)` — défauts
+  0/0 = ancien comportement (mocks/tests existants inchangés).
+- `Backtester(cfg, csv, capital, commission, slippageBps = 2.0, halfSpreadBps = 0.5)`
+  — les coûts réalistes sont le DÉFAUT du backtest.
+- `BacktestResult` : +cagrPct, +sortinoRatio, +calmarRatio, +pctTimeInvested,
+  +beatsBuyHold (additifs).
+- `main_ibkr.cpp` ne câble plus la config en dur : `trading::prodSwingConfig()`.
+
+**Enseignement central du sprint** : la config prod, jamais validée jusqu'ici,
+s'avère NETTEMENT meilleure que la config défaut (+36,32 % vs +9,53 %, Sharpe 1,81
+vs 0,61) — le risque D21 était réel mais dans le bon sens. Aucune des deux ne bat
+le Buy & Hold (+238,55 %, encore sous-estimé sans dividendes — D29).
 
 ### Sprint 0 — Initialisation du workflow (2026-06-10)
 - Audit Phase 0 : 21/21 constats confirmés, 12 découvertes (D1-D12), inventaire de couverture.
@@ -544,6 +609,62 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
+
+**1. Découpage** : bon calibre (4 items cohérents autour d'un seul thème : la
+mesure). L'ordre conseillé 6.1 → 6.4 → 6.2 → 6.3 a tenu exactement comme prévu :
+les deux items « sans effet golden » d'abord, puis les deux qui le déplacent,
+chacun re-figeant les goldens dans SON commit avec delta chiffré. Aucune
+dépendance ratée. La « Décision requise » conditionnelle de 6.1 (prod
+sous-performante ?) avait été bien anticipée comme CONDITIONNELLE : la condition
+ne s'est pas réalisée (la prod surperforme), donc aucun blocage utilisateur —
+formuler les décisions avec leur condition de déclenchement évite de solliciter
+l'utilisateur pour rien. Petit dépassement de périmètre assumé sur 6.1 :
+l'extraction de `ProdConfig.hpp` (source unique) n'était pas demandée
+explicitement mais c'est le seul moyen de garantir « aucune config non
+backtestée ne part en live » sans attendre 9.1 — consigné comme acquis, 9.1
+reste nécessaire pour l'externalisation JSON.
+
+**2. Suffisance des prompts** : aucune improvisation de workflow. La liste apt,
+le recalage `ctest -N` (étape 2) et la discipline du test rouge se sont appliqués
+tels quels (rouges réels : champs inexistants pour 6.4, constructeur inexistant
+pour 6.2, verrou inversé pour 6.3 ; verrou de comportement nommé pour le golden
+6.1, conforme à l'esprit « idéalement »). **Aucune modification des prompts
+nécessaire.**
+
+**3. À détecter plus tôt** : (a) **D29 est la leçon du sprint** — personne n'avait
+vérifié que QQQ.csv portait réellement l'information de dividende avant de
+planifier 6.3 ; une inspection d'une ligne (`Adj Close == Close`) l'aurait
+révélé au méta-audit. Garde-fou ajouté au backlog (7.4) : le chargeur multi-CSV
+avertira si `Adj Close ≡ Close` sur tout un fichier — la qualité des DONNÉES
+doit être testée comme le code. (b) Le « delta golden » de 6.2 (−14 $ sur
+10 953) est si faible qu'il valide rétroactivement le choix de QQQ comme actif
+(coûts négligeables) — mais ce ne sera PAS vrai pour des actifs moins liquides
+du Sprint 7.4 : les bps par défaut devront être réexaminés par actif.
+
+**4. Notes** (précédent 83/86/74/70, Rentabilité 15) :
+- **Architecture 84** (+1) : source unique de la config prod (ProdConfig.hpp),
+  modèle de coûts paramétrable proprement injecté, métriques additives sans
+  casser d'interface. Plafonné par D18 (indicateurs `vector<Bar>`, Sprint 8.0)
+  et l'externalisation config (9.1).
+- **Qualité 87** (+1) : +18 tests dont 3 vrais rouges et 2 goldens re-figés avec
+  justification chiffrée dans le commit même ; le côte à côte défaut/prod est un
+  verrou de relation, pas seulement de valeurs. Plafonné par l'absence de
+  validation OOS (le golden reste un seul chemin sur un seul actif).
+- **FinTech 76** (+2) : le backtest ne flatte plus l'edge — coûts défavorables
+  par défaut, objectif explicite (« bat-on le B&H net de coûts ? » : NON, affiché),
+  et la config qui trade de l'argent réel est enfin celle qui est mesurée (D21
+  fermé côté mesure). C'est de l'intégrité de mesure, le cœur FinTech.
+- **Production 71** (+1) : la prod ne câble plus de paramètres en dur non
+  validés ; tout changement de config live casse la CI via le golden. Le reste
+  de la marche (config externalisée, barres clôturées, lookback unifié) est au
+  Sprint 9.
+- **Rentabilité 20** (+5) : aucune stratégie n'a changé, mais la MESURE est
+  désormais digne de confiance et la config prod réelle est connue : +36,32 %
+  net de coûts, Sharpe 1,81 — meilleure que la config défaut, toujours −202 pts
+  d'alpha vs un B&H lui-même sous-estimé (D29). Le chiffre est honnête ; il
+  reste mauvais.
 
 ### Sprint 5 — Durcissement production (2026-06-11)
 

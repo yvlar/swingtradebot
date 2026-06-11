@@ -200,6 +200,133 @@ TEST(BacktesterMetricsUnit, EquityCurveAndTradesPassedThrough) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Métriques d'objectif (Sprint 6.4, D23) : CAGR, Sortino,
+//  Calmar, % temps investi, verdict vs Buy & Hold
+// ════════════════════════════════════════════════════════════
+
+// 10 000 → 14 641 sur exactement 4 ans (2020-01-01 → 2024-01-01, 1461 jours
+// civils / 365,25) : CAGR = 1,4641^(1/4) − 1 = 10 % tout rond
+TEST(BacktesterMetricsUnit, CagrComputedFromEquityDates) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(14'641.0, barsWithCloses({100.0}),
+                               {10'000.0, 14'641.0},
+                               {"2020-01-01", "2024-01-01"},
+                               {}, /*warmup=*/0);
+
+    EXPECT_NEAR(r.cagrPct, 10.0, 1e-9);
+}
+
+// Sans dates exploitables, repli sur les barres : N points ≈ N/252 années.
+// 252 points et +10 % → CAGR = 10 %
+TEST(BacktesterMetricsUnit, CagrFallsBackToTradingDaysWithoutDates) {
+    auto bt = metricsOnly(10'000.0);
+    std::vector<double> curve(252, 10'000.0);
+    curve.back() = 11'000.0;
+    auto r = bt.computeMetrics(11'000.0, barsWithCloses({100.0}),
+                               curve, {}, {}, 0);
+
+    EXPECT_NEAR(r.cagrPct, 10.0, 1e-9);
+}
+
+// Courbe {100, 120, 108} : rendements {+0,20 ; −0,10}, moyenne 0,05.
+// Déviation basse (cible 0, sur N=2 rendements) = √(0,1²/2) = 0,1/√2.
+// Sortino annualisé = moyenne×252 / (dev_basse×√252) = 0,05×√252/(0,1/√2)
+TEST(BacktesterMetricsUnit, SortinoUsesOnlyDownsideDeviation) {
+    auto bt = metricsOnly();
+    auto r = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                               {100.0, 120.0, 108.0},
+                               {}, {}, /*warmup=*/0);
+
+    const double devBasse = 0.1 / std::sqrt(2.0);
+    EXPECT_NEAR(r.sortinoRatio, 0.05 * std::sqrt(252.0) / devBasse, 1e-9);
+}
+
+// Aucun rendement négatif : déviation basse nulle → sentinelle 999 (comme le
+// profit factor) si la moyenne est positive ; courbe plate → 0
+TEST(BacktesterMetricsUnit, SortinoSentinelWhenNoDownside) {
+    auto bt = metricsOnly();
+    auto up = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                                {100.0, 110.0, 121.0}, {}, {}, 0);
+    EXPECT_DOUBLE_EQ(up.sortinoRatio, 999.0);
+
+    auto flat = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                                  {100.0, 100.0, 100.0}, {}, {}, 0);
+    EXPECT_DOUBLE_EQ(flat.sortinoRatio, 0.0);
+}
+
+// Calmar = CAGR / max drawdown : CAGR 10 % (4 ans exacts, cf. ci-dessus) et
+// drawdown 25 % (pic 12 000 → creux 9 000) → 0,4
+TEST(BacktesterMetricsUnit, CalmarFromCagrAndMaxDrawdown) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(14'641.0, barsWithCloses({100.0}),
+                               {10'000.0, 12'000.0, 9'000.0, 13'000.0, 14'641.0},
+                               {"2020-01-01", "", "", "", "2024-01-01"},
+                               {}, 0);
+
+    EXPECT_NEAR(r.maxDrawdownPct, 25.0, 1e-9);
+    EXPECT_NEAR(r.calmarRatio,    10.0 / 25.0, 1e-9);
+}
+
+// Drawdown nul et CAGR positif → sentinelle 999 (pas de division par zéro)
+TEST(BacktesterMetricsUnit, CalmarSentinelWhenNoDrawdown) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(14'641.0, barsWithCloses({100.0}),
+                               {10'000.0, 14'641.0},
+                               {"2020-01-01", "2024-01-01"},
+                               {}, 0);
+    EXPECT_DOUBLE_EQ(r.calmarRatio, 999.0);
+}
+
+// 9 jours en position (4+2+3) sur 18 barres post-warmup (20 − 2) → 50 %
+TEST(BacktesterMetricsUnit, PctTimeInvestedFromHoldDays) {
+    auto bt = metricsOnly();
+    std::vector<TradeRecord> trades = {
+        trade(+10.0, +1.0, 4),
+        trade(+10.0, +1.0, 2),
+        trade(-10.0, -1.0, 3),
+    };
+    std::vector<double> curve(20, 10'000.0);
+    auto r = bt.computeMetrics(10'000.0, barsWithCloses({100.0}),
+                               curve, {}, trades, /*warmup=*/2);
+
+    EXPECT_DOUBLE_EQ(r.pctTimeInvested, 50.0);
+}
+
+// Verdict explicite « bat-on le Buy & Hold net de coûts ? » (D23) :
+// B&H = 10 % (100 → 110 depuis la fin du warmup)
+TEST(BacktesterMetricsUnit, BeatsBuyHoldVerdictIsExplicit) {
+    auto bt = metricsOnly(10'000.0);
+    auto bars = barsWithCloses({100.0, 105.0, 110.0});
+
+    auto gagne = bt.computeMetrics(11'500.0, bars, {}, {}, {}, /*warmup=*/0);
+    EXPECT_DOUBLE_EQ(gagne.buyHoldReturnPct, 10.0);
+    EXPECT_TRUE(gagne.beatsBuyHold);    // +15 % > +10 %
+
+    auto perd = bt.computeMetrics(10'500.0, bars, {}, {}, {}, 0);
+    EXPECT_FALSE(perd.beatsBuyHold);    // +5 % < +10 %
+}
+
+// Le rapport console tranche désormais la question (D23)
+TEST(BacktesterMetricsUnit, PrintReportShowsObjectiveMetricsAndVerdict) {
+    auto bt = metricsOnly(10'000.0);
+    auto r = bt.computeMetrics(10'500.0, barsWithCloses({100.0, 105.0, 110.0}),
+                               {10'000.0, 10'200.0, 10'500.0},
+                               {"2024-01-02", "2024-01-03", "2024-01-04"},
+                               {}, 0);
+
+    testing::internal::CaptureStdout();
+    bt.printReport(r);
+    std::string out = testing::internal::GetCapturedStdout();
+
+    EXPECT_NE(out.find("OBJECTIF"),       std::string::npos);
+    EXPECT_NE(out.find("CAGR"),           std::string::npos);
+    EXPECT_NE(out.find("Sortino"),        std::string::npos);
+    EXPECT_NE(out.find("Calmar"),         std::string::npos);
+    EXPECT_NE(out.find("Temps investi"),  std::string::npos);
+    EXPECT_NE(out.find("NE BAT PAS"),     std::string::npos);
+}
+
+// ════════════════════════════════════════════════════════════
 //  ReplayDataFeed — fenêtre glissante bornée par le lookback
 // ════════════════════════════════════════════════════════════
 

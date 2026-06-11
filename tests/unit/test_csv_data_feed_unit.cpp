@@ -63,14 +63,47 @@ TEST_F(CsvDataFeedUnit, LoadsValidCsvWithAllFields) {
     EXPECT_EQ(b.volume, 45'123'400L);
 }
 
-// La colonne utilisée est Close, PAS Adj Close
-TEST_F(CsvDataFeedUnit, UsesCloseNotAdjClose) {
+// Rendement TOTAL (Sprint 6.3, D7) : la colonne utilisée est Adj Close —
+// dividendes et splits intégrés — pour la stratégie ET le Buy & Hold
+// (inverse l'ancien verrou UsesCloseNotAdjClose, rouge sur l'ancien code)
+TEST_F(CsvDataFeedUnit, UsesAdjCloseForTotalReturn) {
     writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
              "2024-01-02,100,101,99,100.50,95.25,1000\n");
 
     CsvDataFeed feed(path_);
     ASSERT_EQ(feed.size(), 1u);
-    EXPECT_DOUBLE_EQ(feed.allBars().front().close, 100.50);
+    EXPECT_DOUBLE_EQ(feed.allBars().front().close, 95.25);
+}
+
+// La série reste COHÉRENTE : open/high/low sont mis à l'échelle par le
+// facteur d'ajustement (Adj Close / Close) — sinon des extrêmes non ajustés
+// côtoieraient un close ajusté (faux ranges, faux stops)
+TEST_F(CsvDataFeedUnit, OhlcScaledByAdjustmentFactor) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,100,101,99,100.50,95.25,1000\n");
+
+    CsvDataFeed feed(path_);
+    ASSERT_EQ(feed.size(), 1u);
+    const Bar& b = feed.allBars().front();
+    const double f = 95.25 / 100.50;
+    EXPECT_NEAR(b.open, 100.0 * f, 1e-9);
+    EXPECT_NEAR(b.high, 101.0 * f, 1e-9);
+    EXPECT_NEAR(b.low,   99.0 * f, 1e-9);
+    EXPECT_EQ(b.volume, 1000L);
+}
+
+// Adj Close == Close (cas du QQQ.csv actuel, exporté sans ajustement) :
+// aucune barre ne change — c'est ce qui justifie le golden inchangé (D29)
+TEST_F(CsvDataFeedUnit, NoChangeWhenAdjCloseEqualsClose) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,403.25,404.10,401.50,402.80,402.80,45123400\n");
+
+    CsvDataFeed feed(path_);
+    const Bar& b = feed.allBars().front();
+    EXPECT_DOUBLE_EQ(b.open,  403.25);
+    EXPECT_DOUBLE_EQ(b.high,  404.10);
+    EXPECT_DOUBLE_EQ(b.low,   401.50);
+    EXPECT_DOUBLE_EQ(b.close, 402.80);
 }
 
 TEST_F(CsvDataFeedUnit, ThrowsOnMissingFile) {

@@ -264,3 +264,79 @@ TEST(PaperBrokerUnit, CloseOpenPositionIsNoopWhenFlat) {
     EXPECT_TRUE(b.trades().empty());
     EXPECT_DOUBLE_EQ(b.cash(), 10'000.0);
 }
+
+// ════════════════════════════════════════════════════════════
+//  Modèle de coûts réaliste (Sprint 6.2, D22) :
+//  slippage + demi-spread paramétrables, en plus de la commission
+// ════════════════════════════════════════════════════════════
+
+// Achat : le fill est dégradé de (slippage + demi-spread) AU-DESSUS du close.
+// 10 bps + 5 bps = 15 bps → 100 × 1,0015 = 100,15 $ ; le cash, la position
+// et l'ordre reflètent tous le prix de fill, pas le close
+TEST(PaperBrokerUnit, SlippageWorsensBuyFillPrice) {
+    PaperBroker b(10'000.0, /*commission=*/0.0,
+                  /*slippageBps=*/10.0, /*halfSpreadBps=*/5.0);
+    b.setCurrentPrice(100.0);
+    b.setCurrentDate("2024-01-02");
+
+    auto o = b.submitBuy("QQQ", 10);
+    ASSERT_TRUE(o.has_value());
+    EXPECT_DOUBLE_EQ(o->price, 100.15);
+    EXPECT_DOUBLE_EQ(b.cash(), 10'000.0 - 10 * 100.15);
+}
+
+// Vente : fill dégradé SOUS le close (100 × 0,9985 = 99,85 $) ; le P&L du
+// trade est calculé sur les prix de fill — l'aller-retour au même close
+// coûte exactement 2 × 15 bps
+TEST(PaperBrokerUnit, SlippageWorsensSellFillAndTradePnl) {
+    PaperBroker b(10'000.0, 0.0, 10.0, 5.0);
+    b.setCurrentPrice(100.0);
+    b.setCurrentDate("2024-01-02");
+    b.submitBuy("QQQ", 10);
+
+    auto o = b.submitSell("QQQ", 10);
+    ASSERT_TRUE(o.has_value());
+    EXPECT_DOUBLE_EQ(o->price, 99.85);
+
+    ASSERT_EQ(b.trades().size(), 1u);
+    const auto& t = b.trades().front();
+    EXPECT_DOUBLE_EQ(t.buyPrice,  100.15);
+    EXPECT_DOUBLE_EQ(t.sellPrice,  99.85);
+    EXPECT_NEAR(t.pnl, (99.85 - 100.15) * 10, 1e-9);
+    EXPECT_FALSE(t.isWin);
+    EXPECT_DOUBLE_EQ(b.cash(), 10'000.0 - 10 * 100.15 + 10 * 99.85);
+}
+
+// Acceptation 6.2 : MÊMES trades, capital final strictement inférieur dès
+// que le slippage est positif
+TEST(PaperBrokerUnit, SameTradesEndWithLessCapitalWhenSlippagePositive) {
+    PaperBroker sans(10'000.0, 0.001);             // commission seule
+    PaperBroker avec(10'000.0, 0.001, 2.0, 0.5);   // + 2,5 bps par côté
+
+    for (PaperBroker* b : {&sans, &avec}) {
+        b->setCurrentPrice(100.0);
+        b->setCurrentDate("2024-01-02");
+        b->submitBuy("QQQ", 10);
+        b->setCurrentPrice(110.0);
+        b->setCurrentDate("2024-01-09");
+        b->submitSell("QQQ", 10);
+    }
+
+    EXPECT_LT(avec.cash(), sans.cash());
+    ASSERT_EQ(avec.trades().size(), 1u);
+    ASSERT_EQ(sans.trades().size(), 1u);
+    EXPECT_LT(avec.trades().front().pnl, sans.trades().front().pnl);
+}
+
+// Slippage et spread nuls (défaut) : comportement historique inchangé —
+// fill exactement au close
+TEST(PaperBrokerUnit, ZeroSlippageKeepsCloseFills) {
+    PaperBroker b(10'000.0, 0.0, 0.0, 0.0);
+    b.setCurrentPrice(100.0);
+    b.setCurrentDate("2024-01-02");
+
+    auto o = b.submitBuy("QQQ", 10);
+    ASSERT_TRUE(o.has_value());
+    EXPECT_DOUBLE_EQ(o->price, 100.0);
+    EXPECT_DOUBLE_EQ(b.cash(), 9'000.0);
+}
