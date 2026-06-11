@@ -243,3 +243,50 @@ TEST_F(CsvDataFeedUnit, MarketIsAlwaysOpenInBacktest) {
     CsvDataFeed feed(path_);
     EXPECT_TRUE(feed.isMarketOpen());
 }
+
+// ════════════════════════════════════════════════════════════
+//  Garde-fou qualité de données (Sprint 7.4, D29) : un CSV où
+//  Adj Close == Close sur TOUTES les lignes ne porte aucune
+//  information de dividende — le « rendement total » de 6.3 y
+//  est structurellement nul (symptôme découvert sur QQQ.csv)
+// ════════════════════════════════════════════════════════════
+
+TEST_F(CsvDataFeedUnit, DetectsDividendInfoWhenAdjCloseDiffers) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,100.0,101.0,99.0,100.0,98.5,1000\n"
+             "2024-01-03,101.0,102.0,100.0,101.0,99.6,1000\n");
+    CsvDataFeed feed(path_);
+    EXPECT_TRUE(feed.hasDividendInfo());
+}
+
+TEST_F(CsvDataFeedUnit, FlagsMissingDividendInfoWhenAdjEqualsCloseEverywhere) {
+    // Symptôme D29 : export « sans ajustement », Adj Close ≡ Close
+    writeStandardCsv(5);
+    CsvDataFeed feed(path_);
+    EXPECT_FALSE(feed.hasDividendInfo());
+}
+
+TEST_F(CsvDataFeedUnit, WarnsOnStderrWhenDividendInfoMissing) {
+    writeStandardCsv(3);
+    testing::internal::CaptureStderr();
+    CsvDataFeed feed(path_);
+    const std::string err = testing::internal::GetCapturedStderr();
+    // L'avertissement nomme le fichier et le symptôme (Adj Close == Close)
+    EXPECT_NE(err.find("Adj Close"), std::string::npos);
+    EXPECT_NE(err.find(path_),       std::string::npos);
+}
+
+TEST_F(CsvDataFeedUnit, NoWarningWhenDividendInfoPresent) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,100.0,101.0,99.0,100.0,98.5,1000\n");
+    testing::internal::CaptureStderr();
+    CsvDataFeed feed(path_);
+    EXPECT_TRUE(testing::internal::GetCapturedStderr().empty());
+}
+
+TEST_F(CsvDataFeedUnit, SingleRowWithEqualAdjCloseStillFlagged) {
+    writeCsv("Date,Open,High,Low,Close,Adj Close,Volume\n"
+             "2024-01-02,100.0,101.0,99.0,100.0,100.0,1000\n");
+    CsvDataFeed feed(path_);
+    EXPECT_FALSE(feed.hasDividendInfo());
+}

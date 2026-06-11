@@ -1,6 +1,8 @@
 #pragma once
 #include "core/Interfaces.hpp"
+#include <cmath>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <stdexcept>
@@ -58,9 +60,17 @@ public:
         return bars_[index].close;
     }
 
+    // Garde-fou qualité de données (Sprint 7.4, D29) : vrai si au moins une
+    // ligne du CSV a Adj Close ≠ Close — c.-à-d. si la série porte réellement
+    // l'information de dividendes/splits. Faux = export « sans ajustement » :
+    // le rendement total de 6.3 y est structurellement nul et le Buy & Hold
+    // de référence est sous-estimé (symptôme découvert sur QQQ.csv).
+    bool hasDividendInfo() const { return adjDiffersSomewhere_; }
+
 private:
     std::string      csvPath_;
     std::vector<Bar> bars_;
+    bool             adjDiffersSomewhere_ = false;
 
     // ── Parsing CSV ───────────────────────────────────────────────────────────
     void loadAll() {
@@ -88,6 +98,15 @@ private:
 
         if (bars_.empty())
             throw std::runtime_error("CsvDataFeed: aucune donnée dans " + csvPath_);
+
+        // Avertissement D29 : Adj Close ≡ Close sur tout le fichier → aucune
+        // information de dividende, le « rendement total » est illusoire
+        if (!adjDiffersSomewhere_)
+            std::cerr << "[CsvDataFeed] AVERTISSEMENT : " << csvPath_
+                      << " a Adj Close == Close sur toutes ses lignes — "
+                      << "aucune information de dividende (export sans "
+                      << "ajustement ?), le Buy & Hold de référence est "
+                      << "sous-estimé (D29)\n";
     }
 
     // Format Yahoo Finance: Date,Open,High,Low,Close,Adj Close,Volume
@@ -114,6 +133,11 @@ private:
             const double close    = std::stod(tokens[4]);
             const double adjClose = std::stod(tokens[5]);
             const double f        = close > 0 ? adjClose / close : 1.0;
+
+            // Détection D29 : la ligne porte-t-elle un ajustement réel ?
+            // (tolérance relative — les CSV Yahoo sont arrondis)
+            if (std::abs(adjClose - close) > 1e-6 * std::max(1.0, std::abs(close)))
+                adjDiffersSomewhere_ = true;
 
             Bar b;
             b.date   = tokens[0];

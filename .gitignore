@@ -46,6 +46,8 @@ build_log*.txt
 # ── Données CSV (trop lourdes pour git) ───────────────────
 *.csv
 !tests/**/*.csv
+# Séries total-return multi-actifs figées par les goldens (Sprint 7.4, D29)
+!data/*.csv
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/

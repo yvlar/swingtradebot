@@ -117,14 +117,17 @@ add_executable(integration_tests
         tests/integration/test_backtester_integration.cpp
         tests/integration/test_http_client_integration.cpp
         tests/integration/test_walk_forward_integration.cpp
+        tests/integration/test_multi_asset_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
 # Le golden backtest (item 17) lit QQQ.csv depuis la racine du dépôt,
-# indépendamment du répertoire de travail des tests.
+# indépendamment du répertoire de travail des tests. Les séries total-return
+# multi-actifs (Sprint 7.4, D29) vivent dans data/.
 target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
 )
 
 gtest_discover_tests(integration_tests
