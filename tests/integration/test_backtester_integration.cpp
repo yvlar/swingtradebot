@@ -6,8 +6,12 @@
 // ROADMAP.md — ne les mettre à jour QUE pour un changement de comportement
 // volontaire et documenté.
 #include <gtest/gtest.h>
+#include <iomanip>
+#include <iostream>
 #include <memory>
+#include <sstream>
 #include "backtest/BackTester.hpp"
+#include "strategies/ProdConfig.hpp"
 
 namespace {
 
@@ -16,6 +20,16 @@ namespace {
 trading::BacktestResult runGoldenBacktest() {
     trading::SwingConfig cfg; // paramètres par défaut de la stratégie
     trading::Backtester bt(cfg, SWINGBOT_QQQ_CSV, 10'000.0, 0.001);
+    return bt.run();
+}
+
+// Golden « config prod » (Sprint 6.1, D21) : backteste la config réellement
+// câblée en production via sa source unique (ProdConfig.hpp). Si quelqu'un
+// modifie les paramètres live, ce golden casse tant que les nouvelles valeurs
+// n'ont pas été re-backtestées et re-figées.
+trading::BacktestResult runProdConfigBacktest() {
+    trading::Backtester bt(trading::prodSwingConfig(), SWINGBOT_QQQ_CSV,
+                           10'000.0, 0.001);
     return bt.run();
 }
 
@@ -53,4 +67,72 @@ TEST(BacktesterIntegration, GoldenTradeBreakdownOnQqqCsv) {
 
     // Un point d'équité par barre du CSV (1859 lignes - 1 en-tête).
     EXPECT_EQ(r.equityCurve.size(), 1858u);
+}
+
+// ─── Valeurs golden config PROD (figées le 2026-06-11, Sprint 6.1 / D21) ─────
+// EMA 13/21, RSI 14 (achat < 65, vente > 80), SL 7 %, TP 15 %, trailing 3 %,
+// minHold 2 — la config qui tourne en live (main_ibkr.cpp via ProdConfig.hpp).
+TEST(BacktesterIntegration, GoldenProdConfigPerformanceOnQqqCsv) {
+    const auto r = runProdConfigBacktest();
+
+    EXPECT_NEAR(r.finalValue,       13650.15444,  0.01);
+    EXPECT_NEAR(r.totalReturnPct,   36.5015444,   1e-4);
+    EXPECT_NEAR(r.buyHoldReturnPct, 238.5544199,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct,   1.9702419,    1e-4);
+    EXPECT_NEAR(r.sharpeRatio,      1.8192344,    1e-4);
+}
+
+TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
+    const auto r = runProdConfigBacktest();
+
+    EXPECT_EQ(r.totalTrades,     11);
+    EXPECT_EQ(r.winningTrades,   10);
+    EXPECT_EQ(r.losingTrades,    1);
+    EXPECT_EQ(r.stopLossCount,   0);
+    EXPECT_EQ(r.takeProfitCount, 4);
+    EXPECT_EQ(r.trailingCount,   2);
+    EXPECT_EQ(r.signalCount,     5);
+
+    ASSERT_FALSE(r.trades.empty());
+    EXPECT_EQ(r.trades.front().buyDate, "2019-06-18");
+    EXPECT_EQ(r.trades.back().sellDate, "2026-02-03");
+
+    EXPECT_EQ(r.equityCurve.size(), 1858u);
+}
+
+// ─── Côte à côte : config défaut vs config prod (acceptation 6.1) ────────────
+// Affiche la comparaison et VERROUILLE la relation observée : la config prod
+// surperforme la config défaut sur QQQ.csv (+36,50 % vs +9,67 %), donc pas de
+// « Décision requise » à ce jour. Si ce test casse (la prod passe DERRIÈRE le
+// défaut, p. ex. après un changement de coûts ou de paramètres), ouvrir une
+// Décision requise dans ROADMAP.md : aligner la prod sur la config validée, ou
+// continuer à valider la config prod.
+TEST(BacktesterIntegration, ProdConfigComparedSideBySideWithDefaultConfig) {
+    const auto def  = runGoldenBacktest();
+    const auto prod = runProdConfigBacktest();
+
+    auto ligne = [](const std::string& label, double d, double p) {
+        std::ostringstream s;
+        s << "  " << std::left << std::setw(22) << label
+          << std::right << std::fixed << std::setprecision(2)
+          << std::setw(12) << d << std::setw(12) << p;
+        return s.str();
+    };
+    std::cout << "  Golden QQQ.csv         [defaut]      [prod]\n"
+              << ligne("Retour total (%)",   def.totalReturnPct,   prod.totalReturnPct)   << "\n"
+              << ligne("Buy & Hold (%)",     def.buyHoldReturnPct, prod.buyHoldReturnPct) << "\n"
+              << ligne("Alpha vs B&H (pts)", def.alpha,            prod.alpha)            << "\n"
+              << ligne("Max drawdown (%)",   def.maxDrawdownPct,   prod.maxDrawdownPct)   << "\n"
+              << ligne("Sharpe",             def.sharpeRatio,      prod.sharpeRatio)      << "\n"
+              << ligne("Trades",             def.totalTrades,      prod.totalTrades)      << "\n";
+
+    // Les deux configs voient le même marché : B&H identique.
+    EXPECT_NEAR(def.buyHoldReturnPct, prod.buyHoldReturnPct, 1e-9);
+
+    // Relation verrouillée (2026-06-11) : prod > défaut en retour total ET en
+    // Sharpe, sans drawdown supérieur d'un facteur disqualifiant. Aucune des
+    // deux ne bat le Buy & Hold — la rentabilité reste l'objet des Sprints 7-8.
+    EXPECT_GT(prod.totalReturnPct, def.totalReturnPct);
+    EXPECT_GT(prod.sharpeRatio,    def.sharpeRatio);
+    EXPECT_LT(prod.totalReturnPct, prod.buyHoldReturnPct);
 }
