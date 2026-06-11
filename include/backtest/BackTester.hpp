@@ -81,16 +81,26 @@ struct BacktestResult {
 // ─── Backtester ───────────────────────────────────────────────────────────────
 class Backtester {
 public:
+    // Coûts par défaut (Sprint 6.2, D22) : QQQ est très liquide (spread
+    // ≈ 1 cent sur plusieurs centaines de dollars), mais un ordre au marché
+    // paie toujours slippage + demi-spread. Défauts volontairement
+    // CONSERVATEURS : 2 bps de slippage + 0,5 bp de demi-spread par côté —
+    // un backtest doit sous-estimer l'edge, pas le flatter. Mettre 0/0 pour
+    // retrouver l'ancien comportement « fill au close ».
     Backtester(
         SwingConfig        config,
         const std::string& csvPath,
         double             initialCapital = 10'000.0,
-        double             commissionPct  = 0.001
+        double             commissionPct  = 0.001,
+        double             slippageBps    = 2.0,
+        double             halfSpreadBps  = 0.5
     )
         : config_(std::move(config))
         , csvPath_(csvPath)
         , initialCapital_(initialCapital)
         , commissionPct_(commissionPct)
+        , slippageBps_(slippageBps)
+        , halfSpreadBps_(halfSpreadBps)
     {}
 
     // ── Exécution ─────────────────────────────────────────────────────────────
@@ -103,7 +113,8 @@ public:
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
         auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
-        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_);
+        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
+                                                    slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();
 
         // Une seule instance de stratégie pour tout le backtest (D6 : elle était
@@ -244,6 +255,8 @@ private:
     std::string csvPath_;
     double      initialCapital_;
     double      commissionPct_;
+    double      slippageBps_;
+    double      halfSpreadBps_;
 
 public:
     // Public pour les tests unitaires des métriques : permet de vérifier

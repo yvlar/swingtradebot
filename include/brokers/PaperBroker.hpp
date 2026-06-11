@@ -23,20 +23,25 @@ struct TradeRecord {
 
 // ─── PaperBroker ──────────────────────────────────────────────────────────────
 // Implémente IBroker pour le backtesting.
-// Simule l'exécution des ordres sans frais réels.
 // Enregistre tous les trades pour générer le rapport de performance.
 //
-// Hypothèses simplificatrices:
-//   - Exécution au prix de clôture de la barre courante
-//   - Pas de slippage (hypothèse optimiste — réalité légèrement moins bonne)
-//   - Frais: configurable (défaut 0 pour backtest pur)
+// Modèle d'exécution (Sprint 6.2, D22) :
+//   - Référence : prix de clôture de la barre courante (le « mid » simulé)
+//   - Slippage + demi-spread paramétrables en points de base, appliqués
+//     DÉFAVORABLEMENT : achat au-dessus du close, vente en dessous —
+//     comme un ordre au marché réel (IBKR). Défaut 0 = ancien comportement.
+//   - Commission en %, en plus du fill dégradé.
 
 class PaperBroker final : public IBroker {
 public:
-    explicit PaperBroker(double initialCapital = 10'000.0, double commissionPct = 0.0)
+    explicit PaperBroker(double initialCapital = 10'000.0,
+                         double commissionPct  = 0.0,
+                         double slippageBps    = 0.0,
+                         double halfSpreadBps  = 0.0)
         : initialCapital_(initialCapital)
         , cash_(initialCapital)
         , commissionPct_(commissionPct)
+        , fillPenaltyPct_((slippageBps + halfSpreadBps) / 10'000.0)
     {}
 
     // ── Implémentation IBroker ────────────────────────────────────────────────
@@ -44,7 +49,8 @@ public:
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
         if (qty <= 0 || !currentPrice_) return std::nullopt;
 
-        double price = *currentPrice_;
+        // Fill dégradé : un achat au marché paie slippage + demi-spread (D22)
+        double price = *currentPrice_ * (1.0 + fillPenaltyPct_);
         double cost  = price * qty * (1.0 + commissionPct_);
 
         if (cost > cash_) {
@@ -70,7 +76,8 @@ public:
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
         if (!position_.has_value() || qty <= 0 || !currentPrice_) return std::nullopt;
 
-        double price    = *currentPrice_;
+        // Fill dégradé : une vente au marché concède slippage + demi-spread (D22)
+        double price    = *currentPrice_ * (1.0 - fillPenaltyPct_);
         double proceeds = price * qty * (1.0 - commissionPct_);
         cash_ += proceeds;
 
@@ -160,6 +167,7 @@ private:
     double                   initialCapital_;
     double                   cash_;
     double                   commissionPct_;
+    double                   fillPenaltyPct_; // (slippage + demi-spread) en fraction
     std::optional<Position>  position_;
     std::optional<double>    currentPrice_;
     std::string              currentDate_;
