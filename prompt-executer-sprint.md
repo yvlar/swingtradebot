@@ -58,6 +58,12 @@ une discipline de production : le sprint se termine compilable, testé, commité
    - `ctest --output-on-failure` : 100 % vert (anciens + nouveaux tests).
    - Chaque bug corrigé a un test qui échouait avant le fix.
    - Aucune régression du backtest golden (dès qu'il existe — item 17).
+   - **Si la DoD compare au Buy & Hold** (sprint « rentabilité ») : fixer le **régime
+     d'exposition** de la comparaison AVANT de coder. Le B&H est tout-investi (100 %) ;
+     une stratégie sizée à 2 %/risque (~28 %/position) ne peut PAS le battre en dollars
+     même avec un vrai edge de timing → juger l'edge de TIMING à exposition comparable
+     (config `riskPerTradePct` élevé, capée par le RiskManager), et traiter le sizing
+     comme une variable distincte. Sinon le verdict mélange timing et sizing (leçon S8/D34).
    - Commentaires/logs en français ; pas de secret committé ; commits atomiques.
 6. **Clôture** : enchaîner immédiatement avec `prompt-mise-a-jour-roadmap.md` pour
    cocher, re-prioriser, écrire la rétrospective et définir le sprint suivant.
