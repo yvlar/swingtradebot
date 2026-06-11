@@ -512,6 +512,56 @@ TEST(TradingBotUnit, TradeObserverSilentOnUnfilledOrder) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Sprint 5 item 19 — stop résident côté broker (en COMPLÉMENT
+//  du stop logiciel : décision « doubler »)
+// ════════════════════════════════════════════════════════════
+
+// À l'achat, un stop résident est déposé au broker au prix du stop-loss
+// (fill × (1 - stopLossPct)) — en plus du stop logiciel.
+TEST(TradingBotUnit, EntryPlacesResidentStopAtBroker) {
+    BotHarness h(420.0, "2024-03-01");
+    RiskConfig cfg;            // stopLossPct = 0.05 par défaut
+    h.bot->setConfig(cfg);
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setFillPrice(420.0);
+
+    h.bot->runOnce();
+
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    EXPECT_EQ(h.broker->stops()[0].qty, 9);
+    EXPECT_DOUBLE_EQ(h.broker->stops()[0].stopPrice, 420.0 * 0.95);  // 399
+}
+
+// À la sortie (stop-loss logiciel), le stop résident est annulé pour ne pas
+// laisser un ordre orphelin se déclencher après coup.
+TEST(TradingBotUnit, ExitCancelsResidentStop) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                           // entrée → stop résident déposé
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    ASSERT_EQ(h.broker->cancelStopCount(), 0);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(380.0, "2024-03-05");          // -9,5% → stop-loss logiciel
+    h.broker->setFillPrice(380.0);
+    h.bot->runOnce();                           // sortie → annulation du stop
+
+    EXPECT_EQ(h.broker->sellCount(), 1);
+    EXPECT_EQ(h.broker->cancelStopCount(), 1);
+}
+
+// Un ordre d'achat NON exécuté ne dépose aucun stop résident
+TEST(TradingBotUnit, NoResidentStopWhenBuyNotFilled) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.broker->stops().empty());
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 5 item 18 — kill-switch : coupe les ENTRÉES, jamais les sorties
 // ════════════════════════════════════════════════════════════
 

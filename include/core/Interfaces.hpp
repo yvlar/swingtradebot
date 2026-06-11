@@ -52,6 +52,25 @@ public:
     virtual Result<std::optional<Position>> getPosition(const std::string& symbol) = 0;
 
     virtual Account                 getAccount() = 0;
+
+    // ── Stop résident côté broker (item 19, décision « doubler ») ──────────────
+    // En COMPLÉMENT du stop logiciel (checkExitConditions reste primaire) : un
+    // ordre stop déposé chez le broker protège la position même si le bot est
+    // hors-ligne. Par défaut non supporté (no-op) — seuls les brokers réels
+    // (IBKR) le surchargent ; PaperBroker/backtest s'appuient sur le stop
+    // logiciel, donc le golden est inchangé.
+    virtual std::optional<Order> submitStopLoss(const std::string& symbol,
+                                                int qty, double stopPrice) {
+        (void)symbol; (void)qty; (void)stopPrice;
+        return std::nullopt;
+    }
+    // Annule le stop résident courant (à la sortie, pour ne pas laisser un
+    // ordre orphelin se déclencher après coup). false = rien à annuler / non
+    // supporté.
+    virtual bool cancelStopLoss(const std::string& symbol) {
+        (void)symbol;
+        return false;
+    }
 };
 
 // ─── IIndicator ───────────────────────────────────────────────────────────────

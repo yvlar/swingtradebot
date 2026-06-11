@@ -154,6 +154,57 @@ TEST(IbkrBrokerUnit, ZeroQuantityShortCircuitsWithoutHttp) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Sprint 5 item 19 — stop résident côté broker (STP GTC)
+// ════════════════════════════════════════════════════════════
+
+// submitStopLoss dépose un ordre STP de vente GTC au prix de déclenchement
+TEST(IbkrBrokerUnit, StopLossPostsResidentStpOrder) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {
+        {"/account/DU123/orders",
+         R"([{"order_id":"55","order_status":"PreSubmitted"}])"},
+    };
+
+    auto o = b.submitStopLoss("QQQ", 9, 399.0);
+    ASSERT_TRUE(o.has_value());
+    EXPECT_EQ(o->orderId, "55");
+
+    ASSERT_FALSE(b.calls.empty());
+    auto ord = json::parse(b.calls[0].body)["orders"][0];
+    EXPECT_EQ(ord["orderType"], "STP");
+    EXPECT_EQ(ord["side"],      "SELL");
+    EXPECT_EQ(ord["tif"],       "GTC");
+    EXPECT_DOUBLE_EQ(ord["price"].get<double>(), 399.0);
+    // cOID distinct (tag STOP) → pas de collision avec un SELL marché de l'heure
+    EXPECT_NE(ord["cOID"].get<std::string>().find("-STOP-"), std::string::npos);
+}
+
+// cancelStopLoss annule l'ordre stop mémorisé (DELETE /order/{id}) ;
+// idempotent quand il n'y a rien à annuler
+TEST(IbkrBrokerUnit, CancelStopLossDeletesTrackedOrder) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {
+        {"/account/DU123/orders",
+         R"([{"order_id":"55","order_status":"PreSubmitted"}])"},
+    };
+
+    EXPECT_FALSE(b.cancelStopLoss("QQQ"));        // rien à annuler avant dépôt
+
+    b.submitStopLoss("QQQ", 9, 399.0);
+    EXPECT_TRUE(b.cancelStopLoss("QQQ"));
+    EXPECT_EQ(b.countUrlContaining("/order/55"), 1);
+    EXPECT_FALSE(b.cancelStopLoss("QQQ"));        // déjà annulé → plus rien
+}
+
+// Arguments invalides (qty ≤ 0, prix ≤ 0) → nullopt sans appel HTTP
+TEST(IbkrBrokerUnit, StopLossRejectsInvalidArgs) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    EXPECT_FALSE(b.submitStopLoss("QQQ", 0, 399.0).has_value());
+    EXPECT_FALSE(b.submitStopLoss("QQQ", 9, 0.0).has_value());
+    EXPECT_TRUE(b.calls.empty());
+}
+
+// ════════════════════════════════════════════════════════════
 //  getPosition / getAccount — canal Result (item 10)
 // ════════════════════════════════════════════════════════════
 

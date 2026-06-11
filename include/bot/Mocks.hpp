@@ -174,6 +174,28 @@ public:
 
     Account getAccount() override { return account_; }
 
+    // ── Stop résident (item 19) : enregistre les appels pour vérification ──
+    struct StopRecord { std::string symbol; int qty; double stopPrice; };
+
+    std::optional<Order> submitStopLoss(const std::string& symbol,
+                                        int qty, double stopPrice) override {
+        stops_.push_back({symbol, qty, stopPrice});
+        Order o;
+        o.symbol = symbol; o.side = OrderSide::SELL;
+        o.quantity = qty; o.price = stopPrice;
+        o.status = OrderStatus::PENDING;  // stop résident en attente de déclenchement
+        o.orderId = "stop-" + std::to_string(stops_.size());
+        return o;
+    }
+
+    bool cancelStopLoss(const std::string&) override {
+        cancelStopCount_++;
+        return true;
+    }
+
+    const std::vector<StopRecord>& stops() const { return stops_; }
+    int cancelStopCount() const { return cancelStopCount_; }
+
     // Vérifications pour les tests
     int buyCount()  const { int n=0; for(auto& o: orders_) if(o.side==OrderSide::BUY)  n++; return n; }
     int sellCount() const { int n=0; for(auto& o: orders_) if(o.side==OrderSide::SELL) n++; return n; }
@@ -187,6 +209,8 @@ private:
     std::optional<OrderStatus>  submitResult_ = OrderStatus::FILLED;
     double                      fillPrice_    = 420.0;
     std::optional<std::string>  positionError_;
+    std::vector<StopRecord>     stops_;
+    int                         cancelStopCount_ = 0;
 };
 
 // ─── MockStateStore ───────────────────────────────────────────────────────────

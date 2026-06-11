@@ -165,6 +165,9 @@ public:
                     if (tradeObserver_)
                         tradeObserver_({OrderSide::SELL, riskCfg_.symbol,
                                         fillQty, fillPrice, pnl, reason});
+                    // Annule le stop résident : la sortie logicielle a déjà
+                    // vendu — pas de stop orphelin (item 19, réduit D14)
+                    broker_->cancelStopLoss(riskCfg_.symbol);
                     state_ = BotState{};  // reset
                     saveState_();
                 } else {
@@ -221,6 +224,11 @@ public:
                 if (tradeObserver_)
                     tradeObserver_({OrderSide::BUY, riskCfg_.symbol,
                                     fillQty, fillPrice, 0.0, ""});
+                // Stop résident côté broker en COMPLÉMENT du stop logiciel
+                // (item 19, décision « doubler ») : protège la position même
+                // si le bot est hors-ligne. No-op sur PaperBroker/backtest.
+                broker_->submitStopLoss(riskCfg_.symbol, fillQty,
+                                        fillPrice * (1.0 - riskCfg_.stopLossPct));
             } else if (order.has_value() && order->status == OrderStatus::PENDING) {
                 logger_->warn("Ordre d'achat en attente d'exécution — "
                               "réconciliation au prochain cycle");
