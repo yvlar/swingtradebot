@@ -163,6 +163,15 @@ EXPECT_EQ(SwingStrategy::create()->evaluate(strong_uptrend(80)).type,
 SignalType::SELL);
 }
 
+// ── Item 8.4 : ne pas vendre sur RSI suracheté seul ──
+// sellOnRsiOverbought=false : une hausse forte (RSI > rsiSellMin) ne déclenche
+// PLUS de SELL (rester dans la tendance) — seul un croisement baissier sortira.
+TEST(SwingStrategyUnit, StrongUptrendDoesNotSellWhenRsiExitDisabled) {
+SwingConfig cfg; cfg.sellOnRsiOverbought = false;
+EXPECT_NE(SwingStrategy::create(cfg)->evaluate(strong_uptrend(80)).type,
+SignalType::SELL);
+}
+
 // Baisse forte → pas de BUY
 TEST(SwingStrategyUnit, StrongDowntrendDoesNotReturnBuy) {
 EXPECT_NE(SwingStrategy::create()->evaluate(strong_downtrend(80)).type,

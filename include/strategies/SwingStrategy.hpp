@@ -20,6 +20,10 @@ namespace trading {
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
+        // Item 8.4 : si false, ne PAS vendre sur RSI suracheté seul (rester dans
+        // la tendance ; seul un croisement baissier sortira). Défaut true =
+        // comportement historique.
+        bool   sellOnRsiOverbought = true;
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -105,9 +109,13 @@ namespace trading {
             }
 
             // ── Signal de VENTE ───────────────────────────────────────────────
-            // Conditions: croisement baissier OU RSI suracheté
-            if (cross == CrossoverDetector::Cross::BEARISH
-                || lastRsi > config_.rsiSellMin)
+            // Conditions: croisement baissier OU RSI suracheté. Le terme RSI est
+            // gaté par sellOnRsiOverbought (item 8.4) : en tendance haussière,
+            // vendre sur RSI seul coupe les gagnants trop tôt — on laisse alors
+            // le croisement baissier piloter la sortie.
+            const bool rsiOverboughtExit = config_.sellOnRsiOverbought
+                                           && lastRsi > config_.rsiSellMin;
+            if (cross == CrossoverDetector::Cross::BEARISH || rsiOverboughtExit)
             {
                 std::string reason = (cross == CrossoverDetector::Cross::BEARISH)
                                      ? "Croisement baissier EMA"
