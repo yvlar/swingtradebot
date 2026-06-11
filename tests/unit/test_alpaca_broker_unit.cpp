@@ -77,6 +77,31 @@ TEST(AlpacaBrokerUnit, BuyPostsMarketOrderPayload) {
     EXPECT_NE(b.calls[0].body.find("\"time_in_force\":\"day\""), std::string::npos);
 }
 
+// D15 : chaque ordre porte un client_order_id idempotent (le retry du
+// HttpClient peut re-poster un POST /v2/orders → sans cet id, double-ordre).
+TEST(AlpacaBrokerUnit, OrdersCarryIdempotentClientOrderId) {
+    ScriptedAlpacaBroker b;
+    b.responses = {{"/v2/orders", R"({"id":"o-1","status":"accepted","side":"buy"})"}};
+
+    b.submitBuy("QQQ", 9);
+    ASSERT_EQ(b.calls.size(), 1u);
+    auto buyBody = json::parse(b.calls[0].body);
+    ASSERT_TRUE(buyBody.contains("client_order_id"));
+    std::string buyId = buyBody["client_order_id"];
+    EXPECT_NE(buyId.find("swingbot-QQQ-buy-"), std::string::npos);
+
+    b.submitSell("QQQ", 9);
+    auto sellBody = json::parse(b.calls[1].body);
+    ASSERT_TRUE(sellBody.contains("client_order_id"));
+    EXPECT_NE(sellBody["client_order_id"].get<std::string>().find("swingbot-QQQ-sell-"),
+              std::string::npos);
+
+    // Deux achats dans la même heure → même id (idempotent face au retry)
+    b.submitBuy("QQQ", 9);
+    auto buyBody2 = json::parse(b.calls[2].body);
+    EXPECT_EQ(buyBody2["client_order_id"].get<std::string>(), buyId);
+}
+
 TEST(AlpacaBrokerUnit, AuthHeadersOnEveryCall) {
     ScriptedAlpacaBroker b;
     b.responses = {{"/v2/account", R"({"cash":"1","equity":"1","status":"ACTIVE"})"}};

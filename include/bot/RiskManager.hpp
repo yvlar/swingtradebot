@@ -91,6 +91,37 @@ public:
         return std::nullopt;
     }
 
+    // Kill-switch (item 18) : coupe les ENTRÉES quand la séance dérape.
+    // Évalué dans cet ordre (du plus structurel au plus conjoncturel) :
+    //   1. Pertes consécutives (signal de stratégie en perdition)
+    //   2. Plafond d'ordres journalier (emballement / boucle)
+    //   3. Drawdown journalier (saignée d'équité sur la séance)
+    // Un seuil ≤ 0 désactive le garde-fou correspondant.
+    std::optional<std::string> checkKillSwitch(
+        const KillSwitchConfig& cfg,
+        double dayStartEquity,
+        double currentEquity,
+        int    consecutiveLosses,
+        int    ordersToday
+    ) const override {
+        if (cfg.maxConsecutiveLosses > 0
+            && consecutiveLosses >= cfg.maxConsecutiveLosses)
+            return "pertes consécutives (" + std::to_string(consecutiveLosses)
+                   + "/" + std::to_string(cfg.maxConsecutiveLosses) + ")";
+
+        if (cfg.maxOrdersPerDay > 0 && ordersToday >= cfg.maxOrdersPerDay)
+            return "plafond d'ordres journalier (" + std::to_string(ordersToday)
+                   + "/" + std::to_string(cfg.maxOrdersPerDay) + ")";
+
+        if (cfg.maxDailyDrawdownPct > 0 && dayStartEquity > 0) {
+            double dd = (dayStartEquity - currentEquity) / dayStartEquity;
+            if (dd >= cfg.maxDailyDrawdownPct)
+                return "drawdown journalier (" + formatPct(-dd) + ")";
+        }
+
+        return std::nullopt;
+    }
+
 private:
     double maxCapitalUsagePct_;
 

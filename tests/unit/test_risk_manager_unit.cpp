@@ -187,3 +187,82 @@ TEST(RiskManagerUnit, TrailingSkippedWhenPeakPriceZero) {
     EXPECT_FALSE(rm.checkExitConditions(395.0, 400.0, 5, 0.0,
                                         0.05, 0.10, 0.03, 3).has_value());
 }
+
+// ════════════════════════════════════════════════════════════
+//  checkKillSwitch — garde-fous de coupure d'entrée (item 18)
+// ════════════════════════════════════════════════════════════
+
+// Sous tous les seuils → aucune coupure
+TEST(RiskManagerUnit, KillSwitchAllowsEntryWhenAllUnderThresholds) {
+    RiskManager rm;
+    KillSwitchConfig cfg;  // 5% DD, 4 pertes, 10 ordres
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 9'900.0, 3, 9).has_value());
+}
+
+// Pertes consécutives au seuil → coupure (≥, pas >)
+TEST(RiskManagerUnit, KillSwitchHaltsOnConsecutiveLosses) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    auto r = rm.checkKillSwitch(cfg, 10'000.0, 10'000.0, 4, 0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("pertes consécutives"), std::string::npos);
+    // Juste en dessous → pas de coupure
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 10'000.0, 3, 0).has_value());
+}
+
+// Plafond d'ordres journalier atteint → coupure
+TEST(RiskManagerUnit, KillSwitchHaltsOnDailyOrderCap) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    auto r = rm.checkKillSwitch(cfg, 10'000.0, 10'000.0, 0, 10);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("plafond d'ordres"), std::string::npos);
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 10'000.0, 0, 9).has_value());
+}
+
+// Drawdown journalier au seuil (-5%) → coupure
+TEST(RiskManagerUnit, KillSwitchHaltsOnDailyDrawdown) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    // 10 000 → 9 500 = -5% pile
+    auto r = rm.checkKillSwitch(cfg, 10'000.0, 9'500.0, 0, 0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("drawdown journalier"), std::string::npos);
+    // -4,9% → pas encore
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 9'510.0, 0, 0).has_value());
+}
+
+// Un gain (équité en hausse) ne déclenche jamais le drawdown
+TEST(RiskManagerUnit, KillSwitchIgnoresPositiveDailyReturn) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 11'000.0, 0, 0).has_value());
+}
+
+// Priorité : pertes consécutives > plafond d'ordres > drawdown (ordre des if)
+TEST(RiskManagerUnit, KillSwitchConsecutiveLossesReportedFirst) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    // Les trois conditions sont vraies simultanément
+    auto r = rm.checkKillSwitch(cfg, 10'000.0, 9'000.0, 4, 10);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("pertes consécutives"), std::string::npos);
+}
+
+// Seuil ≤ 0 → garde-fou désactivé
+TEST(RiskManagerUnit, KillSwitchThresholdsDisabledWhenNonPositive) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    cfg.maxConsecutiveLosses = 0;
+    cfg.maxOrdersPerDay      = 0;
+    cfg.maxDailyDrawdownPct  = 0.0;
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 10'000.0, 1.0, 999, 999).has_value());
+}
+
+// dayStartEquity invalide (≤0, ex. panne getAccount) : le drawdown n'est pas
+// calculé (pas de division par zéro / résultat absurde)
+TEST(RiskManagerUnit, KillSwitchSkipsDrawdownWhenDayStartEquityInvalid) {
+    RiskManager rm;
+    KillSwitchConfig cfg;
+    EXPECT_FALSE(rm.checkKillSwitch(cfg, 0.0, -500.0, 0, 0).has_value());
+}

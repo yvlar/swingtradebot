@@ -1,0 +1,45 @@
+# ============================================================
+#  CI — Build Linux (paquets système) + ctest à chaque push
+#
+#  Garde-fou de fond (Sprint 5, item 22) : aurait attrapé le
+#  CMakeLists vcpkg-only, le gitignore mort et tout test rouge
+#  avant merge (leçons Sprints 1-4, découverte D20). Le build
+#  utilise le fallback paquets système (D11) — pas de vcpkg requis.
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build-and-test:
+    name: Build Linux + ctest
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances (paquets système, fallback D11)
+        run: |
+          # apt-get update obligatoire : un index périmé donne des 404
+          # (leçon Sprint 3) ; mêmes paquets que prompt-executer-sprint.md
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            libgtest-dev googletest cmake ninja-build
+
+      - name: Configurer (CMake + Ninja, build Debug)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Tester (ctest — unitaires + intégration)
+        working-directory: build
+        # --output-on-failure : la sortie du test rouge apparaît dans les logs CI
+        run: ctest --output-on-failure -j4

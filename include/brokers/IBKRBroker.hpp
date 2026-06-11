@@ -34,12 +34,43 @@ public:
 
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
         if (qty <= 0) return std::nullopt;
-        return submitOrder(symbol, qty, "BUY");
+        return submitOrder(symbol, qty, "BUY", "MKT", "DAY", 0.0, "BUY");
     }
 
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
         if (qty <= 0) return std::nullopt;
-        return submitOrder(symbol, qty, "SELL");
+        return submitOrder(symbol, qty, "SELL", "MKT", "DAY", 0.0, "SELL");
+    }
+
+    // ── Stop résident (item 19, décision « doubler ») ─────────
+    // Dépose un ordre STOP de vente GTC chez IBKR, en complément du stop
+    // logiciel. cOID distinct (tag "STOP") pour ne pas entrer en collision
+    // avec un ordre de vente au marché de la même heure. Mémorise l'orderId
+    // pour pouvoir l'annuler à la sortie.
+    std::optional<Order> submitStopLoss(const std::string& symbol,
+                                        int qty, double stopPrice) override {
+        if (qty <= 0 || stopPrice <= 0) return std::nullopt;
+        auto order = submitOrder(symbol, qty, "SELL", "STP", "GTC", stopPrice, "STOP");
+        if (order.has_value()) residentStopOrderId_ = order->orderId;
+        return order;
+    }
+
+    // Annule le stop résident courant (DELETE /order/{id}). Évite qu'un stop
+    // orphelin se déclenche après une sortie logicielle (réduit le risque de
+    // double-vente, D14).
+    bool cancelStopLoss(const std::string& /*symbol*/) override {
+        if (residentStopOrderId_.empty()) return false;
+        try {
+            request("DELETE",
+                    gatewayUrl_ + "/v1/api/iserver/account/" + accountId_
+                        + "/order/" + residentStopOrderId_,
+                    "");
+            residentStopOrderId_.clear();
+            return true;
+        } catch (const std::exception& e) {
+            lastError_ = e.what();
+            return false;
+        }
     }
 
     // Ok(nullopt) = le gateway confirme l'absence de position ;
@@ -130,23 +161,31 @@ private:
     static constexpr int kMaxConfirmRounds = 5;
 
     std::optional<Order> submitOrder(const std::string& symbol,
-                                      int qty, const std::string& side) {
+                                      int qty, const std::string& side,
+                                      const std::string& orderType,
+                                      const std::string& tif,
+                                      double stopPrice,
+                                      const std::string& coidTag) {
         // Tout dans le try : un conid inconnu doit échouer en nullopt +
         // lastError, jamais en exception qui remonte au cycle du bot
         try {
             std::string conid = resolveConid(symbol);
 
-            json orderBody = json::array();
-            orderBody.push_back({
+            json order = {
                 {"conid",       std::stoi(conid)},
                 {"secType",     conid + ":STK"},
-                {"cOID",        makeClientOrderId(symbol, side)},  // idempotence
-                {"orderType",   "MKT"},           // market order
+                {"cOID",        makeClientOrderId(symbol, coidTag)},  // idempotence
+                {"orderType",   orderType},        // "MKT" ou "STP"
                 {"side",        side},
                 {"quantity",    qty},
-                {"tif",         "DAY"},
+                {"tif",         tif},              // "DAY" (marché) / "GTC" (stop)
                 {"listingExchange", "SMART"},      // routage intelligent IBKR
-            });
+            };
+            // Ordre stop : le prix de déclenchement va dans "price"
+            if (orderType == "STP") order["price"] = stopPrice;
+
+            json orderBody = json::array();
+            orderBody.push_back(std::move(order));
 
             json body = {{"orders", orderBody}};
 
@@ -242,6 +281,7 @@ private:
 
     // ── HTTP helpers ──────────────────────────────────────────
     std::string lastError_;
+    std::string residentStopOrderId_;   // ordre stop résident courant (item 19)
 
     std::string get(const std::string& url) {
         return request("GET", url, "");

@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <sstream>
+#include <ctime>
 
 namespace trading {
 
@@ -48,6 +49,9 @@ public:
             {"side",          "buy"},
             {"type",          "market"},
             {"time_in_force", "day"},   // valide pour la journée
+            // Idempotence (D15) : le retry du HttpClient peut re-poster ce POST ;
+            // Alpaca rejette un client_order_id dupliqué → pas de double-ordre
+            {"client_order_id", makeClientOrderId(symbol, "buy")},
         };
 
         try {
@@ -70,6 +74,7 @@ public:
             {"side",          "sell"},
             {"type",          "market"},
             {"time_in_force", "day"},
+            {"client_order_id", makeClientOrderId(symbol, "sell")},  // idempotence (D15)
         };
 
         try {
@@ -147,6 +152,24 @@ private:
     std::string baseUrl_;
     std::string lastError_;
     HttpClient  http_;
+
+    // ── Identifiant client idempotent (D15) ───────────────────
+    // Un seul ordre par (symbole, side, heure UTC) — même granularité que le
+    // cOID d'IBKR (item 4) : un retry réseau dans la même heure réutilise le
+    // même id, qu'Alpaca rejette comme doublon au lieu d'exécuter deux fois.
+    static std::string makeClientOrderId(const std::string& symbol,
+                                         const std::string& side) {
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm, &t);
+#else
+        gmtime_r(&t, &tm);
+#endif
+        char buf[16];
+        std::strftime(buf, sizeof(buf), "%Y%m%d%H", &tm);
+        return "swingbot-" + symbol + "-" + side + "-" + buf;
+    }
 
     // ── Parsing ───────────────────────────────────────────────
     static Order parseOrder(const json& j) {
