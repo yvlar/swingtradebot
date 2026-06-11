@@ -30,4 +30,22 @@ inline SwingConfig ibkrProdConfig() {
     return cfg;
 }
 
+// ─── Config V2 « suivi de tendance » (Sprint 8 — refonte des sorties) ─────────
+// Même déclencheur d'entrée que la prod, mais SORTIES refondues : pas de
+// take-profit fixe (8.2) et pas de vente sur RSI suracheté (8.4). La synergie de
+// ces deux changements laisse les gagnants courir jusqu'au trailing au lieu de
+// les écrêter — au banc, l'alpha OOS passe de −13,5 à +14,9 pts et 4/4 segments
+// battent le B&H (voir research/prototype_exits.py).
+//
+// ⚠️ riskPerTradePct reste à 2 % : à cette exposition (~28 %/position) l'edge de
+// TIMING ne se traduit PAS encore en dollars battant le B&H — le passage à
+// l'échelle (sizing) est une décision délibérée du Sprint 9. La validation OOS
+// du timing (test_strategy_v2_integration) s'évalue donc à pleine exposition.
+inline SwingConfig swingTrendConfig() {
+    SwingConfig cfg = ibkrProdConfig();
+    cfg.takeProfitPct      = 0.0;    // 8.2 : pas de take-profit fixe
+    cfg.sellOnRsiOverbought = false; // 8.4 : ne pas vendre sur RSI seul
+    return cfg;
+}
+
 } // namespace trading
