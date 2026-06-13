@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace trading {
@@ -58,9 +59,18 @@ public:
         return bars_[index].close;
     }
 
+    // ── Garde-fou de qualité des données (Sprint 7.4, D29) ────────────────────
+    // Un CSV où `Adj Close == Close` sur TOUTES les lignes ne porte aucune
+    // information de dividende (export sans ajustement — symptôme D29 sur
+    // QQQ.csv). Le rendement total est alors sous-estimé pour la stratégie ET le
+    // Buy & Hold, et toute comparaison d'edge est faussée. On le détecte au
+    // chargement pour pouvoir AVERTIR avant d'optimiser sur un actif tronqué.
+    bool hasDividendInfo() const { return hasDividendInfo_; }
+
 private:
     std::string      csvPath_;
     std::vector<Bar> bars_;
+    bool             hasDividendInfo_ = false;
 
     // ── Parsing CSV ───────────────────────────────────────────────────────────
     void loadAll() {
@@ -114,6 +124,10 @@ private:
             const double close    = std::stod(tokens[4]);
             const double adjClose = std::stod(tokens[5]);
             const double f        = close > 0 ? adjClose / close : 1.0;
+
+            // Une seule ligne ajustée suffit à prouver que le CSV porte des
+            // dividendes/splits (garde-fou D29). Seuil : 1e-6 en valeur absolue.
+            if (std::abs(adjClose - close) > 1e-6) hasDividendInfo_ = true;
 
             Bar b;
             b.date   = tokens[0];
