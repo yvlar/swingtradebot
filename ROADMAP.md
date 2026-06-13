@@ -9,13 +9,13 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 84        | 68                           |
-| Qualité      | 87        | 60                           |
-| FinTech      | 76        | 38                           |
+| Architecture | 86        | 68                           |
+| Qualité      | 89        | 60                           |
+| FinTech      | 79        | 38                           |
 | Production   | 71        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-11 (clôture Sprint 6 — vérité du backtest & réalisme)
-- **Sprint courant** : Sprint 7 — Harnais de validation (prouver l'edge)
+- **Dernière mise à jour** : 2026-06-13 (clôture Sprint 7 — harnais de validation)
+- **Sprint courant** : Sprint 8 — Refonte de la stratégie pour capter la tendance
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — le bot ne fait pas (encore) d'argent
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -31,10 +31,10 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **20**  | La config prod est désormais MESURÉE honnêtement (+36,32 % net de coûts, alpha −202 pts) et bat la config défaut — mais aucune validation hors-échantillon, et le B&H de référence est encore sous-estimé (dividendes absents, D29). |
-- **État des tests** : 396/396 verts (346 unitaires + 50 intégration). +18 ce
-  sprint (378 → 396), aucune dérive hors cycle (`ctest -N` valait bien 378 à
-  l'ouverture). Détail au changelog Sprint 6.
+> | **Rentabilité** | **20**  | La config prod est désormais MESURÉE honnêtement (+36,32 % net de coûts, alpha −202 pts) et bat la config défaut — mais aucune validation hors-échantillon, et le B&H de référence est encore sous-estimé (dividendes absents, D29). Le HARNAIS pour la prouver existe désormais (Sprint 7 : walk-forward IS/OOS, multi-actifs, grille robuste, Monte-Carlo) ; reste à l'utiliser pour démontrer (ou réfuter) un edge — c'est le Sprint 8. |
+- **État des tests** : 424/424 verts (368 unitaires + 56 intégration). +28 ce
+  sprint (396 → 424), aucune dérive hors cycle (`ctest -N` valait bien 396 à
+  l'ouverture). Détail au changelog Sprint 7.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -302,55 +302,68 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   Adj Close == Close sur 1858/1858 lignes → delta structurellement nul (D29, le
   vrai correctif est un ré-export total-return, affecté au Sprint 7).
 
-# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) — **sprint courant**
+# 🟣 SPRINT 7 — Harnais de validation (prouver l'edge) ✅ (clos le 2026-06-13)
 
 > Aucune confiance dans un paramètre sans validation hors-échantillon. Ce sprint
 > construit l'outillage qui permettra de juger toute modif du Sprint 8 **honnêtement**.
-> Dépend du Sprint 6 (coûts/métriques justes) — satisfait. Point d'entrée du code :
-> `Backtester::run()` (`include/backtest/BackTester.hpp:110`) et les métriques de
-> `computeMetrics` (`BackTester.hpp:265`). Ordre conseillé **7.1 → 7.4 → 7.2 → 7.3** :
-> le walk-forward (7.1) est le socle de jugement ; les données multi-actifs (7.4,
-> avec le ré-export total-return D29) doivent exister AVANT de lancer la grille
-> (7.2) pour ne pas optimiser sur un seul actif sans dividendes ; le bootstrap
-> (7.3) consomme les trades produits par 7.1/7.2.
+> Dépend du Sprint 6 (coûts/métriques justes) — satisfait. Ordre réalisé conforme au
+> plan **7.1 → 7.4 → 7.2 → 7.3**. Socle commun extrait au 7.1 :
+> `Backtester::runOnBars(bars)` (rejoue le moteur sur une tranche quelconque) +
+> `ReplayDataFeed` généralisé à une série de barres — consommé par 7.2 (grille) et
+> 7.4 (multi-actifs). Le golden est resté identique au centime tout du long.
 
-- [ ] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv :
-  fenêtres glissantes (`Backtester` rejoué sur des sous-périodes du CSV — la fenêtre
-  bornée de `ReplayDataFeed`, BackTester.hpp:25, sert déjà des sous-séries).
-  **Acceptation** : rapport IS vs OOS par fenêtre (retour, alpha, Sharpe/Sortino de
-  6.4) ; un edge qui ne tient qu'en IS est explicitement signalé « sur-ajusté ».
-- [ ] **7.4** (D29) **Multi-actifs + données total-return** : charger plusieurs CSV
-  (ex. SPY, IWM, MDY) et ré-exporter des séries où `Adj Close ≠ Close` (dividendes
-  réels). Ajouter un garde-fou de qualité de données : avertir si un CSV a
-  `Adj Close == Close` sur toutes ses lignes (symptôme D29). **Acceptation** : la
-  stratégie est évaluée sur ≥ 3 actifs, dividendes comptés, garde-fou testé.
-- [ ] **7.2** Optimiseur de grille de paramètres (`SwingConfig` : emaFast/emaSlow/
-  rsiBuyMax/rsiSellMin/SL/TP) avec **sélection robuste** (plateau de performance,
-  pas le pic isolé). **Acceptation** : carte de sensibilité des paramètres ; le choix
-  retenu est un plateau (voisinage stable), jugé en OOS (7.1), jamais en IS.
-- [ ] **7.3** **Monte-Carlo / bootstrap** des trades → distribution de CAGR et de
-  drawdown (pas un seul chemin). **Acceptation** : p5/p50/p95 du drawdown et du
-  retour sur les trades du backtest, avec graine aléatoire fixée (reproductible).
+- [x] **7.1** (D24) Split in-sample / out-of-sample + **walk-forward** sur QQQ.csv → `1ef9983`
+  `WalkForwardValidator` (`include/backtest/WalkForward.hpp`) : fenêtres glissantes
+  [IS | OOS], moteur rejoué sur chaque sous-période via `Backtester::runOnBars`
+  (chaque fenêtre auto-contenue, warmup en tête de tranche). Prédicat pur
+  `isOverfit` : alpha > 0 en IS mais ≤ 0 en OOS → « sur-ajusté ». Rapport IS vs OOS
+  par fenêtre + verdict global « généralise ». 11 fenêtres figées sur QQQ.csv
+  (config prod, IS 378 / OOS 126 / pas 126). 9 tests (7 unit, 2 integ).
+- [x] **7.4** (D29) **Multi-actifs + garde-fou total-return** → `1c21eb7`
+  `CsvDataFeed::hasDividendInfo()` détecte `Adj Close == Close` sur toutes les
+  lignes (symptôme D29). `MultiAssetBacktest` (`include/backtest/MultiAsset.hpp`)
+  rejoue la config sur N CSV, compte les actifs sans dividende et avertit. Fixtures
+  total-return déterministes (SPY/IWM/MDY avec dividendes, NODIV sans) +
+  `generate_fixtures.py`. La stratégie est évaluée sur ≥ 3 actifs, dividendes
+  comptés, garde-fou testé. 6 tests (4 unit, 2 integ). **NB** : QQQ.csv lui-même
+  reste sans dividende (D29 toujours ouvert sur l'actif de prod — voir D32).
+- [x] **7.2** Optimiseur de grille à **sélection robuste** → `99a60fc`
+  `GridOptimizer` (`include/backtest/GridOptimizer.hpp`) balaie un produit
+  cartésien de `SwingConfig` (emaFast/emaSlow/rsiBuyMax/rsiSellMin/SL/TP) EN IS et
+  produit la carte de sensibilité. `selectRobust` retient le point dont le
+  voisinage (axes ±1) a la meilleure moyenne de score → plateau, jamais le pic
+  isolé ; jugé en OOS (7.1), jamais en IS. 6 tests (5 unit, 1 integ).
+- [x] **7.3** **Monte-Carlo / bootstrap** des trades → `78d9e94`
+  `MonteCarloBootstrap` (`include/backtest/MonteCarlo.hpp`) rééchantillonne les
+  trades avec remise sur N itérations et compose chaque chemin → distribution de
+  retour total et de drawdown maximal (p5/p50/p95). Graine fixée → reproductible.
+  `percentile()` exposée (interpolation linéaire, testable isolément). 7 tests
+  (6 unit, 1 integ).
 
-# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent)
+# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent) — **sprint courant**
 
-> Le sprint qui doit **transformer −229 pts d'alpha en alpha positif (ou neutre à moindre
-> drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**, jamais en IS.
-> Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour des stops/VWAP corrects.
+> Le sprint qui doit **transformer −202 pts d'alpha en alpha positif (ou neutre à moindre
+> drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**
+> (`WalkForwardValidator`), jamais en IS, et sur ≥ 3 actifs (`MultiAssetBacktest`) pour
+> ne pas re-sur-ajuster à QQQ. Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour
+> des stops/VWAP corrects. **Décision requise non tranchée** (cible chiffrée de la DoD,
+> voir l'encadré ci-dessous) — à arbitrer à l'ouverture du sprint.
 
 - [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
-  disponibles) ; vrai ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour,
-  DayTradeStrategy migrée.
+  disponibles ; signature actuelle `Interfaces.hpp:85` ne prend que les clôtures) ; vrai
+  ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour, DayTradeStrategy migrée.
 - [ ] **8.1** (D26) **Filtre de régime** : n'ouvrir long que si tendance de fond haussière
-  (ex. prix > SMA200 / pente positive). **Acceptation OOS** : participation aux tendances ↑,
-  whipsaws de range ↓ ; alpha net OOS > version actuelle.
+  (ex. prix > SMA200 / pente positive) — logique d'entrée `SwingStrategy.hpp:91-101`.
+  **Acceptation OOS** : participation aux tendances ↑, whipsaws de range ↓ ; alpha net OOS
+  (walk-forward 7.1) > version actuelle.
 - [ ] **8.2** (D26) **Laisser courir les gagnants** : retirer/assouplir le take-profit fixe
   (`RiskManager.hpp:81`), sortie pilotée par trailing/structure. **Acceptation OOS** :
   gain moyen des gagnants ↑ sans dégrader le profit factor net.
-- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-99`) : entrer
+- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-101`) : entrer
   sur la force (breakout/momentum), pas exiger `RSI < 55`. **Acceptation OOS** : nombre de
   trades et exposition ↑, expectancy nette ≥ 0.
-- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** (gate par 8.1).
+- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** (`SwingStrategy.hpp:109-110`,
+  gate par le filtre de régime 8.1).
 - [ ] **8.5** **Réduire le cash drag** : re-entrée / rester investi tant que le régime tient.
   **Acceptation OOS** : % de temps investi ↑, alpha net ↑.
 
@@ -406,9 +419,56 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
 | D27 | 🟡 | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Bénin tant que le stop logiciel tourne ; à combler pour une vraie symétrie entrée/adoption | Sprint 9 (mise en prod) ou backlog |
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
-| D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Sprint 7 (avec le chargement multi-CSV de 7.4) |
+| D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Mécanisme de DÉTECTION livré au Sprint 7.4 (`CsvDataFeed::hasDividendInfo` + garde-fou multi-actifs) ; le ré-export du QQQ.csv de prod reste ouvert → re-suivi en D32 |
+| D30 | 🟢 | (Sprint 7) **Dérive cosmétique de changelog par squash-merge.** Le changelog Sprint 6 référence 4 hashes (`146e362`, `9803349`, `713d2d8`, `0f3f5d6`) introuvables dans l'historique : la PR #9 a été squash-mergée en `d857169` (message « item 6.1 » seul), qui contient EN RÉALITÉ tout le Sprint 6 (ProdConfig + slippage + métriques + Adj Close, vérifié fichier par fichier). Aucune dérive de CODE (≠ D20) : la couverture et les features sont bien présentes. Garde-fou : à la clôture, référencer le hash du commit MERGÉ (ou noter qu'un squash réécrit les hashes pré-fusion) | Documenté (garde-fou ajouté à `prompt-mise-a-jour-roadmap.md`) |
+| D31 | 🟢 | (Sprint 7) **La sélection « plateau » du GridOptimizer (moyenne de voisinage) est une heuristique faillible** : un point situé ENTRE un plateau et un pic isolé élevé hérite du pic comme voisin et peut gonfler sa moyenne. Bénin tant que (a) le choix est de toute façon jugé en OOS et (b) le pic isolé lui-même reste rejeté (testé). Un critère de MINIMUM de voisinage serait plus strict. À réévaluer quand la grille servira vraiment à fixer des paramètres | Sprint 8 (usage réel de la grille) ou backlog |
+| D32 | 🟠 | (Sprint 7) **L'actif de PRODUCTION (QQQ.csv) reste sans dividende** : le garde-fou 7.4 confirme `Adj Close == Close` sur les 1858 lignes. Le harnais multi-actifs sait désormais charger des séries total-return (fixtures SPY/IWM/MDY) et AVERTIR, mais le golden de prod est toujours mesuré hors dividendes → B&H sous-estimé, alpha flatté. Ré-exporter un vrai QQQ total-return (et idéalement des CSV réels SPY/IWM/MDY, pas synthétiques) avant de conclure quoi que ce soit sur l'edge au Sprint 8 | Sprint 8 (juger sur données total-return réelles) / Sprint 9 |
 
 ## Changelog
+
+### Sprint 7 — Harnais de validation (2026-06-13)
+
+**Baseline réelle à l'ouverture** : **396/396 verte**, conforme au tableau de bord
+(`ctest -N` = 396, aucune dérive hors cycle). Build de bout en bout sur Linux nu
+(paquets système, fallback D11) après `apt-get update` + install.
+
+**Réconciliation D30 (squash-merge)** : le changelog Sprint 6 référence 4 hashes
+introuvables (`146e362`/`9803349`/`713d2d8`/`0f3f5d6`) — la PR #9 a été
+squash-mergée en `d857169`, qui contient l'INTÉGRALITÉ du Sprint 6 (vérifié :
+ProdConfig.hpp, slippage PaperBroker, métriques BacktestResult, Adj Close
+CsvDataFeed). Aucune dérive de code ni de couverture (≠ D20) ; purement cosmétique.
+
+**Commits** (ordre chronologique = ordre d'exécution 7.1 → 7.4 → 7.2 → 7.3) :
+- `1ef9983` feat(backtest) : walk-forward IS/OOS + `Backtester::runOnBars` (item 7.1, D24)
+- `1c21eb7` feat(backtest) : harnais multi-actifs + garde-fou total-return D29 (item 7.4)
+- `99a60fc` feat(backtest) : optimiseur de grille à sélection robuste plateau (item 7.2)
+- `78d9e94` feat(backtest) : Monte-Carlo / bootstrap des trades, p5/p50/p95 (item 7.3)
+
+**Tests** : 396 → **424** (+28, 368 unitaires + 56 intégration). Nouvelles suites :
+`WalkForwardUnit` (7) + `WalkForwardIntegration` (2), `MultiAssetUnit` (4) +
+`MultiAssetIntegration` (2), `GridOptimizerUnit` (5) + `GridOptimizerIntegration`
+(1), `MonteCarloUnit` (6) + `MonteCarloIntegration` (1). `ReplayDataFeedUnit` (3)
+migrée au nouveau constructeur (série de barres).
+
+**Golden backtest INCHANGÉ** : +9,5289 % (défaut), +36,3189 % (prod), 7 et 11
+trades — le refactor `runOnBars` (extraction de `run()` + `ReplayDataFeed`
+généralisé) a été validé contre le golden au centime près (c'était le critère).
+
+**Nouveaux fichiers** : `include/backtest/WalkForward.hpp`, `MultiAsset.hpp`,
+`GridOptimizer.hpp`, `MonteCarlo.hpp` ; `tests/data/` (4 CSV fixtures +
+`generate_fixtures.py`) ; 8 fichiers de tests.
+**Interfaces modifiées** (additives / rétro-compatibles) :
+- `ReplayDataFeed(shared_ptr<const vector<Bar>>, lookback)` — détenait un
+  `CsvDataFeed`, détient désormais une série de barres (rejoue n'importe quelle
+  sous-période). Seul consommateur interne : `Backtester`.
+- `Backtester::runOnBars(const vector<Bar>&)` — nouvelle, `run()` délègue.
+- `CsvDataFeed::hasDividendInfo()` — nouvelle (garde-fou D29).
+- Injection CMake `SWINGBOT_TEST_DATA_DIR` (fixtures multi-actifs).
+
+**Enseignement central du sprint** : le projet peut désormais JUGER un edge
+honnêtement (hors échantillon, multi-actifs, distribution et non chemin unique)
+— c'est le prérequis manquant avant toute refonte de stratégie (Sprint 8). Le
+harnais ne crée aucun edge ; il rend toute amélioration future réfutable.
 
 ### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
 
@@ -609,6 +669,71 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 7 — Harnais de validation (2026-06-13)
+
+**1. Découpage** : bon calibre (4 items autour d'un seul thème : l'outillage de
+jugement). L'ordre 7.1 → 7.4 → 7.2 → 7.3 a tenu exactement. La vraie décision de
+conception du sprint a été d'extraire `Backtester::runOnBars(bars)` (+ généraliser
+`ReplayDataFeed` à une série de barres) au 7.1 : ce SEAM unique est devenu le socle
+réutilisé par 7.2 (la grille rejoue chaque combinaison sur l'IS) et 7.4 (le
+multi-actifs rejoue chaque CSV) ; sans lui, chacun aurait ré-implémenté une boucle
+de simulation. Le golden a servi de filet exactement comme aux Sprints 3/6 :
+le refactor a été prouvé équivalent au centime avant d'aller plus loin. Un
+reliquat assumé : l'item 7.4 demandait des séries total-return ; le garde-fou de
+qualité et la capacité multi-actifs sont livrés et testés, mais les données sont
+SYNTHÉTIQUES (aucun accès réseau pour ré-exporter SPY/IWM/MDY réels, et QQQ.csv
+reste sans dividende) — consigné en D32, à régler avant de conclure sur l'edge.
+
+**2. Suffisance des prompts** : une lacune, corrigée dans ce commit. La vérification
+de baseline (étape 2) a fait sonner une alarme utile : les hashes du changelog
+Sprint 6 ne résolvaient pas (`git cat-file -t` échoue) — j'ai d'abord cru à une
+dérive de code type D20, avant de vérifier fichier par fichier que tout le Sprint 6
+était bien présent, squashé dans `d857169` (PR #9). C'est cosmétique (D30), mais le
+workflow ne disait pas comment citer les hashes après un squash-merge. **Corrigé** :
+`prompt-mise-a-jour-roadmap.md` étape 4 impose désormais de référencer le hash
+post-fusion et de signaler les items squashés sous un message qui ne les nomme pas.
+Le reste du workflow (rouge = nouveau header/API qui n'existe pas, fix, vert,
+commit atomique, DoD) s'est exécuté sans improvisation — la discipline « test rouge »
+au sens « API/fichier inexistant » est conforme à l'esprit « idéalement » du prompt
+pour de l'outillage neuf, comme aux sprints précédents.
+
+**3. À détecter plus tôt** : (a) **D30** (hashes morts après squash) aurait été
+évité si la clôture Sprint 6 avait cité `d857169` ; garde-fou ajouté au prompt.
+La CI ne l'attrape pas (elle ne lit pas le changelog) — c'est une discipline de
+clôture, pas un test. (b) **D32** (réalisme des données) est la continuation directe
+de D29 et aurait dû être posée comme « il faut des données réelles » dès le
+méta-audit ; au moins le garde-fou `hasDividendInfo` rend le défaut désormais
+BRUYANT (avertissement à chaque chargement d'un CSV non ajusté) au lieu d'être
+silencieux — la qualité des DONNÉES est enfin testée comme le code (leçon D29).
+(c) **D31** (l'heuristique de plateau est faillible) a été repérée en CONCEVANT le
+test : un point coincé entre plateau et pic hérite du pic ; bénin car le choix est
+jugé en OOS, mais un critère de minimum de voisinage serait plus robuste — à revoir
+quand la grille fixera vraiment des paramètres (Sprint 8).
+
+**4. Notes** (précédent 84/87/76/71, Rentabilité 20) :
+- **Architecture 86** (+2) : le seam `runOnBars` + `ReplayDataFeed` générique est
+  une vraie réutilisation (un moteur, trois harnais) sans toucher au chemin golden ;
+  quatre modules de validation header-only, composables, testés isolément.
+  Plafonné par D18 (indicateurs `vector<Bar>`, Sprint 8.0) et l'externalisation
+  config (9.1).
+- **Qualité 89** (+2) : +28 tests dont les logiques cœur (isOverfit, sélection
+  plateau, percentile) verrouillées sur données synthétiques calculées à la main,
+  golden intact sous un refactor non trivial, reproductibilité Monte-Carlo prouvée.
+  Plafonné tant que la validation OOS n'a pas servi à RETENIR une stratégie (le
+  harnais existe, son verdict n'a pas encore changé une décision).
+- **FinTech 79** (+3) : c'est le cœur du sprint — le projet peut juger un edge
+  HORS échantillon, sur plusieurs actifs, en distribution (p5/p95) et non sur un
+  chemin chanceux, et il AVERTIT quand les données sont tronquées (D29/D32). C'est
+  de l'intégrité de mesure, pas de la sûreté. Pour dépasser 80 : un edge réellement
+  démontré (Sprint 8), ou la preuve honnête qu'il n'y en a pas.
+- **Production 71** (=) : rien de déployé n'a changé — le harnais est de l'outillage
+  hors-ligne. La marche restante (config externalisée 9.1, barres clôturées 9.3,
+  lookback unifié 9.2, recalibration 9.4) est au Sprint 9.
+- **Rentabilité 20** (=) : aucune stratégie n'a changé, donc aucune raison de bouger
+  la note. Mais le verrou qui empêchait de progresser honnêtement — « on ne sait pas
+  juger un edge » — est levé. Le Sprint 8 peut enfin tenter de transformer −202 pts
+  d'alpha en quelque chose de défendable, avec un juge qui ne ment pas.
 
 ### Sprint 6 — Vérité du backtest & réalisme (2026-06-11)
 

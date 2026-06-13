@@ -21,6 +21,12 @@
    de bord affichait : si des commits ont été mergés hors de ce cycle (leçon D20),
    les absorber ici (les lister, recaler « État des tests ») pour que le tableau de
    bord cesse de mentir.
+   **Hashes de commit (leçon D30)** : référencer le hash du commit tel qu'il existe
+   dans `git log` APRÈS fusion. Un squash-merge réécrit les hashes : les hashes de la
+   branche de travail pré-fusion ne résolvent plus (`git cat-file -t <hash>` échoue).
+   Si le travail d'un item a été squashé dans un commit dont le message ne le nomme
+   pas, le noter explicitement (« inclus dans `<hash>` via squash ») plutôt que de
+   citer un hash mort.
 5. **Rétrospective** : écrire une entrée répondant explicitement aux 4 questions de la
    méta-évaluation :
    1. Le découpage en sprints était-il bon (taille, ordre, dépendances ratées) ?
