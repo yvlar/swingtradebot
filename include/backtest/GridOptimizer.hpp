@@ -2,6 +2,7 @@
 #include "backtest/BackTester.hpp"
 #include <vector>
 #include <map>
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <iomanip>
@@ -108,8 +109,16 @@ public:
     }
 
     // Sélection ROBUSTE (pure, testable isolément) : retient le point dont le
-    // VOISINAGE (lui-même + chaque axe ±1) a la meilleure moyenne de score, et
-    // non le pic isolé. Tranche les égalités par le premier point rencontré.
+    // VOISINAGE (lui-même + chaque axe ±1) a le meilleur MINIMUM de score.
+    //
+    // On a d'abord essayé la MOYENNE de voisinage (D31) : faillible — un point
+    // à score nul COINCÉ entre un plateau et un pic isolé hérite du pic comme
+    // voisin et voit sa moyenne gonfler, jusqu'à gagner alors que sa propre
+    // performance est mauvaise. Le MINIMUM règle exactement ce cas : un seul
+    // voisin (ou soi-même) à score bas effondre le critère, donc seul un vrai
+    // plateau — entouré de points tous bons — l'emporte. Un pic isolé est
+    // éliminé par ses voisins bas, et le point coincé par son propre score bas.
+    // Tranche les égalités par le premier point rencontré.
     static GridPoint selectRobust(const std::vector<GridPoint>& map,
                                   const std::vector<size_t>& axisSizes) {
         if (map.empty()) return {};
@@ -121,8 +130,7 @@ public:
         const GridPoint* best = nullptr;
         double bestNeighbourhood = 0.0;
         for (const auto& p : map) {
-            double sum = p.score;
-            int    cnt = 1;
+            double worst = p.score;  // minimum sur {soi} ∪ voisins
             for (size_t a = 0; a < p.index.size() && a < axisSizes.size(); ++a) {
                 for (int delta : {-1, 1}) {
                     const long ni = static_cast<long>(p.index[a]) + delta;
@@ -130,12 +138,11 @@ public:
                     auto idx = p.index;
                     idx[a] = static_cast<size_t>(ni);
                     auto it = byIndex.find(idx);
-                    if (it != byIndex.end()) { sum += it->second; ++cnt; }
+                    if (it != byIndex.end()) worst = std::min(worst, it->second);
                 }
             }
-            const double avg = sum / cnt;
-            if (best == nullptr || avg > bestNeighbourhood) {
-                bestNeighbourhood = avg;
+            if (best == nullptr || worst > bestNeighbourhood) {
+                bestNeighbourhood = worst;
                 best = &p;
             }
         }

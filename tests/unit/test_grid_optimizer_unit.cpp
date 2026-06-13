@@ -81,6 +81,23 @@ TEST(GridOptimizerUnit, SelectRobustUniformPicksFirst) {
     EXPECT_EQ(chosen.index[0], 0u);
 }
 
+// Régression D31 : un point à score NUL coincé entre un plateau (10) et un pic
+// isolé (30) hérite du pic comme voisin. Une MOYENNE de voisinage le ferait
+// gagner (un voisin à 30 gonfle la moyenne), voire ferait gagner le point
+// adjacent au pic — un choix absurde (score réel nul). Le critère de MINIMUM de
+// voisinage l'élimine : un voisin nul tue le minimum. La sélection doit retenir
+// le plateau (score 10), jamais le point coincé ni le pic.
+TEST(GridOptimizerUnit, SelectRobustRejectsWedgedPointNextToPeak) {
+    auto m = map1D({10, 10, 10, 0, 30, 0});
+    std::vector<size_t> axisSizes{6, 1, 1, 1, 1, 1};
+
+    auto chosen = GridOptimizer::selectRobust(m, axisSizes);
+
+    EXPECT_DOUBLE_EQ(chosen.score, 10.0);  // sur le plateau
+    EXPECT_LT(chosen.index[0], 3u);        // indices 0..2 = le plateau
+    EXPECT_NE(chosen.index[0], 4u);        // surtout pas le pic isolé (30)
+}
+
 // ════════════════════════════════════════════════════════════
 //  search — produit cartésien et repli
 // ════════════════════════════════════════════════════════════
