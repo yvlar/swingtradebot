@@ -17,28 +17,38 @@
 namespace trading {
 
 // ─── ReplayDataFeed ───────────────────────────────────────────────────────────
-// Rejoue un CsvDataFeed barre par barre pour le Backtester : le curseur fixe
-// la « dernière barre connue » et getBars sert la fenêtre glissante que verrait
-// le bot en production. La fenêtre est bornée par `lookback` (emaSlow + 30,
-// l'historique du backtest d'origine) pour que les EMA — seedées par SMA en
-// début de fenêtre — restent identiques aux valeurs golden (item 17).
+// Rejoue une série de barres barre par barre pour le Backtester : le curseur
+// fixe la « dernière barre connue » et getBars sert la fenêtre glissante que
+// verrait le bot en production. La fenêtre est bornée par `lookback`
+// (emaSlow + 30, l'historique du backtest d'origine) pour que les EMA — seedées
+// par SMA en début de fenêtre — restent identiques aux valeurs golden (item 17).
+//
+// La série est détenue par valeur (partagée) plutôt que tirée d'un CsvDataFeed :
+// cela permet de rejouer une SOUS-PÉRIODE quelconque (walk-forward / OOS,
+// Sprint 7.1) en passant simplement une tranche du CSV, chaque fenêtre étant
+// alors auto-contenue (warmup en début de tranche, aucun accès aux barres
+// antérieures à la tranche).
 class ReplayDataFeed final : public IDataFeed {
 public:
-    ReplayDataFeed(std::shared_ptr<CsvDataFeed> csv, int lookback)
-        : csv_(std::move(csv)), lookback_(lookback) {}
+    ReplayDataFeed(std::shared_ptr<const std::vector<Bar>> bars, int lookback)
+        : bars_(std::move(bars)), lookback_(lookback) {}
 
     void setCursor(size_t index) { cursor_ = index; }
 
     Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {
+        if (cursor_ >= bars_->size()) return Result<std::vector<Bar>>::Ok({});
+        const int lb    = std::min(days, lookback_);
+        const int end   = static_cast<int>(cursor_) + 1;
+        const int start = std::max(0, end - lb);
         return Result<std::vector<Bar>>::Ok(
-            csv_->getBarsUpTo(cursor_, std::min(days, lookback_)));
+            std::vector<Bar>(bars_->begin() + start, bars_->begin() + end));
     }
 
     // En backtest, le marché est toujours « ouvert »
     bool isMarketOpen() override { return true; }
 
 private:
-    std::shared_ptr<CsvDataFeed> csv_;
+    std::shared_ptr<const std::vector<Bar>> bars_;
     size_t cursor_   = 0;
     int    lookback_;
 };
@@ -109,10 +119,19 @@ public:
     // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
     BacktestResult run() {
         auto csv = std::make_shared<CsvDataFeed>(csvPath_);
-        const auto& allBars = csv->allBars();
+        return runOnBars(csv->allBars());
+    }
+
+    // ── Exécution sur une série de barres explicite ────────────────────────────
+    // Même moteur que run(), mais sur une tranche de barres fournie directement.
+    // C'est le socle du harnais de validation (Sprint 7) : walk-forward (7.1) et
+    // optimiseur de grille (7.2) rejouent des sous-périodes du CSV sans toucher
+    // au chemin golden. run() délègue ici → le golden reste identique au centime.
+    BacktestResult runOnBars(const std::vector<Bar>& allBars) {
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
-        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
+        auto barsPtr = std::make_shared<const std::vector<Bar>>(allBars);
+        auto feed   = std::make_shared<ReplayDataFeed>(barsPtr, config_.emaSlow + 30);
         auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
                                                     slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();
