@@ -32,9 +32,10 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **20**  | La config prod est désormais MESURÉE honnêtement (+36,32 % net de coûts, alpha −202 pts) et bat la config défaut — mais aucune validation hors-échantillon, et le B&H de référence est encore sous-estimé (dividendes absents, D29). Le HARNAIS pour la prouver existe désormais (Sprint 7 : walk-forward IS/OOS, multi-actifs, grille robuste, Monte-Carlo) ; reste à l'utiliser pour démontrer (ou réfuter) un edge — c'est le Sprint 8. |
-- **État des tests** : 424/424 verts (368 unitaires + 56 intégration). +28 ce
-  sprint (396 → 424), aucune dérive hors cycle (`ctest -N` valait bien 396 à
-  l'ouverture). Détail au changelog Sprint 7.
+- **État des tests** : 427/427 verts (369 unitaires + 58 intégration). +28 au
+  Sprint 7 (396 → 424), +3 en correctifs post-clôture D31/D32 (424 → 427),
+  aucune dérive hors cycle (`ctest -N` valait bien 396 à l'ouverture). Détail au
+  changelog Sprint 7.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -421,10 +422,26 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
 | D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Mécanisme de DÉTECTION livré au Sprint 7.4 (`CsvDataFeed::hasDividendInfo` + garde-fou multi-actifs) ; le ré-export du QQQ.csv de prod reste ouvert → re-suivi en D32 |
 | D30 | 🟢 | (Sprint 7) **Dérive cosmétique de changelog par squash-merge.** Le changelog Sprint 6 référence 4 hashes (`146e362`, `9803349`, `713d2d8`, `0f3f5d6`) introuvables dans l'historique : la PR #9 a été squash-mergée en `d857169` (message « item 6.1 » seul), qui contient EN RÉALITÉ tout le Sprint 6 (ProdConfig + slippage + métriques + Adj Close, vérifié fichier par fichier). Aucune dérive de CODE (≠ D20) : la couverture et les features sont bien présentes. Garde-fou : à la clôture, référencer le hash du commit MERGÉ (ou noter qu'un squash réécrit les hashes pré-fusion) | Documenté (garde-fou ajouté à `prompt-mise-a-jour-roadmap.md`) |
-| D31 | 🟢 | (Sprint 7) **La sélection « plateau » du GridOptimizer (moyenne de voisinage) est une heuristique faillible** : un point situé ENTRE un plateau et un pic isolé élevé hérite du pic comme voisin et peut gonfler sa moyenne. Bénin tant que (a) le choix est de toute façon jugé en OOS et (b) le pic isolé lui-même reste rejeté (testé). Un critère de MINIMUM de voisinage serait plus strict. À réévaluer quand la grille servira vraiment à fixer des paramètres | Sprint 8 (usage réel de la grille) ou backlog |
-| D32 | 🟠 | (Sprint 7) **L'actif de PRODUCTION (QQQ.csv) reste sans dividende** : le garde-fou 7.4 confirme `Adj Close == Close` sur les 1858 lignes. Le harnais multi-actifs sait désormais charger des séries total-return (fixtures SPY/IWM/MDY) et AVERTIR, mais le golden de prod est toujours mesuré hors dividendes → B&H sous-estimé, alpha flatté. Ré-exporter un vrai QQQ total-return (et idéalement des CSV réels SPY/IWM/MDY, pas synthétiques) avant de conclure quoi que ce soit sur l'edge au Sprint 8 | Sprint 8 (juger sur données total-return réelles) / Sprint 9 |
+| D31 | ✅ | (Sprint 7) **La sélection « plateau » du GridOptimizer (moyenne de voisinage) est une heuristique faillible** : un point situé ENTRE un plateau et un pic isolé élevé hérite du pic comme voisin et peut gonfler sa moyenne. Un critère de MINIMUM de voisinage est plus strict | ✅ Corrigé (`617744a`, post-clôture Sprint 7) : `selectRobust` passe au minimum de voisinage ; test rouge `SelectRobustRejectsWedgedPointNextToPeak` (point coincé score 0 entre plateau 10 et pic 30) échouait avec la moyenne, passe avec le minimum |
+| D32 | 🟠 | (Sprint 7) **L'actif de PRODUCTION (QQQ.csv) reste sans dividende** : `Adj Close == Close` sur les 1858 lignes. Le harnais multi-actifs sait charger des séries total-return (fixtures SPY/IWM/MDY) et AVERTIR | Garde-fou ACTIF livré (`f1200ca`, post-clôture Sprint 7) : `BacktestResult.hasDividendInfo` renseigné par `run()`, le rapport de prod avertit désormais sur QQQ.csv ; verrou de test `QqqCsvHasNoDividendInfoGuardFires`. **Reliquat ouvert** : le ré-export d'un vrai QQQ total-return (et de vrais SPY/IWM/MDY) est une décision produit (écraser la donnée de référence + re-figer 4 goldens) et n'a pas de source cohérente avec les dates simulées du projet → **Sprint 8** (juger sur données réelles) / Sprint 9 |
 
 ## Changelog
+
+### Correctifs post-clôture Sprint 7 — D31 & D32 (2026-06-13)
+
+Deux découvertes du Sprint 7 traitées en avance (hors cycle de sprint, sur
+demande), sans toucher au golden :
+- `617744a` fix(backtest) : sélection robuste par **minimum de voisinage** (D31).
+  L'heuristique de moyenne pouvait élire un point à score nul coincé près d'un
+  pic ; le minimum l'élimine. Test rouge préalable.
+- `f1200ca` feat(backtest) : **garde-fou dividendes actif dans le moteur de prod**
+  (D32). `BacktestResult.hasDividendInfo` (renseigné par `run()`) ; le rapport de
+  prod avertit désormais sur QQQ.csv (avant : garde-fou présent seulement dans le
+  harnais multi-actifs). Verrou de test sur QQQ.csv + symétrie sur fixture ajustée.
+
+**Tests** : 424 → **427** (+3 : 1 GridOptimizerUnit, 2 BacktesterIntegration).
+**Reliquat D32** : le ré-export d'un vrai QQQ total-return reste ouvert (décision
+produit + pas de source cohérente avec les dates simulées du projet) → Sprint 8.
 
 ### Sprint 7 — Harnais de validation (2026-06-13)
 
