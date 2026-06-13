@@ -88,6 +88,7 @@ add_executable(unit_tests
         tests/unit/test_backtester_metrics_unit.cpp
         tests/unit/test_walk_forward_unit.cpp
         tests/unit/test_multi_asset_unit.cpp
+        tests/unit/test_grid_optimizer_unit.cpp
         tests/unit/test_alpaca_broker_unit.cpp
         tests/unit/test_alpaca_data_feed_unit.cpp
         tests/unit/test_ibkr_data_feed_unit.cpp
@@ -122,6 +123,7 @@ add_executable(integration_tests
         tests/integration/test_backtester_integration.cpp
         tests/integration/test_walk_forward_integration.cpp
         tests/integration/test_multi_asset_integration.cpp
+        tests/integration/test_grid_optimizer_integration.cpp
         tests/integration/test_http_client_integration.cpp
         ${BOT_SOURCES}
 )
