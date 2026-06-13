@@ -110,6 +110,26 @@ TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
     EXPECT_EQ(r.equityCurve.size(), 1858u);
 }
 
+// ─── Garde-fou D32 : QQQ.csv de prod n'a aucun dividende ─────────────────────
+// Verrou de l'état actuel : QQQ.csv a Adj Close == Close sur ses 1858 lignes
+// (D29/D32) → le backtest de prod le SIGNALE (hasDividendInfo == false), donc
+// le rapport avertit que B&H et alpha sont sous-estimés. Ce test CASSERA le
+// jour où un vrai QQQ total-return sera importé — forçant à re-figer les
+// goldens en toute conscience (et à conclure enfin honnêtement sur l'edge).
+TEST(BacktesterIntegration, QqqCsvHasNoDividendInfoGuardFires) {
+    const auto r = runProdConfigBacktest();
+    EXPECT_FALSE(r.hasDividendInfo);
+}
+
+// Symétrie : une fixture porteuse de dividendes (SPY_sample, Adj Close != Close)
+// passée au MÊME moteur de prod ne déclenche PAS le garde-fou.
+TEST(BacktesterIntegration, DividendBearingCsvDoesNotFireGuard) {
+    const std::string spy =
+        std::string(SWINGBOT_TEST_DATA_DIR) + "/SPY_sample.csv";
+    trading::Backtester bt(trading::prodSwingConfig(), spy, 10'000.0, 0.001);
+    EXPECT_TRUE(bt.run().hasDividendInfo);
+}
+
 // ─── Côte à côte : config défaut vs config prod (acceptation 6.1) ────────────
 // Affiche la comparaison et VERROUILLE la relation observée : la config prod
 // surperforme la config défaut sur QQQ.csv (+36,50 % vs +9,67 %), donc pas de

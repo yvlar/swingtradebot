@@ -70,6 +70,11 @@ struct BacktestResult {
     double calmarRatio      = 0.0;   // CAGR / max drawdown
     double pctTimeInvested  = 0.0;   // % des barres post-warmup passées en position
     bool   beatsBuyHold     = false; // verdict : bat le Buy & Hold net de coûts ?
+    // Garde-fou D29/D32 : faux ⇒ le CSV source n'a aucun dividende (Adj Close ==
+    // Close partout) → B&H et alpha SOUS-ESTIMÉS. Renseigné par run() (qui lit le
+    // fichier) ; reste true pour runOnBars (une tranche de barres ne connaît pas
+    // sa provenance — on n'alarme pas faute d'information).
+    bool   hasDividendInfo  = true;
     int    totalTrades      = 0;
     int    winningTrades    = 0;
     int    losingTrades     = 0;
@@ -119,7 +124,11 @@ public:
     // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
     BacktestResult run() {
         auto csv = std::make_shared<CsvDataFeed>(csvPath_);
-        return runOnBars(csv->allBars());
+        auto r = runOnBars(csv->allBars());
+        // Garde-fou D29/D32 : le moteur de prod SAIT si ses données portent des
+        // dividendes — on propage l'info au rapport pour qu'il avertisse.
+        r.hasDividendInfo = csv->hasDividendInfo();
+        return r;
     }
 
     // ── Exécution sur une série de barres explicite ────────────────────────────
@@ -222,6 +231,16 @@ public:
         row("Verdict",            r.beatsBuyHold
                                       ? "BAT le Buy & Hold (net de couts)"
                                       : "NE BAT PAS le Buy & Hold");
+
+        // Garde-fou D32 : si les données sources n'ont aucun dividende, le B&H
+        // de référence — et donc l'alpha — est sous-estimé. On le dit haut et
+        // fort : ne pas conclure sur l'edge sur des données total-return tronquées.
+        if (!r.hasDividendInfo) {
+            std::cout << "\n  /!\\ DONNEES SANS DIVIDENDE (D32) : Adj Close == Close "
+                         "sur toutes les lignes.\n"
+                         "      Buy & Hold et alpha SOUS-ESTIMES — ne pas conclure "
+                         "sur l'edge.\n";
+        }
 
         std::cout << "\n  STATISTIQUES DES TRADES\n";
         lineDash();
