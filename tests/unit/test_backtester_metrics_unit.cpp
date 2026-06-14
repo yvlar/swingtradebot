@@ -353,8 +353,9 @@ protected:
 // La fenêtre servie est clampée par le lookback, même si le bot demande plus :
 // c'est ce qui fige le seed SMA des EMA (et donc les valeurs golden)
 TEST_F(ReplayDataFeedUnit, WindowClampedByLookback) {
-    auto csv = std::make_shared<CsvDataFeed>(path_);
-    ReplayDataFeed feed(csv, /*lookback=*/3);
+    auto csv  = std::make_shared<CsvDataFeed>(path_);
+    auto bars = std::make_shared<const std::vector<Bar>>(csv->allBars());
+    ReplayDataFeed feed(bars, /*lookback=*/3);
     feed.setCursor(5);
 
     auto r = feed.getBars("QQQ", 100);
@@ -365,8 +366,9 @@ TEST_F(ReplayDataFeedUnit, WindowClampedByLookback) {
 }
 
 TEST_F(ReplayDataFeedUnit, SmallerRequestReturnsFewerBars) {
-    auto csv = std::make_shared<CsvDataFeed>(path_);
-    ReplayDataFeed feed(csv, /*lookback=*/5);
+    auto csv  = std::make_shared<CsvDataFeed>(path_);
+    auto bars = std::make_shared<const std::vector<Bar>>(csv->allBars());
+    ReplayDataFeed feed(bars, /*lookback=*/5);
     feed.setCursor(9);
 
     auto r = feed.getBars("QQQ", 2);
@@ -376,8 +378,9 @@ TEST_F(ReplayDataFeedUnit, SmallerRequestReturnsFewerBars) {
 }
 
 TEST_F(ReplayDataFeedUnit, MarketAlwaysOpenInReplay) {
-    auto csv = std::make_shared<CsvDataFeed>(path_);
-    ReplayDataFeed feed(csv, 3);
+    auto csv  = std::make_shared<CsvDataFeed>(path_);
+    auto bars = std::make_shared<const std::vector<Bar>>(csv->allBars());
+    ReplayDataFeed feed(bars, 3);
     EXPECT_TRUE(feed.isMarketOpen());
 }
 

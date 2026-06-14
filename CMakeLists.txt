@@ -86,6 +86,10 @@ add_executable(unit_tests
         tests/unit/test_paper_broker_unit.cpp
         tests/unit/test_csv_data_feed_unit.cpp
         tests/unit/test_backtester_metrics_unit.cpp
+        tests/unit/test_walk_forward_unit.cpp
+        tests/unit/test_multi_asset_unit.cpp
+        tests/unit/test_grid_optimizer_unit.cpp
+        tests/unit/test_monte_carlo_unit.cpp
         tests/unit/test_alpaca_broker_unit.cpp
         tests/unit/test_alpaca_data_feed_unit.cpp
         tests/unit/test_ibkr_data_feed_unit.cpp
@@ -95,6 +99,10 @@ add_executable(unit_tests
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(unit_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
+# Répertoire des fixtures de test (CSV multi-actifs total-return, Sprint 7.4)
+target_compile_definitions(unit_tests PRIVATE
+        SWINGBOT_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
 
 include(GoogleTest)
 gtest_discover_tests(unit_tests
@@ -114,6 +122,10 @@ add_executable(integration_tests
         tests/integration/test_ws_server_integration.cpp
         tests/integration/test_swing_strategy_integration.cpp
         tests/integration/test_backtester_integration.cpp
+        tests/integration/test_walk_forward_integration.cpp
+        tests/integration/test_multi_asset_integration.cpp
+        tests/integration/test_grid_optimizer_integration.cpp
+        tests/integration/test_monte_carlo_integration.cpp
         tests/integration/test_http_client_integration.cpp
         ${BOT_SOURCES}
 )
@@ -123,6 +135,7 @@ target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
 # indépendamment du répertoire de travail des tests.
 target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
 )
 
 gtest_discover_tests(integration_tests
