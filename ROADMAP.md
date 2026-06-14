@@ -361,12 +361,23 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   justification (les dividendes sont désormais comptés → B&H ré-évalué, alpha plus juste).
   **INVERSER** le verrou `QqqCsvHasNoDividendInfoGuardFires` → `QqqCsv*Has* DividendInfo`
   (QQQ porte désormais des dividendes : `hasDividendInfo == true`, garde-fou D32 muet).
+  **Source identifiée et VÉRIFIÉE depuis l'environnement (2026-06-14)** : Yahoo Finance,
+  endpoint *chart v8* — `https://query2.finance.yahoo.com/v8/finance/chart/<SYM>?period1=<epoch>&period2=<epoch>&interval=1d&events=div,split`
+  avec un en-tête `User-Agent` non vide (sans lui → 429 ; AVEC lui → 200). Le JSON
+  renvoie `quote.close` (Close brut) ET `adjclose.adjclose` (Adj Close div+splits) → les
+  deux colonnes exactes attendues par `CsvDataFeed`. Vérifié sur QQQ : 193/251 lignes
+  `Adj Close ≠ Close` sur 1 an, 4 dividendes trimestriels, données jusqu'au 2026-06-12.
+  **Gratuit, sans clé** (rien de secret à committer). Recette : un GET par actif avec le
+  MÊME `period1`/`period2` (calendrier partagé), écrire au format Yahoo, **committer le
+  snapshot CSV** (c'est lui qui fige le golden — les valeurs Yahoo évoluent). Secours si
+  Yahoo tombe : Tiingo ou Alpaca (`adjustment=all`, déjà câblé) — mais clé requise.
   **Acceptation** : `QQQ.csv` et les 3 actifs ont `Adj Close ≠ Close` (delta dividendes
   non nul et chiffré sur le B&H) ; goldens re-figés et documentés au changelog ; toute la
-  suite verte. **Contrainte à gérer** : il faut une source total-return fiable et une
-  plage de dates cohérente — la plage du nouvel export DEVIENT la nouvelle référence
-  (le `QQQ.csv` actuel s'arrêtait à 2026-02-12). Garder le `generate_fixtures.py` comme
-  documentation du format, ou le retirer si les fixtures deviennent de vrais exports.
+  suite verte. **Note dates** : les dates du projet sont RÉELLES (serveur en 2026-06, pas
+  un environnement simulé) ; le nouvel export couvrira 2019-01 → 2026-06 (≈ +4 mois vs le
+  `QQQ.csv` actuel arrêté au 2026-02-12) et DEVIENT la nouvelle référence. Garder
+  `generate_fixtures.py` comme doc du format, ou le remplacer par un `fetch_total_return.py`
+  qui télécharge les vrais exports.
 - [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
   disponibles ; signature actuelle `Interfaces.hpp:85` ne prend que les clôtures) ; vrai
   ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour, DayTradeStrategy migrée.
@@ -440,7 +451,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D29 | 🟠 | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | Mécanisme de DÉTECTION livré au Sprint 7.4 (`CsvDataFeed::hasDividendInfo` + garde-fou multi-actifs) ; le ré-export du QQQ.csv de prod reste ouvert → re-suivi en D32 |
 | D30 | 🟢 | (Sprint 7) **Dérive cosmétique de changelog par squash-merge.** Le changelog Sprint 6 référence 4 hashes (`146e362`, `9803349`, `713d2d8`, `0f3f5d6`) introuvables dans l'historique : la PR #9 a été squash-mergée en `d857169` (message « item 6.1 » seul), qui contient EN RÉALITÉ tout le Sprint 6 (ProdConfig + slippage + métriques + Adj Close, vérifié fichier par fichier). Aucune dérive de CODE (≠ D20) : la couverture et les features sont bien présentes. Garde-fou : à la clôture, référencer le hash du commit MERGÉ (ou noter qu'un squash réécrit les hashes pré-fusion) | Documenté (garde-fou ajouté à `prompt-mise-a-jour-roadmap.md`) |
 | D31 | ✅ | (Sprint 7) **La sélection « plateau » du GridOptimizer (moyenne de voisinage) est une heuristique faillible** : un point situé ENTRE un plateau et un pic isolé élevé hérite du pic comme voisin et peut gonfler sa moyenne. Un critère de MINIMUM de voisinage est plus strict | ✅ Corrigé (`617744a`, post-clôture Sprint 7) : `selectRobust` passe au minimum de voisinage ; test rouge `SelectRobustRejectsWedgedPointNextToPeak` (point coincé score 0 entre plateau 10 et pic 30) échouait avec la moyenne, passe avec le minimum |
-| D32 | 🟠 | (Sprint 7) **L'actif de PRODUCTION (QQQ.csv) reste sans dividende** : `Adj Close == Close` sur les 1858 lignes. Le harnais multi-actifs sait charger des séries total-return (fixtures SPY/IWM/MDY) et AVERTIR | Garde-fou ACTIF livré (`f1200ca`, post-clôture Sprint 7) : `BacktestResult.hasDividendInfo` renseigné par `run()`, le rapport de prod avertit désormais sur QQQ.csv ; verrou de test `QqqCsvHasNoDividendInfoGuardFires`. **Reliquat tranché** : la décision produit a été prise par l'utilisateur le 2026-06-14 — **écraser QQQ.csv par un vrai export total-return + vrais SPY/IWM/MDY, re-figer les 4 goldens** → planifié en **item 8.6 (en tête du Sprint 8, prérequis de jugement)** |
+| D32 | 🟠 | (Sprint 7) **L'actif de PRODUCTION (QQQ.csv) reste sans dividende** : `Adj Close == Close` sur les 1858 lignes. Le harnais multi-actifs sait charger des séries total-return (fixtures SPY/IWM/MDY) et AVERTIR | Garde-fou ACTIF livré (`f1200ca`, post-clôture Sprint 7) : `BacktestResult.hasDividendInfo` renseigné par `run()`, le rapport de prod avertit désormais sur QQQ.csv ; verrou de test `QqqCsvHasNoDividendInfoGuardFires`. **Reliquat tranché** : décision produit prise par l'utilisateur le 2026-06-14 — **écraser QQQ.csv par un vrai export total-return + vrais SPY/IWM/MDY, re-figer les 4 goldens** → planifié en **item 8.6 (en tête du Sprint 8, prérequis de jugement)**. Source vérifiée le 2026-06-14 : Yahoo *chart v8* (Close + Adj Close, dividendes réels, sans clé) |
 
 ## Changelog
 
@@ -457,8 +468,11 @@ demande), sans toucher au golden :
   harnais multi-actifs). Verrou de test sur QQQ.csv + symétrie sur fixture ajustée.
 
 **Tests** : 424 → **427** (+3 : 1 GridOptimizerUnit, 2 BacktesterIntegration).
-**Reliquat D32** : le ré-export d'un vrai QQQ total-return reste ouvert (décision
-produit + pas de source cohérente avec les dates simulées du projet) → Sprint 8.
+**Reliquat D32** : le ré-export d'un vrai QQQ total-return est planifié (item 8.6,
+décision utilisateur 2026-06-14). Source identifiée et vérifiée le 2026-06-14 :
+Yahoo *chart v8* (Close + Adj Close, dividendes réels, sans clé) — la contrainte
+« pas de source cohérente » initialement notée était FAUSSE (les dates du projet
+sont réelles, serveur en 2026-06).
 
 ### Sprint 7 — Harnais de validation (2026-06-13)
 
