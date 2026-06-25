@@ -2,6 +2,7 @@
 #include "core/Interfaces.hpp"
 #include "indicators/Indicators.hpp"
 #include <memory>
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 
@@ -20,6 +21,7 @@ namespace trading {
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
+        int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -32,6 +34,9 @@ namespace trading {
             r.trailingStopPct = trailingStopPct;
             r.riskPerTradePct = riskPerTradePct;
             r.minHoldDays     = minHoldDays;
+            // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :
+            // sinon le bot ne reçoit pas assez de barres pour la calculer.
+            r.lookback        = std::max(60, smaTrendPeriod + 30);
             return r;
         }
     };
@@ -44,12 +49,14 @@ namespace trading {
                 SwingConfig                       config,
                 std::unique_ptr<IIndicator<double>> emaFast,
                 std::unique_ptr<IIndicator<double>> emaSlow,
-                std::unique_ptr<IIndicator<double>> rsi
+                std::unique_ptr<IIndicator<double>> rsi,
+                std::unique_ptr<IIndicator<double>> smaTrend
         )
                 : config_(std::move(config))
                 , emaFast_(std::move(emaFast))
                 , emaSlow_(std::move(emaSlow))
                 , rsi_(std::move(rsi))
+                , smaTrend_(std::move(smaTrend))
         {}
 
         // Factory method pour créer une instance avec les paramètres par défaut
@@ -58,7 +65,8 @@ namespace trading {
                     cfg,
                     std::make_unique<EMA>(cfg.emaFast),
                     std::make_unique<EMA>(cfg.emaSlow),
-                    std::make_unique<RSI>(cfg.rsiPeriod)
+                    std::make_unique<RSI>(cfg.rsiPeriod),
+                    std::make_unique<SMA>(std::max(1, cfg.smaTrendPeriod))
             );
         }
 
@@ -76,6 +84,11 @@ namespace trading {
             auto emaFastVals = emaFast_->compute(closes);
             auto emaSlowVals = emaSlow_->compute(closes);
             auto rsiVals     = rsi_->compute(closes);
+            // Filtre de régime de fond (item 8.1) : SMA longue (ex. SMA200).
+            // Vide si l'historique est plus court que smaTrendPeriod → on ne peut
+            // pas confirmer le régime, donc AUCUNE entrée (mais on peut toujours
+            // sortir : la SMA ne gate que les achats).
+            auto smaVals     = smaTrend_->compute(closes);
 
             if (emaFastVals.empty() || emaSlowVals.empty() || rsiVals.empty())
                 return makeSignal(SignalType::HOLD, bars, "Calcul indicateurs échoué");
@@ -86,14 +99,23 @@ namespace trading {
             const double lastEmaSlow = emaSlowVals[n-1];
             const double lastRsi     = rsiVals[n-1];
 
+            // Régime haussier confirmé : prix au-dessus de la SMA de fond.
+            // smaTrendPeriod ≤ 1 = filtre désactivé (régime toujours « ouvert »),
+            // utile comme base de comparaison out-of-sample du filtre (item 8.1).
+            const bool regimeUp = config_.smaTrendPeriod <= 1
+                                  || (!smaVals.empty() && lastClose > smaVals[n-1]);
+
             // Détection du croisement
             // warmup=emaSlow : ignore les croisements pendant la convergence des EMA
             auto cross = CrossoverDetector::detect(emaFastVals, emaSlowVals,
                                                    static_cast<size_t>(config_.emaSlow));
 
             // ── Signal d'ACHAT ────────────────────────────────────────────────
-            // Conditions: croisement haussier + RSI < seuil + prix > EMAs
-            if (cross == CrossoverDetector::Cross::BULLISH
+            // Conditions: régime de fond haussier (prix > SMA200) + croisement
+            // haussier + RSI < seuil + prix > EMAs. Le filtre de régime (8.1)
+            // coupe les entrées à contre-tendance (whipsaws de range/marché baissier).
+            if (regimeUp
+                && cross == CrossoverDetector::Cross::BULLISH
                 && lastRsi     < config_.rsiBuyMax
                 && lastClose   > lastEmaFast
                 && lastClose   > lastEmaSlow)
@@ -101,7 +123,8 @@ namespace trading {
                 return makeSignal(SignalType::BUY, bars,
                                   "EMA" + std::to_string(config_.emaFast) + " croise EMA" +
                                   std::to_string(config_.emaSlow) + " | RSI=" +
-                                  std::to_string(static_cast<int>(lastRsi)));
+                                  std::to_string(static_cast<int>(lastRsi)) +
+                                  " | regime>SMA" + std::to_string(config_.smaTrendPeriod));
             }
 
             // ── Signal de VENTE ───────────────────────────────────────────────
@@ -139,6 +162,7 @@ namespace trading {
         std::unique_ptr<IIndicator<double>> emaFast_;
         std::unique_ptr<IIndicator<double>> emaSlow_;
         std::unique_ptr<IIndicator<double>> rsi_;
+        std::unique_ptr<IIndicator<double>> smaTrend_;
     };
 
 } // namespace trading

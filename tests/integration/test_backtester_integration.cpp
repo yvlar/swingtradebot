@@ -37,40 +37,43 @@ trading::BacktestResult runProdConfigBacktest() {
 
 } // namespace
 
-// ─── Valeurs golden (re-figées le 2026-06-25, Sprint 7 item 7.4, D29) ────────
+// ─── Valeurs golden (re-figées le 2026-06-25, Sprint 8 item 8.1) ─────────────
 // Historique : figées 2026-06-10 (Sprint 3), re-figées 2026-06-11 (Sprint 6.2,
-// coûts réalistes). RE-FIGÉES ICI après le ré-export de QQQ.csv en série
-// TOTAL-RETURN RÉELLE (Adj Close ≠ Close, dividendes réinvestis — clôture de
-// D29). Conséquences mesurées de données honnêtes :
-//   • Le Buy & Hold passe de +238,55 % à +262,08 % (les dividendes QQQ
-//     réinvestis, ~0,6 %/an, étaient absents de l'ancien export).
-//   • 1790 barres au lieu de 1858 : l'ancien CSV portait ~68 lignes parasites ;
-//     1790 = le vrai nombre de jours de bourse US sur [2019-01-02, 2026-02-13].
-//   • La config par défaut rend +4,85 % (alpha −257 pts vs B&H) — l'edge reste
-//     non démontré, c'est l'objet des Sprints 7-8.
+// coûts réalistes), re-figées 2026-06-25 (Sprint 7.4, ré-export total-return).
+// RE-FIGÉES ICI après l'ajout du FILTRE DE RÉGIME SMA200 (item 8.1, D26) :
+// la stratégie n'ouvre plus de position que si le prix est au-dessus de sa
+// SMA200 (régime de fond haussier). Conséquences mesurées EN IN-SAMPLE sur QQQ :
+//   • Le warmup passe de 37 à 201 barres (la SMA200 a besoin de 200 clôtures) →
+//     le Buy & Hold est mesuré plus tard, +226,12 % (au lieu de +262,08 %).
+//   • Le filtre coupe des entrées : 4 trades (au lieu de 6), 2 G / 2 P.
+//   • Retour total IN-SAMPLE −1,07 % (Sharpe −0,12) : le filtre DÉGRADE le plein
+//     échantillon QQQ — résultat honnête. La pertinence du régime se juge en
+//     OUT-OF-SAMPLE (test_strategy_v2_integration.cpp), pas sur ce plein
+//     échantillon. Ces valeurs sont un VERROU de non-régression, pas une preuve
+//     d'edge. La rentabilité reste l'objet du Sprint 8 (8.2–8.5 à suivre).
 TEST(BacktesterIntegration, GoldenPerformanceOnQqqCsv) {
     const auto r = runGoldenBacktest();
 
     // Métriques monétaires : tolérance serrée (réassociation flottante admise,
     // pas un trade de différence).
-    EXPECT_NEAR(r.finalValue,       10485.36870,  0.01);
-    EXPECT_NEAR(r.totalReturnPct,   4.8536870,    1e-4);
-    EXPECT_NEAR(r.buyHoldReturnPct, 262.0807615,  1e-4);
-    EXPECT_NEAR(r.maxDrawdownPct,   2.7043774,    1e-4);
-    EXPECT_NEAR(r.sharpeRatio,      0.3941049,    1e-4);
+    EXPECT_NEAR(r.finalValue,        9893.21586,  0.01);
+    EXPECT_NEAR(r.totalReturnPct,   -1.0678414,   1e-4);
+    EXPECT_NEAR(r.buyHoldReturnPct, 226.1234730,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct,     3.7547369,  1e-4);
+    EXPECT_NEAR(r.sharpeRatio,       -0.1165931,  1e-4);
 }
 
 TEST(BacktesterIntegration, GoldenTradeBreakdownOnQqqCsv) {
     const auto r = runGoldenBacktest();
 
     // Décompte des trades : exact — un trade en plus ou en moins est une dérive.
-    EXPECT_EQ(r.totalTrades,     6);
-    EXPECT_EQ(r.winningTrades,   5);
-    EXPECT_EQ(r.losingTrades,    1);
+    EXPECT_EQ(r.totalTrades,     4);
+    EXPECT_EQ(r.winningTrades,   2);
+    EXPECT_EQ(r.losingTrades,    2);
     EXPECT_EQ(r.stopLossCount,   0);
     EXPECT_EQ(r.takeProfitCount, 0);
-    EXPECT_EQ(r.trailingCount,   5);
-    EXPECT_EQ(r.signalCount,     1);
+    EXPECT_EQ(r.trailingCount,   4);
+    EXPECT_EQ(r.signalCount,     0);
 
     // Bornes temporelles des trades : détectent un décalage de signal.
     ASSERT_FALSE(r.trades.empty());
@@ -89,23 +92,23 @@ TEST(BacktesterIntegration, GoldenTradeBreakdownOnQqqCsv) {
 TEST(BacktesterIntegration, GoldenProdConfigPerformanceOnQqqCsv) {
     const auto r = runProdConfigBacktest();
 
-    EXPECT_NEAR(r.finalValue,       10485.36870,  0.01);
-    EXPECT_NEAR(r.totalReturnPct,   4.8536870,    1e-4);
-    EXPECT_NEAR(r.buyHoldReturnPct, 262.0807615,  1e-4);
-    EXPECT_NEAR(r.maxDrawdownPct,   2.7043774,    1e-4);
-    EXPECT_NEAR(r.sharpeRatio,      0.3941049,    1e-4);
+    EXPECT_NEAR(r.finalValue,        9893.21586,  0.01);
+    EXPECT_NEAR(r.totalReturnPct,   -1.0678414,   1e-4);
+    EXPECT_NEAR(r.buyHoldReturnPct, 226.1234730,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct,     3.7547369,  1e-4);
+    EXPECT_NEAR(r.sharpeRatio,       -0.1165931,  1e-4);
 }
 
 TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
     const auto r = runProdConfigBacktest();
 
-    EXPECT_EQ(r.totalTrades,     6);
-    EXPECT_EQ(r.winningTrades,   5);
-    EXPECT_EQ(r.losingTrades,    1);
+    EXPECT_EQ(r.totalTrades,     4);
+    EXPECT_EQ(r.winningTrades,   2);
+    EXPECT_EQ(r.losingTrades,    2);
     EXPECT_EQ(r.stopLossCount,   0);
     EXPECT_EQ(r.takeProfitCount, 0);
-    EXPECT_EQ(r.trailingCount,   5);
-    EXPECT_EQ(r.signalCount,     1);
+    EXPECT_EQ(r.trailingCount,   4);
+    EXPECT_EQ(r.signalCount,     0);
 
     ASSERT_FALSE(r.trades.empty());
     EXPECT_EQ(r.trades.front().buyDate, "2020-04-08");

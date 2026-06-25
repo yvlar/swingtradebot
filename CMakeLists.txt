@@ -141,6 +141,7 @@ add_executable(integration_tests
         tests/integration/test_walk_forward_integration.cpp
         tests/integration/test_grid_optimizer_integration.cpp
         tests/integration/test_monte_carlo_integration.cpp
+        tests/integration/test_strategy_v2_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})

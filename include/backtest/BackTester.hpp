@@ -137,10 +137,14 @@ public:
                             size_t startIdx, size_t endIdx) {
         const auto& allBars = csv->allBars();
         if (endIdx > allBars.size()) endIdx = allBars.size();
-        const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
+        // Le warmup et la fenêtre de replay doivent couvrir la SMA de régime
+        // (item 8.1) : sinon la SMA reste vide et aucune entrée n'est possible.
+        const int warmup = std::max(config_.emaSlow + config_.rsiPeriod + 2,
+                                    config_.smaTrendPeriod + 1);
+        const int lookback = std::max(config_.emaSlow + 30,
+                                      config_.smaTrendPeriod + 30);
 
-        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30,
-                                                       startIdx);
+        auto feed   = std::make_shared<ReplayDataFeed>(csv, lookback, startIdx);
         auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
                                                     slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();

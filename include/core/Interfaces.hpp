@@ -84,6 +84,18 @@ public:
     // Calcule l'indicateur sur une série de prix
     virtual std::vector<T> compute(const std::vector<double>& prices) const = 0;
 
+    // Calcule l'indicateur sur des barres OHLCV complètes (item 8.0, D18).
+    // Implémentation par défaut RÉTRO-COMPATIBLE : extrait les clôtures et
+    // délègue à compute(prices). Les indicateurs qui exploitent réellement
+    // high/low/volume (ATR true-range, VWAP pondéré) la surchargent ; EMA/RSI
+    // restent inchangés (ils ne dépendent que des clôtures).
+    virtual std::vector<T> computeBars(const std::vector<Bar>& bars) const {
+        std::vector<double> closes;
+        closes.reserve(bars.size());
+        for (const auto& b : bars) closes.push_back(b.close);
+        return compute(closes);
+    }
+
     // Nom de l'indicateur (pour le logging)
     virtual std::string name() const = 0;
 };

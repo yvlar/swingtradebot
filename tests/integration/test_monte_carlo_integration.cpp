@@ -61,9 +61,11 @@ TEST(MonteCarloIntegration, DistributionFromQqqProdBacktestTrades) {
               << "  DD    p5/p50/p95 : " << r.ddP5 << " / " << r.ddP50
               << " / " << r.ddP95 << " %\n";
 
-    // Golden : p50 figés (graine 42, 2000 chemins, 6 trades prod → reproductible).
-    // Toute dérive des trades du backtest (data, stratégie) ferait bouger ces
-    // médianes ; le golden de backtest les attraperait d'abord.
-    EXPECT_NEAR(r.cagrP50, 1.9039, 1e-3);
-    EXPECT_NEAR(r.ddP50,   2.4668, 1e-3);
+    // Golden : p50 figés (graine 42, 2000 chemins, 4 trades prod → reproductible).
+    // Re-figés au Sprint 8.1 (filtre de régime SMA200 : 6 → 4 trades, dont 2
+    // perdants → médiane CAGR négative). Toute dérive des trades du backtest
+    // (data, stratégie) ferait bouger ces médianes ; le golden de backtest les
+    // attraperait d'abord.
+    EXPECT_NEAR(r.cagrP50, -0.3219, 1e-3);
+    EXPECT_NEAR(r.ddP50,    5.4521, 1e-3);
 }
