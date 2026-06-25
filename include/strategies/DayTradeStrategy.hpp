@@ -103,7 +103,7 @@ public:
         auto emaFastV = emaFast_->compute(closes);
         auto emaSlowV = emaSlow_->compute(closes);
         auto rsiV     = rsi_->compute(closes);
-        auto atrV     = atr_->compute(closes);
+        auto atrV     = atr_->computeBars(bars);   // vrai true-range (item 8.0)
         auto volRatio = volOsc_->compute(volumes);
 
         // VWAP sur la session courante
@@ -166,12 +166,10 @@ public:
 
     // Stop dynamique basé sur ATR
     double computeATRStop(const std::vector<Bar>& bars) const {
-        std::vector<double> closes;
-        for (const auto& b : bars) closes.push_back(b.close);
-        auto atrV = atr_->compute(closes);
+        auto atrV = atr_->computeBars(bars);   // vrai true-range (item 8.0)
         if (atrV.empty()) return config_.stopLossPct;
-        double atr = atrV.back();
-        double price = closes.back();
+        double atr   = atrV.back();
+        double price = bars.empty() ? 0.0 : bars.back().close;
         return price > 0 ? (atr * config_.atrStopMultiplier) / price : config_.stopLossPct;
     }
 

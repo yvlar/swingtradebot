@@ -3,16 +3,20 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 namespace trading {
 
-// ─── ATR — Average True Range (approximation close-to-close) ─────────────────
-// L'interface IIndicator<double> ne fournit que la série des clôtures : le
-// true range dégénère en |close_i − close_{i−1}| (pas de high/low disponibles).
-// Lissage de Wilder, seed = SMA des `period` premiers TR — même convention de
-// warmup que RSI (zéros avant l'indice `period`, vide si série trop courte).
-// Suffisant pour un stop dynamique proportionnel à la volatilité.
+// ─── ATR — Average True Range ────────────────────────────────────────────────
+// Deux chemins (item 8.0, D18) :
+//   • compute(prices)    : faute de high/low, le true range dégénère en
+//     |close_i − close_{i−1}| (approximation clôture-à-clôture, contrat IIndicator).
+//   • computeBars(bars)  : VRAI true range
+//     TR_i = max(high_i−low_i, |high_i−close_{i−1}|, |low_i−close_{i−1}|).
+// Dans les deux cas : lissage de Wilder, seed = SMA des `period` premiers TR,
+// même convention de warmup que RSI (zéros avant l'indice `period`, vide si
+// série trop courte). Préférer computeBars dès que les barres OHLC sont dispo.
     class ATR final : public IIndicator<double> {
     public:
         explicit ATR(int period = 14) : period_(period) {
@@ -48,6 +52,39 @@ namespace trading {
             return result;
         }
 
+        // Vrai true range à partir des barres OHLC (item 8.0)
+        std::vector<double> computeBars(const std::vector<Bar>& bars) const override {
+            if (bars.size() < static_cast<size_t>(period_ + 1))
+                return {};
+
+            std::vector<double> result(bars.size(), 0.0);
+
+            // TR_i = max(high−low, |high−clôture_préc|, |low−clôture_préc|)
+            std::vector<double> tr;
+            tr.reserve(bars.size() - 1);
+            for (size_t i = 1; i < bars.size(); ++i) {
+                double hl = bars[i].high - bars[i].low;
+                double hc = std::abs(bars[i].high - bars[i - 1].close);
+                double lc = std::abs(bars[i].low  - bars[i - 1].close);
+                tr.push_back(std::max({hl, hc, lc}));
+            }
+
+            // Seed : SMA des `period` premiers TR (même convention que compute)
+            double atr = 0.0;
+            for (int i = 0; i < period_; ++i)
+                atr += tr[i];
+            atr /= period_;
+            result[period_] = atr;
+
+            // Lissage de Wilder
+            for (size_t i = period_ + 1; i < bars.size(); ++i) {
+                atr = (atr * (period_ - 1) + tr[i - 1]) / period_;
+                result[i] = atr;
+            }
+
+            return result;
+        }
+
         std::string name() const override {
             return "ATR(" + std::to_string(period_) + ")";
         }
@@ -73,6 +110,12 @@ namespace trading {
                 result[i] = sum / static_cast<double>(i + 1);
             }
             return result;
+        }
+
+        // Via l'interface polymorphe (item 8.0) : computeBars donne le VWAP
+        // pondéré volume correct, contrairement au compute(prices) dégradé.
+        std::vector<double> computeBars(const std::vector<Bar>& bars) const override {
+            return computeWithVolume(bars);
         }
 
         std::vector<double> computeWithVolume(const std::vector<Bar>& bars) const {

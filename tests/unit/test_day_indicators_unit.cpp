@@ -56,6 +56,70 @@ TEST(DayIndicatorsUnit, AtrWilderSmoothingKnownSequence) {
     EXPECT_DOUBLE_EQ(v[3], 2.75);
 }
 
+// ── ATR computeBars : vrai true range (item 8.0) ────────────────────────────
+
+namespace {
+// Barre OHLC explicite (range intraday distinct du mouvement de clôture)
+Bar makeOhlc(double open, double high, double low, double close) {
+    Bar b;
+    b.date = "2024-03-05";
+    b.open = open; b.high = high; b.low = low; b.close = close;
+    b.volume = 1'000;
+    return b;
+}
+} // namespace
+
+TEST(DayIndicatorsUnit, AtrComputeBarsTooFewPointsReturnsEmpty) {
+    ATR atr(14);
+    std::vector<Bar> bars(14, makeOhlc(100, 101, 99, 100));  // il faut period+1
+    EXPECT_TRUE(atr.computeBars(bars).empty());
+}
+
+// Calcul à la main, period=2 :
+//   barres (H,L,Cprev) → TR = max(H−L, |H−Cprev|, |L−Cprev|)
+//   b0 close=10 (pas de TR, pas de clôture précédente)
+//   b1 H=14 L=11 Cprev=10 → max(3, 4, 1) = 4
+//   b2 H=12 L=9  Cprev=13 → max(3, 1, 4) = 4
+//   b3 H=20 L=15 Cprev=10 → max(5,10, 5) = 10
+//   seed (indice 2) = SMA(TR1,TR2) = (4+4)/2 = 4
+//   indice 3 = (4·1 + 10)/2 = 7
+TEST(DayIndicatorsUnit, AtrComputeBarsUsesTrueRange) {
+    ATR atr(2);
+    std::vector<Bar> bars{
+        makeOhlc(10, 10, 10, 10),
+        makeOhlc(12, 14, 11, 13),
+        makeOhlc(13, 12,  9, 10),
+        makeOhlc(11, 20, 15, 18),
+    };
+    auto v = atr.computeBars(bars);
+    ASSERT_EQ(v.size(), 4u);
+    EXPECT_DOUBLE_EQ(v[0], 0.0);   // warmup
+    EXPECT_DOUBLE_EQ(v[1], 0.0);
+    EXPECT_DOUBLE_EQ(v[2], 4.0);   // seed
+    EXPECT_DOUBLE_EQ(v[3], 7.0);
+}
+
+// Le vrai true range dépasse l'approximation clôture-à-clôture dès qu'il y a un
+// range intraday : ici les clôtures sont constantes (|Δclôture|=0) mais chaque
+// barre a une amplitude H−L de 4 → ATR true-range = 4, ATR clôture-seule = 0.
+TEST(DayIndicatorsUnit, AtrComputeBarsExceedsCloseToCloseWhenIntradayRange) {
+    ATR atr(2);
+    std::vector<Bar> bars{
+        makeOhlc(100, 102, 98, 100),
+        makeOhlc(100, 102, 98, 100),
+        makeOhlc(100, 102, 98, 100),
+        makeOhlc(100, 102, 98, 100),
+    };
+    auto trueRange = atr.computeBars(bars);
+    std::vector<double> closes{100, 100, 100, 100};
+    auto closeOnly = atr.compute(closes);
+
+    ASSERT_EQ(trueRange.size(), 4u);
+    EXPECT_DOUBLE_EQ(trueRange[3], 4.0);   // amplitude H−L
+    EXPECT_DOUBLE_EQ(closeOnly[3], 0.0);   // dégradé : aucun mouvement de clôture
+    EXPECT_GT(trueRange[3], closeOnly[3]);
+}
+
 // ════════════════════════════════════════════════════════════
 //  VWAP
 // ════════════════════════════════════════════════════════════
@@ -93,6 +157,17 @@ TEST(DayIndicatorsUnit, VwapWeightsByVolumeWithinSession) {
     ASSERT_EQ(v.size(), 2u);
     EXPECT_DOUBLE_EQ(v[0], 10.0);
     EXPECT_DOUBLE_EQ(v[1], (10.0 * 1 + 20.0 * 3) / 4.0);  // 17.5
+}
+
+// Via l'interface polymorphe, computeBars donne le VWAP pondéré volume
+// (≡ computeWithVolume), pas la moyenne cumulative dégradée de compute (item 8.0)
+TEST(DayIndicatorsUnit, VwapComputeBarsEqualsComputeWithVolume) {
+    VWAP vwap;
+    std::vector<Bar> bars{
+        makeBar("2024-03-05 09:30", 10.0, 1),
+        makeBar("2024-03-05 09:35", 20.0, 3),
+    };
+    EXPECT_EQ(vwap.computeBars(bars), vwap.computeWithVolume(bars));
 }
 
 TEST(DayIndicatorsUnit, VwapResetsOnNewSession) {
