@@ -24,7 +24,7 @@ std::string synthDate(int i) {
     const int year  = 2000 + i / 360;
     const int month = 1 + (i / 30) % 12;
     const int day   = 1 + i % 30;
-    char buf[16];
+    char buf[32];
     std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", year, month, day);
     return buf;
 }
