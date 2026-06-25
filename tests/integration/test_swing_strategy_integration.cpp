@@ -76,11 +76,12 @@ EXPECT_EQ(SwingStrategy::create()->evaluate(strong_uptrend(2.0, 80)).type,
 SignalType::SELL);
 }
 
-// Croisement haussier + RSI permissif → BUY
+// Croisement haussier + RSI permissif + régime haussier → BUY
 TEST(SwingStrategyIntegration, BullishCrossoverReturnsBuy) {
 SwingConfig cfg;
 cfg.rsiBuyMax  = 101.0;
 cfg.rsiSellMin = 101.0;
+cfg.smaTrendPeriod = 5;  // régime calculable sur série courte (item 8.1)
 EXPECT_EQ(SwingStrategy::create(cfg)->evaluate(bullish_cross_at_last(40)).type,
 SignalType::BUY);
 }

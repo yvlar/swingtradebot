@@ -86,6 +86,11 @@ struct RiskConfig {
     double trailingStopPct = 0.03;  // -3% depuis le pic
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;
+    // Nombre de barres demandées au data feed à chaque cycle (item 8.1) : doit
+    // couvrir la période du filtre de régime (SMA200 → ~230). Défaut 60 = ancien
+    // comportement. La conversion SwingConfig→RiskConfig l'aligne sur smaTrendPeriod.
+    // (Unification prod/backtest amorcée — le volet complet est D19/Sprint 9.2.)
+    int    lookback        = 60;
     KillSwitchConfig killSwitch;    // garde-fous de coupure (item 18)
 };
 

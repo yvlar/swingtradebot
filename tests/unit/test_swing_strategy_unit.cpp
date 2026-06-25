@@ -76,6 +76,7 @@ EXPECT_DOUBLE_EQ(cfg.takeProfitPct,   0.10);
 EXPECT_DOUBLE_EQ(cfg.trailingStopPct, 0.03);
 EXPECT_DOUBLE_EQ(cfg.riskPerTradePct, 0.02);
 EXPECT_EQ(cfg.minHoldDays, 3);
+EXPECT_EQ(cfg.smaTrendPeriod, 200);   // filtre de régime SMA200 (item 8.1)
 }
 
 TEST(SwingStrategyUnit, CustomConfigIsStored) {
@@ -169,12 +170,24 @@ EXPECT_NE(SwingStrategy::create()->evaluate(strong_downtrend(80)).type,
 SignalType::BUY);
 }
 
-// Croisement haussier à la dernière barre + RSI permissif → BUY
+// Croisement haussier à la dernière barre + RSI permissif + régime haussier → BUY
 TEST(SwingStrategyUnit, BullishCrossoverReturnsBuyWhenRsiPermissive) {
 SwingConfig cfg;
 cfg.rsiBuyMax  = 101.0;  // RSI toujours acceptable
 cfg.rsiSellMin = 101.0;  // jamais de SELL via RSI
+cfg.smaTrendPeriod = 5;  // régime calculable sur série courte (prix 160 > SMA5)
 EXPECT_EQ(SwingStrategy::create(cfg)->evaluate(bullish_cross_at_last(40)).type,
+SignalType::BUY);
+}
+
+// Filtre de régime (item 8.1) : un historique trop court pour la SMA de fond
+// empêche toute entrée — la SMA200 ne peut pas être confirmée sur 41 barres.
+TEST(SwingStrategyUnit, RegimeFilterBlocksBuyWhenSmaUncomputable) {
+SwingConfig cfg;
+cfg.rsiBuyMax  = 101.0;
+cfg.rsiSellMin = 101.0;
+// smaTrendPeriod par défaut = 200 > 41 barres → SMA vide → pas de BUY
+EXPECT_NE(SwingStrategy::create(cfg)->evaluate(bullish_cross_at_last(40)).type,
 SignalType::BUY);
 }
 
@@ -235,11 +248,60 @@ public:
     std::string name() const override { return "Empty"; }
 };
 
+// Indicateur qui renvoie une série préfixée — contrôle déterministe des valeurs
+// d'EMA/RSI/SMA injectées (isole la logique de signal des calculs réels)
+class ValueIndicator final : public IIndicator<double> {
+public:
+    explicit ValueIndicator(std::vector<double> v) : v_(std::move(v)) {}
+    std::vector<double> compute(const std::vector<double>&) const override { return v_; }
+    std::string name() const override { return "Value"; }
+private:
+    std::vector<double> v_;
+};
+
 } // namespace
+
+// Filtre de régime (item 8.1) isolé : à croisement haussier et RSI permissif
+// IDENTIQUES, seul le régime (prix vs SMA) bascule la décision.
+TEST(SwingStrategyUnit, RegimeFilterGatesBuyOnPriceVsSma) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 99.0); emaFast[n-1] = 105.0;  // croisement BULLISH au dernier index
+    std::vector<double> rsi(n, 50.0);                            // < rsiBuyMax (55)
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0)); // lastClose 110 > 105
+
+    auto build = [&](double smaLast) {
+        std::vector<double> sma(n, 100.0); sma[n-1] = smaLast;
+        return SwingStrategy(SwingConfig{},
+            std::make_unique<ValueIndicator>(emaFast),
+            std::make_unique<ValueIndicator>(emaSlow),
+            std::make_unique<ValueIndicator>(rsi),
+            std::make_unique<ValueIndicator>(sma));
+    };
+
+    // Régime haussier (prix 110 > SMA 100) → BUY
+    EXPECT_EQ(build(100.0).evaluate(bars).type, SignalType::BUY);
+    // Régime baissier (prix 110 < SMA 120) → entrée bloquée → HOLD
+    EXPECT_EQ(build(120.0).evaluate(bars).type, SignalType::HOLD);
+}
+
+// La conversion RiskConfig aligne le lookback sur la période de régime (item 8.1) :
+// le bot doit recevoir assez de barres pour calculer la SMA de fond.
+TEST(SwingStrategyUnit, RiskConfigLookbackCoversTrendPeriod) {
+    SwingConfig cfg;                       // smaTrendPeriod = 200 par défaut
+    RiskConfig r = cfg;
+    EXPECT_EQ(r.lookback, 230);            // max(60, 200 + 30)
+
+    SwingConfig small; small.smaTrendPeriod = 10;
+    RiskConfig rs = small;
+    EXPECT_EQ(rs.lookback, 60);            // plancher historique
+}
 
 // Indicateurs injectés défaillants : HOLD explicite, jamais de crash
 TEST(SwingStrategyUnit, FailedIndicatorComputationReturnsHold) {
     SwingStrategy strat(SwingConfig{},
+                        std::make_unique<EmptyIndicator>(),
                         std::make_unique<EmptyIndicator>(),
                         std::make_unique<EmptyIndicator>(),
                         std::make_unique<EmptyIndicator>());

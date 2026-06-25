@@ -72,7 +72,7 @@ public:
         // 1. Récupération des données
         // Panne du feed ≠ « pas de donnée » (item 10) : sur panne, on saute
         // le cycle sans toucher à l'état
-        auto barsRes = dataFeed_->getBars(riskCfg_.symbol, 60);
+        auto barsRes = dataFeed_->getBars(riskCfg_.symbol, riskCfg_.lookback);
         if (!barsRes.ok()) {
             logger_->error("Panne du data feed (" + barsRes.error()
                            + ") — cycle ignoré");
