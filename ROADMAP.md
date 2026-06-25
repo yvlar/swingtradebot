@@ -9,13 +9,13 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 85        | 68                           |
+| Architecture | 86        | 68                           |
 | Qualité      | 89        | 60                           |
 | FinTech      | 79        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-25 (clôture Sprint 7 — harnais de validation)
-- **Sprint courant** : Sprint 8 — Refonte de la stratégie pour capter la tendance (l'argent)
+- **Dernière mise à jour** : 2026-06-25 (point d'étape Sprint 8 — 8.0 + 8.1 livrés, pause de réévaluation)
+- **Sprint courant** : Sprint 8 — Refonte de la stratégie pour capter la tendance (l'argent) — **EN COURS** (8.0 ✅, 8.1 ✅ ; 8.2–8.5 en attente d'arbitrage utilisateur)
 
 > ### ⚠️ Rentabilité : NON PROUVÉE — et désormais prouvée hors-échantillon comme ABSENTE
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -33,9 +33,9 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **20**  | La mesure est encore plus honnête (dividendes réels, B&H +262 %, multi-actifs, OOS) — et confirme l'absence d'edge (alpha −257 pts, walk-forward et grille sans edge OOS). Le chiffre reste bas car la réalité est mauvaise ; la note ne monte qu'avec une stratégie qui gagne (Sprint 8). |
-- **État des tests** : 423/423 verts (367 unitaires + 56 intégration). +27 ce
-  sprint (396 → 423), aucune dérive hors cycle (`ctest -N` valait bien 396 à
-  l'ouverture). Détail au changelog Sprint 7.
+- **État des tests** : 440/440 verts (382 unitaires + 58 intégration). +17 à ce
+  point d'étape Sprint 8 (423 → 440), aucune dérive hors cycle (`ctest -N` valait
+  bien 423 à l'ouverture). Détail au changelog Sprint 8.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -357,12 +357,21 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > actuelle (= défaut, D30) rend +4,85 % pour un B&H total-return de +262,08 %, sans aucun
 > edge OOS. Prérequis : E7/D18 (indicateurs sur `vector<Bar>`) pour des stops/VWAP corrects.
 
-- [ ] **8.0** (D18) Enrichir `IIndicator` → `compute(const std::vector<Bar>&)` (high/low/volume
-  disponibles) ; vrai ATR/true-range, VWAP correct. **Acceptation** : golden ATR mis à jour,
-  DayTradeStrategy migrée.
-- [ ] **8.1** (D26) **Filtre de régime** : n'ouvrir long que si tendance de fond haussière
-  (ex. prix > SMA200 / pente positive). **Acceptation OOS** : participation aux tendances ↑,
-  whipsaws de range ↓ ; alpha net OOS > version actuelle.
+- [x] **8.0** (D18) Enrichir `IIndicator` → `computeBars(const std::vector<Bar>&)` (high/low/volume
+  disponibles) ; vrai ATR/true-range, VWAP correct → `8e3f72f` + `b855974`.
+  Méthode `computeBars` AJOUTÉE (défaut rétro-compatible qui extrait les clôtures et délègue à
+  `compute` — EMA/RSI inchangés, aucun golden touché) plutôt que de changer la signature
+  pure-virtuelle. ATR surcharge avec le vrai TR `max(H−L, |H−Cprev|, |L−Cprev|)` ; VWAP délègue
+  à `computeWithVolume`. DayTradeStrategy migrée. **Acceptation** : nouveaux tests ATR true-range
+  (calcul à la main + dépassement de l'approx clôture-seule), VWAP `computeBars`≡`computeWithVolume`.
+- [x] **8.1** (D26) **Filtre de régime** : n'ouvrir long que si prix > SMA200 → `1264f7a` (SMA) +
+  `1e6f6fd` (filtre). Nouvel indicateur `SMA`, `SwingConfig::smaTrendPeriod` (défaut 200, ≤ 1 =
+  désactivé pour la base de comparaison OOS). La fenêtre de données du bot suit la période via
+  `RiskConfig::lookback` (amorce D19/9.2 — voir D32). **Acceptation OOS satisfaite** : alpha OOS
+  moyen (walk-forward 2 fenêtres QQQ) **−14,10 pts vs −16,09 pts pour la base (+1,99 pt)** →
+  « alpha net OOS > version actuelle » VRAI, alors même que le plein échantillon semblait dégradé
+  (−1,07 % vs +4,85 %) — la valeur du jugement OOS. Les deux restent négatifs (pas d'edge, pas de
+  déploiement). Verrou : `test_strategy_v2_integration.cpp`.
 - [ ] **8.2** (D26) **Laisser courir les gagnants** : retirer/assouplir le take-profit fixe
   (`RiskManager.hpp:81`), sortie pilotée par trailing/structure. **Acceptation OOS** :
   gain moyen des gagnants ↑ sans dégrader le profit factor net.
@@ -374,10 +383,16 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   **Acceptation OOS** : % de temps investi ↑, alpha net ↑.
 
 > **Definition of Done du Sprint 8** (en plus de la DoD standard) : la stratégie retenue
-> **bat le Buy & Hold net de coûts en out-of-sample** OU le sous-performe de moins de X %
-> avec un drawdown sensiblement réduit (cible chiffrée à arbitrer — **Décision requise**).
-> Sinon le sprint conclut « pas d'edge démontré » et on ne déploie PAS — c'est un résultat
-> valide (ne jamais mettre d'argent réel sur un edge non prouvé).
+> **bat le Buy & Hold net de coûts en out-of-sample** OU le sous-performe de **moins de 5
+> points** avec un **drawdown réduit d'au moins 50 %** (cible arbitrée avec l'utilisateur le
+> 2026-06-25, ex-« Décision requise »). Sinon le sprint conclut « pas d'edge démontré » et on
+> ne déploie PAS — c'est un résultat valide (ne jamais mettre d'argent réel sur un edge non prouvé).
+>
+> **Point d'étape 2026-06-25** : 8.0 (prérequis indicateurs) et 8.1 (filtre de régime) livrés,
+> validés en OOS. **Pause de réévaluation** (décision utilisateur) avant 8.2–8.5 : l'alpha OOS
+> est passé de −16,09 à −14,10 pts grâce au régime — il reste très négatif (B&H +226 % sur la
+> fenêtre, temps investi ~2,4 %). Le levier dominant restant est le **cash drag** (8.3 entrée
+> sur la force, 8.5 rester investi) ; à arbitrer pour la session suivante.
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
@@ -428,8 +443,80 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D29 | ✅ | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | ✅ Corrigé au Sprint 7 (7.4, `eb46e38`) : QQQ/SPY/IWM/MDY ré-exportés en total-return réel (Adj ≠ Close), B&H QQQ +262,08 %. Garde `auditTotalReturnCsv` (`43b4015`) pour ne plus jamais charger un export sans dividende sans le voir |
 | D30 | 🟠 | (Sprint 7) **La config prod historique était dominée par le défaut sur données honnêtes.** Sur QQQ total-return, l'ancienne config prod (EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — celle figée au Sprint 6.1, jamais validée hors d'un dataset sans dividende) rend +4,45 % (Sharpe 0,30, 23 trades) vs le défaut +4,85 % (Sharpe 0,39, 6 trades). Le test côte à côte (6.1) a déclenché sa « Décision requise ». **Décision utilisateur** : aligner `prodSwingConfig()` sur le défaut validé (`eb46e38`). Leçon : une config « validée » sur de mauvaises données n'est pas validée — la qualité des données prime (D29). La vraie refonte est le Sprint 8 | ✅ Décidé/appliqué au Sprint 7 (prod = défaut) ; sera re-jugée en OOS au Sprint 8 |
 | D31 | 🟢 | (Sprint 7) **L'ancien QQQ.csv comptait 1858 lignes pour une fenêtre de 1790 jours de bourse** (2019-01-02 → 2026-02-13) : ~68 lignes parasites (doublons/jours non boursiers) jamais détectées. Le ré-export total-return (Yahoo, 7.4) donne le compte correct (1790). Un garde-fou « nombre de barres ≈ jours de bourse attendus » dans `auditTotalReturnCsv` aurait pu l'attraper plus tôt | Documenté (résolu par le ré-export) ; garde-fou « densité de barres » au backlog qualité données |
+| D32 | 🟠 | (Sprint 8) **Le filtre de régime SMA200 (8.1) a besoin de ≥ 200 barres, or la prod câble `getBars(symbol, 60)`** (TradingBot.hpp). Sans correctif, le bot LIVE ne recevrait jamais assez de barres → SMA vide → aucune entrée possible. **Amorce posée au Sprint 8.1** : `RiskConfig::lookback` (défaut 60, aligné sur `smaTrendPeriod+30` par la conversion `SwingConfig→RiskConfig`) ; `TradingBot::runOnce` demande `getBars(symbol, riskCfg_.lookback)`. Côté prod, `main_ibkr` (via `prodSwingConfig`) demandera donc 230 barres — à vérifier sur le CP Gateway IBKR. Le volet COMPLET (lookback unifié prod/backtest, barres clôturées) reste **D19/Sprint 9.2** | Amorce Sprint 8.1 (`1e6f6fd`) ; volet complet Sprint 9.2 |
 
 ## Changelog
+
+### Sprint 8 (point d'étape) — Prérequis indicateurs + filtre de régime (2026-06-25)
+
+**Baseline réelle à l'ouverture** : **423/423 verte**, conforme au tableau de bord
+(`ctest -N` = 423, aucune dérive hors cycle).
+
+**Portée de cette session** (décision utilisateur) : 8.0 + 8.1 uniquement, validés en
+OOS, puis **pause de réévaluation** avant 8.2–8.5.
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `8e3f72f` refactor(core) : `IIndicator::computeBars` sur barres OHLCV, défaut rétro-compatible (item 8.0, D18)
+- `b855974` feat(indicateurs) : vrai true-range ATR via `computeBars` + VWAP `computeBars` + migration DayTradeStrategy (item 8.0, D18)
+- `1264f7a` feat(indicateurs) : indicateur SMA (moyenne mobile simple) (item 8.1)
+- `1e6f6fd` feat(strategie) : filtre de régime SMA200 à l'entrée + verdict OOS verrouillé (item 8.1, D26)
+
+**Tests** : 423 → **440** (+17). Répartition : 382 unitaires + 58 intégration.
+Ajouts : `IndicatorsUnit` +8 (computeBars EMA/RSI, SMA ×6), `DayIndicatorsUnit` +4
+(ATR true-range ×3, VWAP computeBars), `SwingStrategyUnit` +3 (régime gaté ×2, lookback),
+`StrategyV2Integration` +2 (pavage de fenêtres, verdict OOS). Goldens existants re-figés
+(pas de nouveaux fichiers de test côté backtest/Monte-Carlo, valeurs mises à jour).
+
+**Golden backtest RE-FIGÉ** (item 8.1, justification : ajout du filtre de régime SMA200,
+changement de comportement volontaire — warmup 37 → 201 car la SMA200 a besoin de 200
+clôtures) :
+- Config défaut ET prod (toujours identiques, D30) : retour total **−1,0678 %**
+  (était +4,8537), capital final **9 893,22 $**, **4 trades** (2 G / 2 P ; 0 SL / 0 TP /
+  4 trailing / 0 signal), max DD **3,7547 %**, Sharpe **−0,1166**, B&H **+226,1235 %**
+  (mesuré après le warmup décalé), 1er achat 2020-04-08, dernière vente 2026-02-04,
+  1790 points d'équité (inchangé).
+- Monte-Carlo (graine 42, 2000 chemins, 4 trades prod) : p50 CAGR **−0,3219 %**, p50
+  drawdown **5,4521 %** (figés).
+
+**Verdict OUT-OF-SAMPLE 8.1** (walk-forward IS=700 / OOS=400 / pas=400, 2 fenêtres QQQ,
+`test_strategy_v2_integration.cpp`) : alpha OOS moyen **−14,10 pts (régime SMA200) vs
+−16,09 pts (filtre désactivé)** → le filtre AMÉLIORE l'alpha OOS de **+1,99 pt**.
+Acceptation 8.1 (« alpha net OOS > version actuelle ») **satisfaite**, alors même que le
+plein échantillon (in-sample) semblait DÉGRADÉ (−1,07 % vs +4,85 %) — illustration directe
+de la valeur du jugement OOS sur l'IS. **Les deux restent négatifs** : aucune ne bat le
+Buy & Hold → pas d'edge, pas de déploiement.
+
+**Interfaces modifiées** (toutes additives / rétro-compatibles) :
+- `IIndicator<T>::computeBars(const std::vector<Bar>&)` — virtuelle avec défaut (extrait les
+  clôtures, délègue à `compute`) ; surchargée par ATR (vrai TR) et VWAP.
+- `SwingConfig::smaTrendPeriod` (défaut 200 ; **≤ 1 désactive** le filtre — base de comparaison OOS).
+- `RiskConfig::lookback` (défaut 60 ; aligné sur `smaTrendPeriod+30` par la conversion).
+- `SwingStrategy` : 4e indicateur injecté (SMA de régime) au constructeur et au factory.
+- `Backtester::runRange` : warmup et lookback de replay couvrent désormais `smaTrendPeriod`.
+
+**Enseignement central** : on ne juge JAMAIS une modif de stratégie sur le plein échantillon.
+Le filtre de régime a un alpha in-sample plus mauvais MAIS un alpha OOS meilleur — sans le
+harnais OOS du Sprint 7, on l'aurait rejeté à tort. Le levier dominant restant est le **cash
+drag** (temps investi ~2,4 %) : c'est l'objet de 8.3/8.5 (à arbitrer en session suivante).
+
+**Rétrospective (point d'étape Sprint 8)** :
+1. *Découpage* : bon. Mettre 8.0 (prérequis indicateurs) avant 8.1 était correct ; 8.1 seul
+   est une unité validable de bout en bout. La **dépendance cachée** la plus importante n'était
+   pas entre items mais entre 8.1 et la plomberie de fenêtre de données (`getBars(60)` + lookback
+   de replay) : sans elle la SMA200 reste vide. Repérée tôt grâce à la lecture du code (le plan
+   l'avait anticipée), pas en cours de route.
+2. *Prompts du workflow* : suffisants, aucune improvisation nécessaire. La consigne « recaler le
+   décompte via `ctest -N` » (D20) a confirmé 423 à l'ouverture sans dérive. Pas de modif des
+   prompts requise.
+3. *À détecter plus tôt / garde-fou* : le risque prod `getBars(60)` < SMA200 (D32) aurait pu être
+   un piège silencieux (bot live qui n'achète jamais). Garde-fou ajouté de fait : `RiskConfig::lookback`
+   dérivé de la config + test `RiskConfigLookbackCoversTrendPeriod`. Garde-fou DoD à considérer pour
+   9.x : un test qui vérifie que `prodSwingConfig().lookback` couvre bien `smaTrendPeriod`.
+4. *Notes /100 (point d'étape, re-scoring complet à la clôture du sprint)* : Architecture 85 → **86**
+   (interface indicateurs enrichie proprement, additive), Qualité 89 → **89** (couverture +17, mais
+   périmètre partiel), FinTech 79 → **79** (régime correct mais stratégie incomplète), Production 72
+   → **72** (inchangé). **Rentabilité 20 → 20** : l'alpha OOS s'améliore (+1,99 pt) mais reste
+   franchement négatif — la note ne montera qu'avec une stratégie qui bat (ou approche) le B&H.
 
 ### Sprint 7 — Harnais de validation (2026-06-25)
 
