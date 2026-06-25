@@ -22,16 +22,28 @@ namespace trading {
 // le bot en production. La fenêtre est bornée par `lookback` (emaSlow + 30,
 // l'historique du backtest d'origine) pour que les EMA — seedées par SMA en
 // début de fenêtre — restent identiques aux valeurs golden (item 17).
+//
+// `floorIdx` (Sprint 7, item 7.1) : index minimal servi. Par défaut 0 (aucun
+// effet, golden inchangé). En walk-forward, on le fixe au début de la fenêtre
+// pour que les indicateurs NE voient JAMAIS de barre antérieure à la fenêtre —
+// chaque sous-période IS/OOS ré-amorce ses EMA/RSI (isolation honnête, pas de
+// fuite d'historique d'une fenêtre à l'autre).
 class ReplayDataFeed final : public IDataFeed {
 public:
-    ReplayDataFeed(std::shared_ptr<CsvDataFeed> csv, int lookback)
-        : csv_(std::move(csv)), lookback_(lookback) {}
+    ReplayDataFeed(std::shared_ptr<CsvDataFeed> csv, int lookback, size_t floorIdx = 0)
+        : csv_(std::move(csv)), lookback_(lookback), floorIdx_(floorIdx) {}
 
     void setCursor(size_t index) { cursor_ = index; }
 
     Result<std::vector<Bar>> getBars(const std::string& /*symbol*/, int days) override {
+        int window = std::min(days, lookback_);
+        // Ne jamais remonter avant floorIdx_ : getBarsUpTo(cursor, L) sert
+        // [cursor+1-L, cursor+1) ; borner L à cursor+1-floorIdx_ cale le début
+        // de la fenêtre sur floorIdx_. À floorIdx_ = 0 c'est l'ancien calcul.
+        const int maxFromFloor = static_cast<int>(cursor_ + 1 - floorIdx_);
+        window = std::min(window, maxFromFloor);
         return Result<std::vector<Bar>>::Ok(
-            csv_->getBarsUpTo(cursor_, std::min(days, lookback_)));
+            csv_->getBarsUpTo(cursor_, window));
     }
 
     // En backtest, le marché est toujours « ouvert »
@@ -41,6 +53,7 @@ private:
     std::shared_ptr<CsvDataFeed> csv_;
     size_t cursor_   = 0;
     int    lookback_;
+    size_t floorIdx_ = 0;
 };
 
 // ─── BacktestResult ───────────────────────────────────────────────────────────
@@ -107,12 +120,27 @@ public:
     // Le backtest fait tourner le VRAI code de production (item 11) :
     // TradingBot::runOnce + PaperBroker + RiskManager. Plus aucune logique de
     // sortie/sizing dupliquée ici — le rapport reflète exactement le moteur.
+    // run() backteste tout le CSV ; il délègue à runRange (item 7.1) qui sait
+    // restreindre l'exécution à une sous-fenêtre [startIdx, endIdx). Avec
+    // startIdx = 0 et endIdx = N, runRange reproduit run() au centime (golden).
     BacktestResult run() {
         auto csv = std::make_shared<CsvDataFeed>(csvPath_);
+        return runRange(csv, 0, csv->allBars().size());
+    }
+
+    // Backteste la sous-fenêtre [startIdx, endIdx) du CSV déjà chargé. Le warmup
+    // est LOCAL à la fenêtre (les `warmup` premières barres ne tradent pas), et
+    // le feed est plafonné par floorIdx = startIdx → les indicateurs ne voient
+    // aucune barre antérieure à la fenêtre (ré-amorçage par fenêtre, item 7.1).
+    // Les métriques (B&H, CAGR, drawdown) sont calculées sur la SEULE fenêtre.
+    BacktestResult runRange(std::shared_ptr<CsvDataFeed> csv,
+                            size_t startIdx, size_t endIdx) {
         const auto& allBars = csv->allBars();
+        if (endIdx > allBars.size()) endIdx = allBars.size();
         const int warmup = config_.emaSlow + config_.rsiPeriod + 2;
 
-        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30);
+        auto feed   = std::make_shared<ReplayDataFeed>(csv, config_.emaSlow + 30,
+                                                       startIdx);
         auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
                                                     slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();
@@ -129,7 +157,7 @@ public:
             broker->setLastExitReason(reason);
         });
 
-        for (size_t i = 0; i < allBars.size(); ++i) {
+        for (size_t i = startIdx; i < endIdx; ++i) {
             const Bar& bar = allBars[i];
             broker->setCurrentPrice(bar.close);
             broker->setCurrentDate(bar.date);
@@ -137,8 +165,9 @@ public:
             // Valeur du portefeuille ce jour (avant les trades de la barre)
             broker->equitySnapshot(broker->portfolioValue(), bar.date);
 
-            // Pendant le warmup des indicateurs, on n'ouvre aucune position
-            if (static_cast<int>(i) < warmup) continue;
+            // Warmup local : on n'ouvre aucune position sur les `warmup`
+            // premières barres DE LA FENÊTRE (i < startIdx + warmup)
+            if (i < startIdx + static_cast<size_t>(warmup)) continue;
 
             broker->incrementHoldDays();
             feed->setCursor(i);
@@ -148,7 +177,11 @@ public:
         // Clôture de la position ouverte en fin de backtest
         broker->closeOpenPosition();
 
-        return computeMetrics(broker->cash(), allBars,
+        // Métriques calculées sur la sous-série [startIdx, endIdx) : le warmup
+        // local devient l'index de warmup relatif au sous-vecteur.
+        std::vector<Bar> subBars(allBars.begin() + startIdx,
+                                 allBars.begin() + endIdx);
+        return computeMetrics(broker->cash(), subBars,
                               broker->equityCurve(), broker->equityDates(),
                               broker->trades(), warmup);
     }
