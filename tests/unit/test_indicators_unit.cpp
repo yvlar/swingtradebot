@@ -193,3 +193,35 @@ TEST(IndicatorsUnit, CrossoverWarmupSuppressesEarlySignal) {
     EXPECT_EQ(CrossoverDetector::detect(fast, slow, 1), Cross::BULLISH);
     EXPECT_EQ(CrossoverDetector::detect(fast, slow, 0), Cross::BULLISH);
 }
+
+// ════════════════════════════════════════════════════════════
+//  IIndicator::computeBars — défaut rétro-compatible (item 8.0)
+// ════════════════════════════════════════════════════════════
+
+namespace {
+trading::Bar barClose(double close) {
+    trading::Bar b;
+    b.close = close;
+    return b;
+}
+} // namespace
+
+// Le défaut de computeBars extrait les clôtures : pour des indicateurs qui ne
+// dépendent que de la clôture (EMA/RSI), computeBars(bars) ≡ compute(closes).
+TEST(IndicatorsUnit, ComputeBarsDefaultMatchesComputeOnClosesEma) {
+    EMA ema(3);
+    std::vector<double> closes = {1.0, 2.0, 3.0, 4.0, 5.0};
+    std::vector<Bar> bars;
+    for (double c : closes) bars.push_back(barClose(c));
+
+    EXPECT_EQ(ema.computeBars(bars), ema.compute(closes));
+}
+
+TEST(IndicatorsUnit, ComputeBarsDefaultMatchesComputeOnClosesRsi) {
+    RSI rsi(2);
+    std::vector<double> closes = {10.0, 11.0, 12.0, 11.0};
+    std::vector<Bar> bars;
+    for (double c : closes) bars.push_back(barClose(c));
+
+    EXPECT_EQ(rsi.computeBars(bars), rsi.compute(closes));
+}
