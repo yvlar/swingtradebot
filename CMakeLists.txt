@@ -63,6 +63,24 @@ target_include_directories(swing_bot PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(swing_bot PRIVATE ${COMMON_LIBS})
 
 # ════════════════════════════════════════════════════════════
+#  HARNAIS DE VALIDATION (Sprint 7) — walk-forward / grille / Monte-Carlo
+#  Sortie humaine pour inspecter l'edge ; les chiffres sont verrouillés par
+#  les tests d'intégration. Lance : ./build/validate
+# ════════════════════════════════════════════════════════════
+add_executable(validate
+        main_validate.cpp
+        ${BOT_SOURCES}
+)
+target_include_directories(validate PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(validate PRIVATE ${COMMON_LIBS})
+target_compile_definitions(validate PRIVATE
+        SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
+        SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
+        SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+)
+
+# ════════════════════════════════════════════════════════════
 #  TESTS UNITAIRES
 #  gtest_discover_tests → chaque test = processus séparé = 100% indépendant
 # ════════════════════════════════════════════════════════════
@@ -91,6 +109,10 @@ add_executable(unit_tests
         tests/unit/test_ibkr_data_feed_unit.cpp
         tests/unit/test_logger_unit.cpp
         tests/unit/test_market_calendar_unit.cpp
+        tests/unit/test_data_quality_unit.cpp
+        tests/unit/test_walk_forward_unit.cpp
+        tests/unit/test_grid_optimizer_unit.cpp
+        tests/unit/test_monte_carlo_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -115,14 +137,23 @@ add_executable(integration_tests
         tests/integration/test_swing_strategy_integration.cpp
         tests/integration/test_backtester_integration.cpp
         tests/integration/test_http_client_integration.cpp
+        tests/integration/test_multi_asset_integration.cpp
+        tests/integration/test_walk_forward_integration.cpp
+        tests/integration/test_grid_optimizer_integration.cpp
+        tests/integration/test_monte_carlo_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
 # Le golden backtest (item 17) lit QQQ.csv depuis la racine du dépôt,
 # indépendamment du répertoire de travail des tests.
+# Les actifs multi-CSV (item 7.4, D29) : séries total-return réelles
+# (Adj Close ≠ Close) pour valider la stratégie hors d'un seul actif.
 target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
+        SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
+        SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
 )
 
 gtest_discover_tests(integration_tests
