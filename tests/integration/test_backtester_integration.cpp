@@ -23,9 +23,11 @@ trading::BacktestResult runGoldenBacktest() {
     return bt.run();
 }
 
-// Golden « config prod » (Sprint 6.1, D21) : backteste la config réellement
-// câblée en production via sa source unique (ProdConfig.hpp). Si quelqu'un
-// modifie les paramètres live, ce golden casse tant que les nouvelles valeurs
+// Golden « config prod » : backteste la config réellement câblée en production
+// via sa source unique (ProdConfig.hpp). Depuis le Sprint 7 (item 7.4), la
+// config prod EST la config par défaut (voir la décision ci-dessous) ; ce
+// golden reste néanmoins distinct pour verrouiller ce fait : si quelqu'un
+// re-diverge la prod du défaut, ce test casse tant que les nouvelles valeurs
 // n'ont pas été re-backtestées et re-figées.
 trading::BacktestResult runProdConfigBacktest() {
     trading::Backtester bt(trading::prodSwingConfig(), SWINGBOT_QQQ_CSV,
@@ -35,89 +37,91 @@ trading::BacktestResult runProdConfigBacktest() {
 
 } // namespace
 
-// ─── Valeurs golden (figées le 2026-06-10, baseline Sprint 3) ─────────────────
-// Re-figées le 2026-06-11 (Sprint 6.2, D22) : le modèle de coûts réaliste
-// (slippage 2 bps + demi-spread 0,5 bp par côté, défauts du Backtester)
-// dégrade chaque fill. Mêmes 7 trades, capital final 10 967,06 → 10 952,89 $
-// (−14,17 $, soit −0,14 pt de retour) — coût pur, aucun signal modifié.
-// Sprint 6.3 (D7) : passage à Adj Close — delta NUL sur ce dataset, car
-// QQQ.csv a été exporté avec Adj Close == Close sur les 1858 lignes (aucune
-// info de dividende — voir D29). Le B&H +238,55 % reste donc HORS dividendes
-// tant que le CSV n'est pas ré-exporté en série total-return.
+// ─── Valeurs golden (re-figées le 2026-06-25, Sprint 7 item 7.4, D29) ────────
+// Historique : figées 2026-06-10 (Sprint 3), re-figées 2026-06-11 (Sprint 6.2,
+// coûts réalistes). RE-FIGÉES ICI après le ré-export de QQQ.csv en série
+// TOTAL-RETURN RÉELLE (Adj Close ≠ Close, dividendes réinvestis — clôture de
+// D29). Conséquences mesurées de données honnêtes :
+//   • Le Buy & Hold passe de +238,55 % à +262,08 % (les dividendes QQQ
+//     réinvestis, ~0,6 %/an, étaient absents de l'ancien export).
+//   • 1790 barres au lieu de 1858 : l'ancien CSV portait ~68 lignes parasites ;
+//     1790 = le vrai nombre de jours de bourse US sur [2019-01-02, 2026-02-13].
+//   • La config par défaut rend +4,85 % (alpha −257 pts vs B&H) — l'edge reste
+//     non démontré, c'est l'objet des Sprints 7-8.
 TEST(BacktesterIntegration, GoldenPerformanceOnQqqCsv) {
     const auto r = runGoldenBacktest();
 
     // Métriques monétaires : tolérance serrée (réassociation flottante admise,
     // pas un trade de différence).
-    EXPECT_NEAR(r.finalValue,       10952.89128,  0.01);
-    EXPECT_NEAR(r.totalReturnPct,   9.5289128,    1e-4);
-    EXPECT_NEAR(r.buyHoldReturnPct, 238.5544199,  1e-4);
-    EXPECT_NEAR(r.maxDrawdownPct,   2.0646787,    1e-4);
-    EXPECT_NEAR(r.sharpeRatio,      0.6137703,    1e-4);
+    EXPECT_NEAR(r.finalValue,       10485.36870,  0.01);
+    EXPECT_NEAR(r.totalReturnPct,   4.8536870,    1e-4);
+    EXPECT_NEAR(r.buyHoldReturnPct, 262.0807615,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct,   2.7043774,    1e-4);
+    EXPECT_NEAR(r.sharpeRatio,      0.3941049,    1e-4);
 }
 
 TEST(BacktesterIntegration, GoldenTradeBreakdownOnQqqCsv) {
     const auto r = runGoldenBacktest();
 
     // Décompte des trades : exact — un trade en plus ou en moins est une dérive.
-    EXPECT_EQ(r.totalTrades,     7);
-    EXPECT_EQ(r.winningTrades,   4);
-    EXPECT_EQ(r.losingTrades,    3);
+    EXPECT_EQ(r.totalTrades,     6);
+    EXPECT_EQ(r.winningTrades,   5);
+    EXPECT_EQ(r.losingTrades,    1);
     EXPECT_EQ(r.stopLossCount,   0);
-    EXPECT_EQ(r.takeProfitCount, 1);
-    EXPECT_EQ(r.trailingCount,   1);
-    EXPECT_EQ(r.signalCount,     5);
+    EXPECT_EQ(r.takeProfitCount, 0);
+    EXPECT_EQ(r.trailingCount,   5);
+    EXPECT_EQ(r.signalCount,     1);
 
     // Bornes temporelles des trades : détectent un décalage de signal.
     ASSERT_FALSE(r.trades.empty());
-    EXPECT_EQ(r.trades.front().buyDate, "2020-10-29");
-    EXPECT_EQ(r.trades.back().sellDate, "2026-02-12");
+    EXPECT_EQ(r.trades.front().buyDate, "2020-04-08");
+    EXPECT_EQ(r.trades.back().sellDate, "2026-02-04");
 
-    // Un point d'équité par barre du CSV (1859 lignes - 1 en-tête).
-    EXPECT_EQ(r.equityCurve.size(), 1858u);
+    // Un point d'équité par barre du CSV total-return (1791 lignes - 1 en-tête).
+    EXPECT_EQ(r.equityCurve.size(), 1790u);
 }
 
-// ─── Valeurs golden config PROD (figées le 2026-06-11, Sprint 6.1 / D21) ─────
-// EMA 13/21, RSI 14 (achat < 65, vente > 80), SL 7 %, TP 15 %, trailing 3 %,
-// minHold 2 — la config qui tourne en live (main_ibkr.cpp via ProdConfig.hpp).
-// Re-figées le même jour (Sprint 6.2, D22) : avec les coûts réalistes, mêmes
-// 11 trades, capital final 13 650,15 → 13 631,89 $ (−18,26 $, −0,18 pt).
+// ─── Golden config PROD = config DÉFAUT (Décision Sprint 7, item 7.4) ────────
+// Sur données total-return honnêtes, l'ancienne config prod (EMA 13/21, RSI
+// 65/80, SL 7 %, TP 15 %, minHold 2) s'est révélée INFÉRIEURE au défaut (voir
+// ProdConfig.hpp). Décision retenue : aligner la prod sur le défaut validé.
+// Les valeurs golden prod sont donc IDENTIQUES au défaut ci-dessus.
 TEST(BacktesterIntegration, GoldenProdConfigPerformanceOnQqqCsv) {
     const auto r = runProdConfigBacktest();
 
-    EXPECT_NEAR(r.finalValue,       13631.89398,  0.01);
-    EXPECT_NEAR(r.totalReturnPct,   36.3189398,   1e-4);
-    EXPECT_NEAR(r.buyHoldReturnPct, 238.5544199,  1e-4);
-    EXPECT_NEAR(r.maxDrawdownPct,   1.9844613,    1e-4);
-    EXPECT_NEAR(r.sharpeRatio,      1.8099057,    1e-4);
+    EXPECT_NEAR(r.finalValue,       10485.36870,  0.01);
+    EXPECT_NEAR(r.totalReturnPct,   4.8536870,    1e-4);
+    EXPECT_NEAR(r.buyHoldReturnPct, 262.0807615,  1e-4);
+    EXPECT_NEAR(r.maxDrawdownPct,   2.7043774,    1e-4);
+    EXPECT_NEAR(r.sharpeRatio,      0.3941049,    1e-4);
 }
 
 TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
     const auto r = runProdConfigBacktest();
 
-    EXPECT_EQ(r.totalTrades,     11);
-    EXPECT_EQ(r.winningTrades,   10);
+    EXPECT_EQ(r.totalTrades,     6);
+    EXPECT_EQ(r.winningTrades,   5);
     EXPECT_EQ(r.losingTrades,    1);
     EXPECT_EQ(r.stopLossCount,   0);
-    EXPECT_EQ(r.takeProfitCount, 4);
-    EXPECT_EQ(r.trailingCount,   2);
-    EXPECT_EQ(r.signalCount,     5);
+    EXPECT_EQ(r.takeProfitCount, 0);
+    EXPECT_EQ(r.trailingCount,   5);
+    EXPECT_EQ(r.signalCount,     1);
 
     ASSERT_FALSE(r.trades.empty());
-    EXPECT_EQ(r.trades.front().buyDate, "2019-06-18");
-    EXPECT_EQ(r.trades.back().sellDate, "2026-02-03");
+    EXPECT_EQ(r.trades.front().buyDate, "2020-04-08");
+    EXPECT_EQ(r.trades.back().sellDate, "2026-02-04");
 
-    EXPECT_EQ(r.equityCurve.size(), 1858u);
+    EXPECT_EQ(r.equityCurve.size(), 1790u);
 }
 
-// ─── Côte à côte : config défaut vs config prod (acceptation 6.1) ────────────
-// Affiche la comparaison et VERROUILLE la relation observée : la config prod
-// surperforme la config défaut sur QQQ.csv (+36,50 % vs +9,67 %), donc pas de
-// « Décision requise » à ce jour. Si ce test casse (la prod passe DERRIÈRE le
-// défaut, p. ex. après un changement de coûts ou de paramètres), ouvrir une
-// Décision requise dans ROADMAP.md : aligner la prod sur la config validée, ou
-// continuer à valider la config prod.
-TEST(BacktesterIntegration, ProdConfigComparedSideBySideWithDefaultConfig) {
+// ─── Côte à côte : la config prod est désormais le défaut validé ─────────────
+// Affiche la comparaison et VERROUILLE la décision du Sprint 7 (item 7.4) :
+// après mesure total-return honnête, la prod a été alignée sur le défaut, donc
+// les deux configs produisent EXACTEMENT le même résultat. Si ce test casse
+// (prod ≠ défaut), c'est que la prod a re-divergé : ouvrir une « Décision
+// requise » dans ROADMAP.md et re-valider la nouvelle config en OOS (Sprint 7)
+// avant tout déploiement.
+TEST(BacktesterIntegration, ProdConfigMatchesValidatedDefaultConfig) {
     const auto def  = runGoldenBacktest();
     const auto prod = runProdConfigBacktest();
 
@@ -128,7 +132,7 @@ TEST(BacktesterIntegration, ProdConfigComparedSideBySideWithDefaultConfig) {
           << std::setw(12) << d << std::setw(12) << p;
         return s.str();
     };
-    std::cout << "  Golden QQQ.csv         [defaut]      [prod]\n"
+    std::cout << "  Golden QQQ.csv (TR)    [defaut]      [prod]\n"
               << ligne("Retour total (%)",   def.totalReturnPct,   prod.totalReturnPct)   << "\n"
               << ligne("Buy & Hold (%)",     def.buyHoldReturnPct, prod.buyHoldReturnPct) << "\n"
               << ligne("Alpha vs B&H (pts)", def.alpha,            prod.alpha)            << "\n"
@@ -136,13 +140,13 @@ TEST(BacktesterIntegration, ProdConfigComparedSideBySideWithDefaultConfig) {
               << ligne("Sharpe",             def.sharpeRatio,      prod.sharpeRatio)      << "\n"
               << ligne("Trades",             def.totalTrades,      prod.totalTrades)      << "\n";
 
-    // Les deux configs voient le même marché : B&H identique.
-    EXPECT_NEAR(def.buyHoldReturnPct, prod.buyHoldReturnPct, 1e-9);
+    // Prod == défaut, au centime et au trade près (décision Sprint 7).
+    EXPECT_NEAR(prod.totalReturnPct, def.totalReturnPct, 1e-9);
+    EXPECT_NEAR(prod.sharpeRatio,    def.sharpeRatio,    1e-9);
+    EXPECT_NEAR(prod.finalValue,     def.finalValue,     1e-6);
+    EXPECT_EQ(prod.totalTrades,      def.totalTrades);
 
-    // Relation verrouillée (2026-06-11) : prod > défaut en retour total ET en
-    // Sharpe, sans drawdown supérieur d'un facteur disqualifiant. Aucune des
-    // deux ne bat le Buy & Hold — la rentabilité reste l'objet des Sprints 7-8.
-    EXPECT_GT(prod.totalReturnPct, def.totalReturnPct);
-    EXPECT_GT(prod.sharpeRatio,    def.sharpeRatio);
-    EXPECT_LT(prod.totalReturnPct, prod.buyHoldReturnPct);
+    // Aucune des deux ne bat le Buy & Hold — la rentabilité reste l'objet du
+    // Sprint 8 (refonte de la stratégie pour capter la tendance).
+    EXPECT_LT(def.totalReturnPct, def.buyHoldReturnPct);
 }

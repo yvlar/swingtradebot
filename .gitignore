@@ -46,6 +46,12 @@ build_log*.txt
 # ── Données CSV (trop lourdes pour git) ───────────────────
 *.csv
 !tests/**/*.csv
+# Exceptions : jeux de données de référence du backtest/validation (versionnés
+# car les goldens et le harnais multi-actifs en dépendent — items 17, 7.4).
+!QQQ.csv
+!SPY.csv
+!IWM.csv
+!MDY.csv
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/
