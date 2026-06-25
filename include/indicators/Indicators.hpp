@@ -45,6 +45,48 @@ namespace trading {
         int period_;
     };
 
+// ─── SMA — Simple Moving Average ──────────────────────────────────────────────
+// Moyenne mobile simple sur `period` clôtures. Sert de filtre de régime de fond
+// (ex. SMA200) : on ne reste long que tant que le prix est au-dessus (item 8.1).
+// Même convention de warmup que l'EMA : zéros avant l'indice `period-1`, vide si
+// la série est plus courte que `period`.
+    class SMA final : public IIndicator<double> {
+    public:
+        explicit SMA(int period) : period_(period) {
+            if (period <= 0)
+                throw std::invalid_argument("SMA period must be > 0");
+        }
+
+        std::vector<double> compute(const std::vector<double>& prices) const override {
+            if (prices.size() < static_cast<size_t>(period_))
+                return {};
+
+            std::vector<double> result(prices.size(), 0.0);
+
+            // Somme glissante : seed = SMA des `period` premières valeurs
+            double window = 0.0;
+            for (int i = 0; i < period_; ++i)
+                window += prices[i];
+            result[period_ - 1] = window / period_;
+
+            for (size_t i = period_; i < prices.size(); ++i) {
+                window += prices[i] - prices[i - period_];
+                result[i] = window / period_;
+            }
+
+            return result;
+        }
+
+        std::string name() const override {
+            return "SMA(" + std::to_string(period_) + ")";
+        }
+
+        int period() const { return period_; }
+
+    private:
+        int period_;
+    };
+
 // ─── RSI — Relative Strength Index ────────────────────────────────────────────
     class RSI final : public IIndicator<double> {
     public:

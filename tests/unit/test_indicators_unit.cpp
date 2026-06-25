@@ -66,6 +66,58 @@ TEST(IndicatorsUnit, EmaConstantPricesStaysFlat) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  SMA — moyenne mobile simple (filtre de régime, item 8.1)
+// ════════════════════════════════════════════════════════════
+
+TEST(IndicatorsUnit, SmaThrowsOnInvalidPeriod) {
+    EXPECT_THROW(SMA(0),  std::invalid_argument);
+    EXPECT_THROW(SMA(-4), std::invalid_argument);
+}
+
+TEST(IndicatorsUnit, SmaNameAndPeriod) {
+    SMA sma(200);
+    EXPECT_EQ(sma.name(), "SMA(200)");
+    EXPECT_EQ(sma.period(), 200);
+}
+
+TEST(IndicatorsUnit, SmaInsufficientDataReturnsEmpty) {
+    SMA sma(5);
+    EXPECT_TRUE(sma.compute({}).empty());
+    EXPECT_TRUE(sma.compute({1.0, 2.0, 3.0, 4.0}).empty());
+}
+
+// Calcul à la main : period 3 sur {1,2,3,4,5}
+//   seed (idx 2) = (1+2+3)/3 = 2 ; idx 3 = (2+3+4)/3 = 3 ; idx 4 = (3+4+5)/3 = 4
+TEST(IndicatorsUnit, SmaMatchesHandComputedValues) {
+    SMA sma(3);
+    auto r = sma.compute({1.0, 2.0, 3.0, 4.0, 5.0});
+
+    ASSERT_EQ(r.size(), 5u);
+    EXPECT_DOUBLE_EQ(r[0], 0.0);   // avant le seed : non défini → 0
+    EXPECT_DOUBLE_EQ(r[1], 0.0);
+    EXPECT_DOUBLE_EQ(r[2], 2.0);
+    EXPECT_DOUBLE_EQ(r[3], 3.0);
+    EXPECT_DOUBLE_EQ(r[4], 4.0);
+}
+
+// Exactement `period` valeurs : seul le seed est défini
+TEST(IndicatorsUnit, SmaExactPeriodReturnsSeedOnly) {
+    SMA sma(4);
+    auto r = sma.compute({2.0, 4.0, 6.0, 8.0});
+    ASSERT_EQ(r.size(), 4u);
+    EXPECT_DOUBLE_EQ(r[3], 5.0);   // (2+4+6+8)/4
+}
+
+// Prix constant → SMA collée au prix, pas de dérive de la somme glissante
+TEST(IndicatorsUnit, SmaConstantPricesStaysFlat) {
+    SMA sma(10);
+    auto r = sma.compute(std::vector<double>(60, 350.0));
+    ASSERT_EQ(r.size(), 60u);
+    for (size_t i = 9; i < r.size(); ++i)
+        EXPECT_DOUBLE_EQ(r[i], 350.0) << "à l'index " << i;
+}
+
+// ════════════════════════════════════════════════════════════
 //  RSI — moyenne lissée de Wilder
 // ════════════════════════════════════════════════════════════
 
