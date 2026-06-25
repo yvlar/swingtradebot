@@ -63,6 +63,24 @@ target_include_directories(swing_bot PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(swing_bot PRIVATE ${COMMON_LIBS})
 
 # ════════════════════════════════════════════════════════════
+#  HARNAIS DE VALIDATION (Sprint 7) — walk-forward / grille / Monte-Carlo
+#  Sortie humaine pour inspecter l'edge ; les chiffres sont verrouillés par
+#  les tests d'intégration. Lance : ./build/validate
+# ════════════════════════════════════════════════════════════
+add_executable(validate
+        main_validate.cpp
+        ${BOT_SOURCES}
+)
+target_include_directories(validate PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(validate PRIVATE ${COMMON_LIBS})
+target_compile_definitions(validate PRIVATE
+        SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
+        SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
+        SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+)
+
+# ════════════════════════════════════════════════════════════
 #  TESTS UNITAIRES
 #  gtest_discover_tests → chaque test = processus séparé = 100% indépendant
 # ════════════════════════════════════════════════════════════
