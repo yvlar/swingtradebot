@@ -93,6 +93,7 @@ add_executable(unit_tests
         tests/unit/test_market_calendar_unit.cpp
         tests/unit/test_data_quality_unit.cpp
         tests/unit/test_walk_forward_unit.cpp
+        tests/unit/test_grid_optimizer_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -119,6 +120,7 @@ add_executable(integration_tests
         tests/integration/test_http_client_integration.cpp
         tests/integration/test_multi_asset_integration.cpp
         tests/integration/test_walk_forward_integration.cpp
+        tests/integration/test_grid_optimizer_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
