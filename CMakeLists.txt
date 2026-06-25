@@ -91,6 +91,7 @@ add_executable(unit_tests
         tests/unit/test_ibkr_data_feed_unit.cpp
         tests/unit/test_logger_unit.cpp
         tests/unit/test_market_calendar_unit.cpp
+        tests/unit/test_data_quality_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -115,14 +116,20 @@ add_executable(integration_tests
         tests/integration/test_swing_strategy_integration.cpp
         tests/integration/test_backtester_integration.cpp
         tests/integration/test_http_client_integration.cpp
+        tests/integration/test_multi_asset_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
 # Le golden backtest (item 17) lit QQQ.csv depuis la racine du dépôt,
 # indépendamment du répertoire de travail des tests.
+# Les actifs multi-CSV (item 7.4, D29) : séries total-return réelles
+# (Adj Close ≠ Close) pour valider la stratégie hors d'un seul actif.
 target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_QQQ_CSV="${CMAKE_SOURCE_DIR}/QQQ.csv"
+        SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
+        SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
+        SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
 )
 
 gtest_discover_tests(integration_tests
