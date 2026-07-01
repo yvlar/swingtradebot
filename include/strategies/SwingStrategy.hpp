@@ -22,6 +22,13 @@ namespace trading {
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
         int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
+        // Item 8.4 (D26/T2) : si vrai, RSI > rsiSellMin ne vend que si le
+        // régime de fond n'est PAS haussier (RSI > 70 en tendance = force,
+        // pas retournement). Flag INDÉPENDANT de smaTrendPeriod : la base A/B
+        // 8.1 (smaTrendPeriod = 1 → régime toujours « up ») garderait sinon
+        // ses ventes supprimées à son insu. Faux = comportement historique
+        // (vente sur RSI seul quel que soit le régime).
+        bool   rsiSellOnlyIfRegimeDown = true;
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -134,9 +141,14 @@ namespace trading {
             }
 
             // ── Signal de VENTE ───────────────────────────────────────────────
-            // Conditions: croisement baissier OU RSI suracheté
-            if (cross == CrossoverDetector::Cross::BEARISH
-                || lastRsi > config_.rsiSellMin)
+            // Conditions: croisement baissier OU RSI suracheté. Item 8.4
+            // (D26/T2) : si rsiSellOnlyIfRegimeDown, la vente sur RSI SEUL est
+            // supprimée en régime haussier confirmé (RSI > 70 en tendance =
+            // force, pas retournement) — le croisement baissier vend toujours.
+            // SMA incalculable → regimeUp faux → la vente RSI reste active.
+            const bool venteRsi = lastRsi > config_.rsiSellMin
+                && !(config_.rsiSellOnlyIfRegimeDown && regimeUp);
+            if (cross == CrossoverDetector::Cross::BEARISH || venteRsi)
             {
                 std::string reason = (cross == CrossoverDetector::Cross::BEARISH)
                                      ? "Croisement baissier EMA"

@@ -77,6 +77,7 @@ EXPECT_DOUBLE_EQ(cfg.trailingStopPct, 0.03);
 EXPECT_DOUBLE_EQ(cfg.riskPerTradePct, 0.02);
 EXPECT_EQ(cfg.minHoldDays, 3);
 EXPECT_EQ(cfg.smaTrendPeriod, 200);   // filtre de régime SMA200 (item 8.1)
+EXPECT_TRUE(cfg.rsiSellOnlyIfRegimeDown);  // vente RSI gatée par le régime (item 8.4)
 }
 
 TEST(SwingStrategyUnit, CustomConfigIsStored) {
@@ -312,6 +313,75 @@ TEST(SwingStrategyUnit, RsiBuyCapDisabledAllowsEntryAtMaxRsi) {
         std::make_unique<ValueIndicator>(rsi),
         std::make_unique<ValueIndicator>(sma));
     EXPECT_EQ(strat.evaluate(bars).type, SignalType::BUY);
+}
+
+// ════════════════════════════════════════════════════════════
+//  Vente RSI gatée par le régime (item 8.4, D26/T2)
+// ════════════════════════════════════════════════════════════
+// Sur QQQ, un RSI > 70 en tendance haussière de fond est historiquement un
+// signal de FORCE, pas de retournement : vendre à chaque fois sortait des
+// tendances au pire moment. Flag rsiSellOnlyIfRegimeDown : la vente sur RSI
+// seul n'a lieu que si le régime n'est PAS haussier confirmé. Flag
+// INDÉPENDANT de smaTrendPeriod : la base A/B 8.1 (smaTrendPeriod=1 →
+// régime toujours « up ») ne doit pas voir ses ventes supprimées à son insu.
+
+namespace {
+
+// Harnais 8.4 : pas de croisement (EMA rapide sous la lente), RSI épinglé à
+// 80 (> rsiSellMin 70), prix 110 ; seul le régime (SMA injectée) et le flag
+// varient.
+Signal evalRsiSellCase(bool flagOn, double smaLast,
+                       CrossoverDetector::Cross crossWanted
+                           = CrossoverDetector::Cross::NONE) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    // Par défaut aucun croisement ; BEARISH = passage au-dessus → en dessous.
+    std::vector<double> emaFast(n, 95.0);
+    if (crossWanted == CrossoverDetector::Cross::BEARISH) {
+        for (size_t i = 0; i + 1 < n; ++i) emaFast[i] = 105.0;
+        emaFast[n-1] = 95.0;
+    }
+    std::vector<double> rsi(n, 80.0);      // suracheté
+    std::vector<double> sma(n, smaLast);
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg;
+    cfg.rsiSellOnlyIfRegimeDown = flagOn;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// Flag actif + régime haussier (prix 110 > SMA 100) : le RSI seul ne vend
+// plus — HOLD (on reste avec la tendance).
+TEST(SwingStrategyUnit, RsiSellSuppressedInUpRegimeWhenGated) {
+    EXPECT_EQ(evalRsiSellCase(true, 100.0).type, SignalType::HOLD);
+}
+
+// Flag actif + régime NON haussier (prix 110 < SMA 120) : la vente RSI
+// reste active — le gate ne protège que les tendances confirmées.
+TEST(SwingStrategyUnit, RsiSellStillFiresInDownRegimeWhenGated) {
+    EXPECT_EQ(evalRsiSellCase(true, 120.0).type, SignalType::SELL);
+}
+
+// Flag inactif (défaut historique) + régime haussier : comportement inchangé,
+// RSI > 70 vend.
+TEST(SwingStrategyUnit, RsiSellUnchangedWhenGateDisabled) {
+    EXPECT_EQ(evalRsiSellCase(false, 100.0).type, SignalType::SELL);
+}
+
+// Le croisement BAISSIER vend TOUJOURS, régime haussier ou pas : le gate ne
+// concerne que la vente « RSI seul ».
+TEST(SwingStrategyUnit, BearishCrossStillSellsInUpRegimeWhenGated) {
+    EXPECT_EQ(evalRsiSellCase(true, 100.0,
+                              CrossoverDetector::Cross::BEARISH).type,
+              SignalType::SELL);
 }
 
 // Compatibilité : un plafond ACTIF (rsiBuyMax = 55) bloque toujours une

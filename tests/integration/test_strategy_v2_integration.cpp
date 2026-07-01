@@ -44,6 +44,9 @@ SwingConfig cfg81() {
     c.riskPerTradePct = 0.02;
     c.minHoldDays     = 3;
     c.smaTrendPeriod  = 200;
+    // Flags nés APRÈS 8.1 : explicitement à leur valeur « comportement 8.1 »
+    // (les défauts ont bougé depuis — c'est tout l'objet de ce snapshot).
+    c.rsiSellOnlyIfRegimeDown = false;   // item 8.4
     return c;
 }
 
@@ -53,6 +56,14 @@ SwingConfig cfg81() {
 SwingConfig cfg82() {
     SwingConfig c = cfg81();
     c.takeProfitPct = 0.0;
+    return c;
+}
+
+// cfg83() = chaîne retenue après l'item 8.3 : entrée sur la force (plafond
+// RSI d'achat désactivé — acceptation OOS satisfaite, adopté en défaut).
+SwingConfig cfg83() {
+    SwingConfig c = cfg82();
+    c.rsiBuyMax = 100.0;
     return c;
 }
 
@@ -252,4 +263,51 @@ TEST(StrategyV2Integration, RsiEntryCapOffOosVerdictIsLocked) {
     EXPECT_GE(espV, 0.0);                  // expectancy nette ≥ 0
     EXPECT_NEAR(espV, 2.9667, 1e-2);
     EXPECT_NEAR(alphaV, -14.1234, 1e-2);   // alpha ~inchangé vs base (−14,1015)
+}
+
+// Verdict OOS de l'item 8.4 (vente RSI gatée par le régime, D26/T2).
+// Acceptation (définie à ce sprint, cohérente avec 8.2/8.5) : « gain moyen
+// des gagnants ↑ et alpha net OOS ≥ base, sans dégrader le facteur de
+// profit ». Base = cfg83 (chaîne : 8.1 + 8.2 + 8.3 retenus) ; variante =
+// cfg83 + rsiSellOnlyIfRegimeDown.
+//
+// VERDICT MESURÉ (figé) : ACCEPTATION SATISFAITE sur les 3 critères —
+// gain moyen des gagnants 2,46 → 4,19 %, facteur de profit 1,06 → 1,84,
+// alpha OOS −14,12 → −13,11 (+1,01 pt), à nombre de trades constant (5).
+// Ne plus vendre la force en tendance confirmée laisse courir les gagnants
+// (l'effet que 8.2 seul ne pouvait pas produire faute de trades).
+// Défaut adopté : rsiSellOnlyIfRegimeDown = true.
+TEST(StrategyV2Integration, RsiSellRegimeGateOosVerdictIsLocked) {
+    SwingConfig base    = cfg83();
+    SwingConfig variant = cfg83(); variant.rsiSellOnlyIfRegimeDown = true;
+
+    const auto wb = WalkForward(base,    SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto wv = WalkForward(variant, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    ASSERT_EQ(wb.size(), 2u);
+    ASSERT_EQ(wv.size(), 2u);
+
+    const auto tb = tradesOos(wb);
+    const auto tv = tradesOos(wv);
+    const double gainB  = gainMoyenGagnants(tb), gainV = gainMoyenGagnants(tv);
+    const double pfB    = facteurProfit(tb),     pfV   = facteurProfit(tv);
+    const double alphaB = meanOosAlpha(wb),      alphaV = meanOosAlpha(wv);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  ITEM 8.4 — VENTE RSI GATEE PAR LE REGIME (trades OOS pooles)\n"
+              << "    trades              : base " << tb.size() << " / variante " << tv.size() << "\n"
+              << "    gain moyen gagnants : base " << gainB << " % / variante " << gainV << " %\n"
+              << "    facteur de profit   : base " << pfB   << " / variante "   << pfV   << "\n"
+              << "    alpha OOS moyen     : base " << alphaB << " / variante "  << alphaV << "\n";
+
+    for (const auto& x : wv) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    EXPECT_EQ(tb.size(), 5u);
+    EXPECT_EQ(tv.size(), 5u);
+    EXPECT_GT(gainV, gainB);               // gain moyen des gagnants ↑
+    EXPECT_NEAR(gainV, 4.1858, 1e-2);      // golden de mesure
+    EXPECT_GE(pfV, pfB);                   // facteur de profit non dégradé
+    EXPECT_NEAR(pfV, 1.8411, 1e-2);
+    EXPECT_GE(alphaV, alphaB);             // alpha net OOS ≥ base
+    EXPECT_NEAR(alphaV, -13.1085, 1e-2);
+    EXPECT_LT(alphaV, 0.0);                // ne bat toujours pas le B&H
 }
