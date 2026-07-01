@@ -72,7 +72,7 @@ EXPECT_EQ(cfg.rsiPeriod, 14);
 EXPECT_DOUBLE_EQ(cfg.rsiBuyMax,       55.0);
 EXPECT_DOUBLE_EQ(cfg.rsiSellMin,      70.0);
 EXPECT_DOUBLE_EQ(cfg.stopLossPct,     0.05);
-EXPECT_DOUBLE_EQ(cfg.takeProfitPct,   0.10);
+EXPECT_DOUBLE_EQ(cfg.takeProfitPct,   0.0);   // ≤ 0 = désactivé (item 8.2)
 EXPECT_DOUBLE_EQ(cfg.trailingStopPct, 0.03);
 EXPECT_DOUBLE_EQ(cfg.riskPerTradePct, 0.02);
 EXPECT_EQ(cfg.minHoldDays, 3);

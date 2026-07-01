@@ -646,6 +646,7 @@ TEST(TradingBotUnit, KillSwitchBlocksEntryAfterConsecutiveLosses) {
 TEST(TradingBotUnit, KillSwitchConsecutiveLossesResetByAWin) {
     BotHarness h(420.0, "2024-03-01");
     RiskConfig cfg;
+    cfg.takeProfitPct = 0.10;  // explicite : le défaut est désormais 0 = désactivé (item 8.2)
     cfg.killSwitch.maxConsecutiveLosses = 2;
     cfg.killSwitch.maxOrdersPerDay      = 50;
     h.bot->setConfig(cfg);

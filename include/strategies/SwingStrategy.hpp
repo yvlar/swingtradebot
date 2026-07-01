@@ -17,7 +17,7 @@ namespace trading {
         double rsiBuyMax          = 55.0;  // N'achète pas si RSI > 55
         double rsiSellMin         = 70.0;  // Vend si RSI > 70
         double stopLossPct        = 0.05;  // -5%
-        double takeProfitPct      = 0.10;  // +10%
+        double takeProfitPct      = 0.0;   // ≤ 0 = désactivé (item 8.2, D26 : laisser courir les gagnants, sortie au trailing)
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;

@@ -158,3 +158,44 @@ TEST(StrategyV2Integration, RegimeFilterOosVerdictIsLocked) {
     EXPECT_NEAR(baseOos,   -16.0889, 1e-2);
     EXPECT_LT(regimeOos, 0.0);                      // ne bat toujours pas le B&H
 }
+
+// Verdict OOS de l'item 8.2 (take-profit désactivé, D26/T1). Acceptation
+// ROADMAP : « gain moyen des gagnants ↑ sans dégrader le profit factor net ».
+// Base = cfg81 (chaîne cumulative : 8.1 retenu) ; variante = cfg81 + TP off.
+//
+// VERDICT MESURÉ (figé) : les 2 fenêtres OOS ne portent AUCUN trade sous la
+// config 8.1 — l'alpha −14,10 pts est du pur cash drag (jamais en position).
+// Gain des gagnants et facteur de profit sont donc INDÉCIDABLES sur cet
+// échantillon, et TP off est un delta STRICTEMENT NUL (le take-profit ne se
+// déclenche nulle part : 0 TP aussi sur le plein échantillon — golden).
+// Décision (politique d'adoption du sprint) : contrainte MORTE retirée
+// (défaut takeProfitPct → 0), ré-examinée sur la chaîne finale en fin de
+// sprint quand 8.3/8.5 auront rendu l'échantillon de trades non vide.
+TEST(StrategyV2Integration, TakeProfitOffOosVerdictIsLocked) {
+    SwingConfig base    = cfg81();
+    SwingConfig variant = cfg81(); variant.takeProfitPct = 0.0;  // TP désactivé
+
+    const auto wb = WalkForward(base,    SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto wv = WalkForward(variant, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    ASSERT_EQ(wb.size(), 2u);
+    ASSERT_EQ(wv.size(), 2u);
+
+    const auto tb = tradesOos(wb);
+    const auto tv = tradesOos(wv);
+    const double alphaB = meanOosAlpha(wb), alphaV = meanOosAlpha(wv);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  ITEM 8.2 — TAKE-PROFIT OFF (trades OOS pooles, 2 fenetres QQQ)\n"
+              << "    trades          : base " << tb.size() << " / variante " << tv.size() << "\n"
+              << "    alpha OOS moyen : base " << alphaB << " / variante "  << alphaV << "\n";
+
+    for (const auto& x : wv) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    // Vérité mesurée : zéro trade OOS de part et d'autre → TP off ne change
+    // RIEN en OOS (equity au bit près). Si un de ces verrous casse un jour,
+    // l'échantillon est devenu non vide : re-juger 8.2 pour de vrai.
+    EXPECT_EQ(tb.size(), 0u);
+    EXPECT_EQ(tv.size(), 0u);
+    EXPECT_DOUBLE_EQ(alphaV, alphaB);
+    EXPECT_NEAR(alphaB, -14.1015, 1e-2);   // cohérent avec le verdict 8.1
+}
