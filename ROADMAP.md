@@ -9,33 +9,33 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 86        | 68                           |
-| Qualité      | 89        | 60                           |
-| FinTech      | 79        | 38                           |
+| Architecture | 87        | 68                           |
+| Qualité      | 90        | 60                           |
+| FinTech      | 81        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-06-25 (point d'étape Sprint 8 — 8.0 + 8.1 livrés, pause de réévaluation)
-- **Sprint courant** : Sprint 8 — Refonte de la stratégie pour capter la tendance (l'argent) — **EN COURS** (8.0 ✅, 8.1 ✅ ; 8.2–8.5 en attente d'arbitrage utilisateur)
+- **Dernière mise à jour** : 2026-07-01 (clôture Sprint 8 — 8.2–8.5 livrés, verdict « pas d'edge démontré »)
+- **Sprint courant** : Sprint 8-bis — Chercher l'edge avec le harnais (grille étendue, multi-actifs, pavage fin) — décision utilisateur du 2026-07-01
 
-> ### ⚠️ Rentabilité : NON PROUVÉE — et désormais prouvée hors-échantillon comme ABSENTE
+> ### ⚠️ Rentabilité : toujours PAS d'edge démontré — mais le Sprint 8 a produit +4 pts d'alpha OOS
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
-> capacité à gagner de l'argent. Le Sprint 7 a fermé D29 (ré-export de QQQ.csv en
-> série **total-return réelle**, dividendes réinvestis) et la vérité s'est durcie :
-> **Buy & Hold = +262,08 %** (et non +238,55 % — les dividendes manquaient). Sur ces
-> données honnêtes, l'ancienne config prod (EMA 13/21…) s'est révélée **INFÉRIEURE**
-> au défaut (+4,45 % vs +4,85 %, Sharpe 0,30 vs 0,39) — décision prise : aligner la
-> prod sur le défaut validé (D30). Les deux rendent donc **+4,85 %** pour un
-> **alpha de −257 points**. Le harnais de validation (walk-forward, grille OOS,
-> Monte-Carlo) confirme : **aucun edge en OOS**, le verdict de la grille est « AUCUN
-> edge — ne pas deployer ». C'est le point de départ honnête du **Sprint 8** (refonte
-> de la stratégie).
+> capacité à gagner de l'argent. Le Sprint 8 (refonte 8.0–8.5) a transformé la
+> stratégie : régime SMA200, take-profit retiré, entrée sur la force, vente RSI
+> gatée par le régime, re-entrée sans croisement. Chaque item validé **en OOS**
+> (walk-forward Sprint 7), chaîne complète verrouillée par test
+> (`SprintChainVsBaselineOosVerdictIsLocked`). Résultat : **alpha OOS moyen
+> −14,10 → −10,03 pts** (+4,07), temps investi OOS 0 → 54 %, in-sample +18,70 %
+> (Sharpe 0,72), Monte-Carlo p50 CAGR +6,76 %. MAIS la **DoD du Sprint 8 n'est
+> PAS atteinte** (< 5 pts d'écart au B&H exigés) : la grille dit toujours
+> « AUCUN edge (alpha ≤ 0 partout) — ne pas deployer ». **Pas de déploiement,
+> la prod reste paper.** Le Sprint 8-bis poursuit la recherche avec le harnais.
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **20**  | La mesure est encore plus honnête (dividendes réels, B&H +262 %, multi-actifs, OOS) — et confirme l'absence d'edge (alpha −257 pts, walk-forward et grille sans edge OOS). Le chiffre reste bas car la réalité est mauvaise ; la note ne monte qu'avec une stratégie qui gagne (Sprint 8). |
-- **État des tests** : 440/440 verts (382 unitaires + 58 intégration). +17 à ce
-  point d'étape Sprint 8 (423 → 440), aucune dérive hors cycle (`ctest -N` valait
-  bien 423 à l'ouverture). Détail au changelog Sprint 8.
+> | **Rentabilité** | **25**  | Progression réelle et mesurée en OOS (+4,07 pts d'alpha, espérance +77,93 $/trade, PF 3,71 sur 11 trades OOS) — mais l'alpha reste négatif (−10,03) et la grille conclut « ne pas deployer ». La note ne franchira 50 qu'avec un alpha OOS ≥ 0, et 70+ qu'en battant le B&H net de coûts. |
+- **État des tests** : 460/460 verts (397 unitaires + 63 intégration). +20 à la
+  clôture du Sprint 8 (440 → 460), aucune dérive hors cycle (`ctest -N` valait
+  bien 440 à l'ouverture). Détail au changelog Sprint 8 (clôture).
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -348,7 +348,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   `main_validate.cpp` + cible `validate` : imprime backtest + walk-forward + carte de
   grille + Monte-Carlo + audit qualité multi-actifs. `./build/validate`.
 
-# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent) — **sprint courant**
+# 🟣 SPRINT 8 — Refonte de la stratégie pour capter la tendance (l'argent) ✅ (clos le 2026-07-01, verdict : pas d'edge démontré)
 
 > Le sprint qui doit **transformer −257 pts d'alpha en alpha positif (ou neutre à moindre
 > drawdown)**. Chaque item est jugé par le harnais du Sprint 7 en **OOS**, jamais en IS
@@ -372,15 +372,31 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   « alpha net OOS > version actuelle » VRAI, alors même que le plein échantillon semblait dégradé
   (−1,07 % vs +4,85 %) — la valeur du jugement OOS. Les deux restent négatifs (pas d'edge, pas de
   déploiement). Verrou : `test_strategy_v2_integration.cpp`.
-- [ ] **8.2** (D26) **Laisser courir les gagnants** : retirer/assouplir le take-profit fixe
-  (`RiskManager.hpp:81`), sortie pilotée par trailing/structure. **Acceptation OOS** :
-  gain moyen des gagnants ↑ sans dégrader le profit factor net.
-- [ ] **8.3** (D26) **Réviser l'entrée contradictoire** (`SwingStrategy.hpp:96-99`) : entrer
-  sur la force (breakout/momentum), pas exiger `RSI < 55`. **Acceptation OOS** : nombre de
-  trades et exposition ↑, expectancy nette ≥ 0.
-- [ ] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** (gate par 8.1).
-- [ ] **8.5** **Réduire le cash drag** : re-entrée / rester investi tant que le régime tient.
-  **Acceptation OOS** : % de temps investi ↑, alpha net ↑.
+- [x] **8.2** (D26) **Laisser courir les gagnants** → `26d645d` (+ prep `a0ab08d`)
+  Garde `takeProfitPct > 0` dans `checkExitConditions` (convention ≤ 0 = désactivé) ;
+  défaut adopté : TP 0,10 → 0 (SwingConfig ET RiskConfig). **Acceptation OOS
+  (« gain moyen des gagnants ↑ sans dégrader le profit factor »)** : INDÉCIDABLE à
+  cet item — les fenêtres OOS ne portaient AUCUN trade sous la config 8.1 (D34),
+  delta strictement nul → adopté comme contrainte MORTE (0 TP aussi sur le plein
+  échantillon), puis **VALIDÉ positivement** à la ré-exam sur la chaîne finale
+  (alpha OOS −10,03 TP off vs −10,20 TP 10 %). Goldens inchangés à cet item.
+- [x] **8.3** (D26) **Réviser l'entrée contradictoire** → `57a4014`
+  `rsiBuyMax ≥ 100 = plafond désactivé` (RSI 100,0 atteignable) ; défaut adopté
+  55 → 100. **Acceptation OOS SATISFAITE** : trades 0 → 5, exposition 0 → 22,11 %,
+  espérance +2,97 $/trade, alpha ~inchangé. Goldens re-figés (4 → 20 trades,
+  in-sample −4,52 % — jugement en OOS, leçon 8.1).
+- [x] **8.4** (D26) **Ne pas vendre sur RSI seul en tendance haussière** → `85f0483`
+  Flag `rsiSellOnlyIfRegimeDown` (indépendant de smaTrendPeriod, base A/B 8.1
+  préservée) ; croisement baissier vend toujours ; défaut adopté true.
+  **Acceptation OOS (définie ce sprint : gain moyen des gagnants ↑ et alpha ≥ base,
+  sans dégrader le PF) SATISFAITE** : gagnants 2,46 → 4,19 %, PF 1,06 → 1,84,
+  alpha −14,12 → −13,11 (+1,01 pt). Goldens re-figés (in-sample +0,02 %).
+- [x] **8.5** **Réduire le cash drag** → `4887817`
+  Flag `regimeReentry` : à plat, régime up et prix > EMAs → BUY sans croisement,
+  évalué APRÈS les ventes (priorité aux sorties) ; défaut adopté true.
+  **Acceptation OOS SATISFAITE** : temps investi 30,65 → 54,02 %, alpha
+  −13,11 → −10,03 (+3,08 pts), trades 5 → 11. Goldens re-figés (in-sample
+  +18,70 %, Sharpe 0,72, 22 trades 13 G / 9 P, position finale ouverte).
 
 > **Definition of Done du Sprint 8** (en plus de la DoD standard) : la stratégie retenue
 > **bat le Buy & Hold net de coûts en out-of-sample** OU le sous-performe de **moins de 5
@@ -393,10 +409,52 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > est passé de −16,09 à −14,10 pts grâce au régime — il reste très négatif (B&H +226 % sur la
 > fenêtre, temps investi ~2,4 %). Le levier dominant restant est le **cash drag** (8.3 entrée
 > sur la force, 8.5 rester investi) ; à arbitrer pour la session suivante.
+>
+> **VERDICT DE CLÔTURE 2026-07-01 : DoD NON ATTEINTE — pas d'edge démontré, pas de
+> déploiement.** La chaîne complète 8.1→8.5 (verrouillée par
+> `SprintChainVsBaselineOosVerdictIsLocked`) rend un alpha OOS moyen de **−10,03 pts**
+> (< −5 exigés), même si le sprint a produit **+4,07 pts** et des trades OOS de qualité
+> (11 trades, gagnants +4,46 %, PF 3,71, espérance +77,93 $). La grille du harnais
+> (`./build/validate`) conclut « AUCUN edge (alpha ≤ 0 partout) — ne pas deployer ».
+> La prod reste en paper. Suite décidée avec l'utilisateur : **Sprint 8-bis** (ci-dessous).
+
+# 🟣 SPRINT 8-BIS — Chercher l'edge avec le harnais — **sprint courant**
+
+> Décision utilisateur (2026-07-01) à la clôture du Sprint 8 : la stratégie progresse
+> (+4,07 pts d'alpha OOS ce sprint) mais ne bat pas le B&H — continuer la recherche
+> d'edge AVEC le harnais avant tout durcissement de prod. Point d'entrée : la chaîne
+> v2 (défauts actuels de `SwingConfig`, `include/strategies/SwingStrategy.hpp:12-49`)
+> et le juge de paix `SprintChainVsBaselineOosVerdictIsLocked`
+> (`tests/integration/test_strategy_v2_integration.cpp`). Discipline inchangée :
+> verdicts OOS verrouillés, configs de verdict EXPLICITES (D33), jamais de jugement
+> sur le plein échantillon.
+
+- [ ] **8b.1** **Grille étendue sur la chaîne v2** : la grille actuelle
+  (`main_validate.cpp:68-80`, `GridOptimizerIntegration`) explore encore les axes de
+  l'ANCIENNE stratégie (rsiBuyMax 55/65, TP 0,10/0,15 — des variantes toutes gatées
+  ou mortes depuis 8.2/8.3). La ré-axer sur les paramètres qui PILOTENT la chaîne v2 :
+  `emaFast/emaSlow`, `smaTrendPeriod` (150/200/250), `trailingStopPct` (0,03/0,05/0,08 —
+  21/22 sorties sont des trailing, c'est LE canal de sortie), objectif Sharpe/alpha OOS
+  moyen injecté (jamais l'IS). **Acceptation** : carte de sensibilité ≥ 3 axes sur la
+  chaîne v2, sélection plateau, verdict verrouillé (alpha OOS > 0 exigé pour « retenir »).
+- [ ] **8b.2** **Validation multi-actifs de la chaîne v2** : les CSV total-return
+  SPY/IWM/MDY existent (Sprint 7.4, garde `DataQuality.hpp`) mais la chaîne v2 n'est
+  jugée que sur QQQ. Walk-forward par actif, mêmes fenêtres. **Acceptation** : verdict
+  OOS par actif verrouillé — un edge qui ne tient que sur QQQ est un artefact.
+- [ ] **8b.3** **Pavage walk-forward plus fin** : les verdicts 8.x reposent sur 2 fenêtres
+  OOS (IS=700/OOS=400) — fragile statistiquement. Ajouter un pavage fin (ex. IS=500/OOS=250,
+  ≥ 4 fenêtres, `WalkForward.hpp:44`) et re-mesurer la chaîne. **Acceptation** : verdict
+  chaîne re-verrouillé sur le pavage fin ; toute inversion de conclusion vs le pavage
+  2-fenêtres est documentée (c'est le but du test).
+- [ ] **8b.4** **Trailing adaptatif ATR** (exploratoire, gaté par 8b.1) : l'ATR true-range
+  (item 8.0) est disponible et inutilisé par SwingStrategy ; un trailing en multiples
+  d'ATR remplacerait le −3 % fixe (`RiskManager.hpp:85-92`). Ne s'ouvre que si 8b.1
+  montre que `trailingStopPct` est l'axe le plus sensible. **Acceptation OOS** : alpha
+  net ↑ vs trailing fixe, drawdown non dégradé, verdict verrouillé.
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
-> Ne s'ouvre qu'après un edge OOS démontré (Sprint 8). Sinon, la prod reste en paper.
+> Ne s'ouvre qu'après un edge OOS démontré (Sprint 8-bis). Sinon, la prod reste en paper.
 
 - [ ] **9.1** Externaliser la config (fichier JSON **validé** au démarrage) ; fin de la dérive
   prod ≠ backtest (E1/D21). **Acceptation** : la config de prod EST chargée par le golden.
@@ -437,15 +495,90 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D23 | 🟠 | (Méta-audit) Pas d'objectif de performance explicite. « Faire de l'argent » = **alpha net vs Buy & Hold** + drawdown maîtrisé, pas « retour positif ». Le rapport (`BackTester.hpp`) ne tranche pas « bat-on QQQ net de coûts ? ». Manquent CAGR, Sortino, Calmar, % temps investi | ✅ Corrigé au Sprint 6 (6.4, `9803349` — métriques + verdict beatsBuyHold affiché dans le rapport) |
 | D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
-| D26 | 🔴 | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | Sprint 8 (après le harnais Sprint 7) |
+| D26 | ✅ | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | ✅ Les 5 défauts corrigés au Sprint 8 (8.1 régime, 8.2 TP, 8.3 entrée, 8.4 vente RSI, 8.5 cash drag), chacun validé en OOS. L'edge reste à démontrer (Sprint 8-bis) |
 | D27 | 🟡 | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Bénin tant que le stop logiciel tourne ; à combler pour une vraie symétrie entrée/adoption | Sprint 9 (mise en prod) ou backlog |
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
 | D29 | ✅ | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | ✅ Corrigé au Sprint 7 (7.4, `eb46e38`) : QQQ/SPY/IWM/MDY ré-exportés en total-return réel (Adj ≠ Close), B&H QQQ +262,08 %. Garde `auditTotalReturnCsv` (`43b4015`) pour ne plus jamais charger un export sans dividende sans le voir |
 | D30 | 🟠 | (Sprint 7) **La config prod historique était dominée par le défaut sur données honnêtes.** Sur QQQ total-return, l'ancienne config prod (EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — celle figée au Sprint 6.1, jamais validée hors d'un dataset sans dividende) rend +4,45 % (Sharpe 0,30, 23 trades) vs le défaut +4,85 % (Sharpe 0,39, 6 trades). Le test côte à côte (6.1) a déclenché sa « Décision requise ». **Décision utilisateur** : aligner `prodSwingConfig()` sur le défaut validé (`eb46e38`). Leçon : une config « validée » sur de mauvaises données n'est pas validée — la qualité des données prime (D29). La vraie refonte est le Sprint 8 | ✅ Décidé/appliqué au Sprint 7 (prod = défaut) ; sera re-jugée en OOS au Sprint 8 |
 | D31 | 🟢 | (Sprint 7) **L'ancien QQQ.csv comptait 1858 lignes pour une fenêtre de 1790 jours de bourse** (2019-01-02 → 2026-02-13) : ~68 lignes parasites (doublons/jours non boursiers) jamais détectées. Le ré-export total-return (Yahoo, 7.4) donne le compte correct (1790). Un garde-fou « nombre de barres ≈ jours de bourse attendus » dans `auditTotalReturnCsv` aurait pu l'attraper plus tôt | Documenté (résolu par le ré-export) ; garde-fou « densité de barres » au backlog qualité données |
 | D32 | 🟠 | (Sprint 8) **Le filtre de régime SMA200 (8.1) a besoin de ≥ 200 barres, or la prod câble `getBars(symbol, 60)`** (TradingBot.hpp). Sans correctif, le bot LIVE ne recevrait jamais assez de barres → SMA vide → aucune entrée possible. **Amorce posée au Sprint 8.1** : `RiskConfig::lookback` (défaut 60, aligné sur `smaTrendPeriod+30` par la conversion `SwingConfig→RiskConfig`) ; `TradingBot::runOnce` demande `getBars(symbol, riskCfg_.lookback)`. Côté prod, `main_ibkr` (via `prodSwingConfig`) demandera donc 230 barres — à vérifier sur le CP Gateway IBKR. Le volet COMPLET (lookback unifié prod/backtest, barres clôturées) reste **D19/Sprint 9.2** | Amorce Sprint 8.1 (`1e6f6fd`) ; volet complet Sprint 9.2 |
+| D33 | ✅ | (Sprint 8) **Les verrous de verdict OOS étaient construits sur `prodSwingConfig()` = les DÉFAUTS de SwingConfig** (`test_strategy_v2_integration.cpp`) : le premier item de 8.2–8.5 qui adoptait son réglage comme nouveau défaut aurait déplacé silencieusement la mesure HISTORIQUE du verdict 8.1. Corrigé AVANT tout changement de défaut (`a0ab08d`) : chaque verrou construit sa config champ par champ (`cfg81()`, `cfg82()`…). **Règle de DoD adoptée : tout verrou de verdict construit sa config EXPLICITEMENT, jamais depuis les défauts** | Corrigé (commit prep du sprint) ; règle ajoutée à la DoD des verdicts |
+| D34 | 🟡 | (Sprint 8) **Les 2 fenêtres OOS du pavage IS=700/OOS=400 ne portaient AUCUN trade sous la config 8.1** : l'alpha OOS −14,10 du verdict 8.1 était du pur cash drag (jamais en position). Conséquence : l'acceptation de 8.2 (« gain moyen des gagnants ↑ ») était INDÉCIDABLE à son tour de rôle — adoptée comme retrait de contrainte morte, ré-examinée (et validée : −10,03 vs −10,20) sur la chaîne finale une fois 8.3/8.5 livrés. Leçon : un verdict OOS sans trades ne juge que le temps en cash ; vérifier le nombre de trades poolés AVANT d'interpréter les ratios. Le pavage fin (8b.3) réduit ce risque structurellement | Documenté ; adressé par 8b.3 (pavage fin) et les agrégats poolés (`tradesOos`) |
 
 ## Changelog
+
+### Sprint 8 (clôture) — Laisser courir, entrer sur la force, rester investi (2026-07-01)
+
+**Baseline réelle à l'ouverture** : **440/440 verte**, conforme au tableau de bord
+(`ctest -N` = 440, aucune dérive hors cycle).
+
+**Portée** (décision utilisateur d'ouverture) : TOUT le reliquat 8.2 → 8.3 → 8.4 → 8.5
++ clôture. Design 8.5 arbitré : re-entrée sur régime (flag, A/B-able, jugée OOS).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `a0ab08d` test : fige la config du verdict OOS 8.1 indépendamment des défauts (préparation 8.2-8.5, D33)
+- `26d645d` feat(risque) : take-profit désactivable (≤ 0) — laisser courir les gagnants (item 8.2, D26)
+- `57a4014` feat(strategie) : entrée sur la force — plafond RSI d'achat désactivable (item 8.3, D26)
+- `85f0483` feat(strategie) : pas de vente sur RSI seul en régime haussier (item 8.4, D26)
+- `4887817` feat(strategie) : re-entrée sur régime haussier sans croisement — réduire le cash drag (item 8.5, D26/T4)
+
+**Tests** : 440 → **460** (+20 : 397 unitaires + 63 intégration). Ajouts :
+`RiskManagerUnit` +4 (TP désactivé ×2, trailing/SL toujours actifs),
+`SwingStrategyUnit` +11 (plafond RSI off ×2, vente RSI gatée ×4, re-entrée ×5,
+défauts verrouillés), `StrategyV2Integration` +5 (verdicts 8.2/8.3/8.4/8.5 +
+verdict de sprint chaîne-vs-8.1). Chaque fix précédé d'un test ROUGE réel
+(comportement pathologique TP=0, HOLD à RSI 100, SELL en régime up, HOLD sans
+croisement).
+
+**Défauts de SwingConfig adoptés** (chaque adoption gatée par son acceptation OOS) :
+`takeProfitPct` 0,10 → 0 (≤ 0 = off) — aussi dans `RiskConfig` ; `rsiBuyMax`
+55 → 100 (≥ 100 = off) ; `rsiSellOnlyIfRegimeDown` (nouveau) = true ;
+`regimeReentry` (nouveau) = true. `prodSwingConfig()` reste `SwingConfig{}`
+(prod ≡ défaut, D30 — verrou inchangé).
+
+**Verdicts OUT-OF-SAMPLE par item** (walk-forward IS=700/OOS=400, 2 fenêtres QQQ,
+chaîne cumulative — chaque item jugé avec les précédents retenus ; tous verrouillés
+dans `test_strategy_v2_integration.cpp`) :
+- 8.2 : delta STRICTEMENT NUL (0 trade OOS sous la config 8.1 — D34) → contrainte
+  morte retirée ; ré-exam sur la chaîne finale : TP off VALIDÉ (−10,03 vs −10,20).
+- 8.3 : SATISFAITE — trades 0 → 5, exposition 0 → 22,11 %, espérance +2,97 $/trade.
+- 8.4 : SATISFAITE — gagnants 2,46 → 4,19 %, PF 1,06 → 1,84, alpha −14,12 → −13,11.
+- 8.5 : SATISFAITE — temps investi 30,65 → 54,02 %, alpha −13,11 → −10,03, 5 → 11 trades.
+- **Verdict de sprint** (chaîne 8.1→8.5 vs état 8.1) : alpha OOS **−14,10 → −10,03**
+  (+4,07 pts), 11 trades OOS (gagnants +4,46 %, PF 3,71, espérance +77,93 $).
+  **DoD NON ATTEINTE** (sous-performance > 5 pts vs B&H) → « pas d'edge démontré,
+  pas de déploiement » — verrouillé par test (`EXPECT_LT(alphaC, -5.0)` : si ce
+  verrou casse « dans le bon sens », re-dérouler la DoD complète avant déploiement).
+
+**Golden backtest RE-FIGÉ trois fois** (une par changement de comportement, chacun
+dans son commit avec delta chiffré ; 8.2 : goldens INCHANGÉS, vérifié) :
+- 8.3 : retour total −1,0678 → −4,5165 %, 4 → 20 trades (9 G / 11 P), max DD 7,61 %,
+  Sharpe −0,27.
+- 8.4 : −4,5165 → +0,0176 % (mêmes 20 trades, 4 sorties « signal » devenues trailing :
+  15 → 19 trailing / 5 → 1 signal), max DD 7,19 %, Sharpe +0,02.
+- 8.5 : +0,0176 → **+18,6980 %**, 22 trades (13 G / 9 P, 21 trailing / 1 signal),
+  max DD **6,5477 %**, Sharpe **0,7246**, 1re entrée 2019-10-18, position finale
+  ouverte jusqu'au bout (dernière vente clôturée 2022-02-07), 1790 points d'équité.
+- Invariant vérifié aux trois re-figeages : **B&H +226,1235 % inchangé** (warmup intact).
+- Monte-Carlo (graine 42, 2000 chemins) : p50 CAGR −0,32 → **+6,76 %**, p50 drawdown
+  5,45 → **7,65 %** (re-figés à 8.3, 8.4 et 8.5).
+
+**Interfaces modifiées** (toutes additives / config-toggleables, aucun changement
+de TradingBot ni de CrossoverDetector) :
+- `RiskManager::checkExitConditions` : convention `takeProfitPct ≤ 0 = désactivé`.
+- `SwingConfig` : conventions ≤ 0 (TP) et ≥ 100 (rsiBuyMax) ; +`rsiSellOnlyIfRegimeDown`,
+  +`regimeReentry` ; `SwingStrategy::evaluate` gagne le gate de vente et la branche
+  de re-entrée (APRÈS les ventes — priorité aux sorties).
+- Tests : `cfg81()`…`cfg84()` (snapshots explicites) + agrégats sur trades OOS poolés
+  (`tradesOos`, `gainMoyenGagnants`, `facteurProfit`, `esperanceParTrade`, `moyenneOos`).
+
+**Enseignement central** : la chaîne cumulative A/B a rendu chaque euro d'alpha
+traçable — régime +1,99, entrée sur la force ~0 (mais crée l'échantillon), vente
+gatée +1,01, re-entrée +3,08. Les deux items « cash drag » (8.3 + 8.5) pèsent
+l'essentiel de l'exposition (0 → 54 %), et la qualité des sorties (8.4) ne devient
+mesurable qu'une fois l'échantillon créé par 8.3 : l'ORDRE des items était la bonne
+dépendance. Et la leçon 8.1 tient toujours : le plein échantillon (+18,70 %) reste
+un VERROU, pas une preuve — le juge est l'OOS, qui dit « pas encore d'edge ».
 
 ### Sprint 8 (point d'étape) — Prérequis indicateurs + filtre de régime (2026-06-25)
 
@@ -763,6 +896,54 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 8 (clôture) — Laisser courir, entrer sur la force, rester investi (2026-07-01)
+
+**1. Découpage** : bon, et l'ORDRE 8.2 → 8.3 → 8.4 → 8.5 s'est révélé porteur d'une
+dépendance de MESURE que le plan n'avait qu'à moitié anticipée : 8.2 et 8.4 (qualité
+des sorties) ne sont mesurables qu'avec des trades, or seul 8.3 (entrée) crée
+l'échantillon. Résultat : l'acceptation 8.2 était indécidable à son tour (D34, 0 trade
+OOS) et n'a été tranchée qu'à la ré-exam sur la chaîne finale — prévue dès le commit
+8.2, donc sans improvisation. La chaîne cumulative A/B (chaque item jugé avec les
+précédents retenus, snapshots `cfg81()`→`cfg84()`) est LE bon outil de ce sprint :
+elle a attribué chaque point d'alpha à son item. Le commit préparatoire (D33, verrous
+sur défauts) fait AVANT tout changement de défaut a évité de re-litiger le verdict 8.1.
+
+**2. Suffisance des prompts** : suffisants, aucune improvisation de workflow. La
+discipline du test rouge s'est appliquée à l'identique (4 rouges réels, dont le
+comportement pathologique TP=0 qui sortait dès +0 %). Les DEUX décisions produit du
+sprint (périmètre 8.2–8.5 et design de la re-entrée 8.5 ; puis le sprint suivant à la
+clôture) ont été posées à l'utilisateur conformément à l'étape 4 du prompt exécuteur.
+**Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt / garde-fous** : (a) **D33** — les verrous de verdict
+construits sur les défauts étaient une bombe à retardement posée au point d'étape 8.1 ;
+attrapée ici par relecture AVANT le premier changement de défaut. Garde-fou adopté
+(règle de DoD des verdicts) : toute config de verrou est construite champ par champ.
+(b) **D34** — un alpha OOS mesuré sur 0 trade ne juge que le cash drag ; personne ne
+comptait les trades OOS avant ce sprint. Garde-fou : les agrégats poolés impriment et
+verrouillent désormais le NOMBRE de trades dans chaque verdict ; le pavage fin (8b.3)
+attaque la racine (2 fenêtres, c'est trop peu). (c) Le risque kill-switch anticipé au
+plan (4 pertes consécutives → gel du backtest) ne s'est PAS matérialisé (13 G / 9 P
+bien répartis) — vérifié, pas seulement supposé.
+
+**4. Notes /100** (précédent 86/89/79/72, Rentabilité 20) :
+- **Architecture 87** (+1) : cinq changements de comportement livrés sans toucher ni
+  TradingBot ni CrossoverDetector — tout en flags de config A/B-ables avec conventions
+  cohérentes (≤ 0 / ≥ 100 = off), la re-entrée placée APRÈS les ventes préserve la
+  priorité des sorties. Plafonné par l'externalisation config (9.1) et D27.
+- **Qualité 90** (+1) : +20 tests, 4 rouges réels, verrous de verdict auto-protégés
+  des défauts (D33), goldens re-figés trois fois avec invariant B&H vérifié à chaque
+  fois. Plafonné tant que les composition roots ne sont couverts que par relecture.
+- **FinTech 81** (+2) : chaque décision de stratégie du sprint est passée par un
+  verdict OOS chiffré et VERROUILLÉ, y compris le verdict de sprint et la DoD
+  elle-même (`EXPECT_LT(alphaC, -5.0)`) — le processus de décision est désormais
+  aussi testé que le code. Pour dépasser 85 : un edge démontré.
+- **Production 72** (=) : rien de prod ce sprint (voulu) ; D32 (230 barres au CP
+  Gateway) et 9.x inchangés.
+- **Rentabilité 25** (+5) : progression OOS réelle (+4,07 pts, PF 3,71, espérance
+  +77,93 $/trade) mais alpha toujours négatif (−10,03) et grille « ne pas deployer ».
+  La note ne franchira 50 qu'avec un alpha OOS ≥ 0 (Sprint 8-bis).
 
 ### Sprint 7 — Harnais de validation (2026-06-25)
 
