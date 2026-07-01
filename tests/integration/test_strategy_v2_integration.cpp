@@ -12,7 +12,6 @@
 #include <cmath>
 #include <iostream>
 #include "backtest/WalkForward.hpp"
-#include "strategies/ProdConfig.hpp"
 
 using namespace trading;
 
@@ -25,10 +24,77 @@ constexpr size_t kIs   = 700;
 constexpr size_t kOos  = 400;
 constexpr size_t kStep = 400;
 
+// ── Configs de référence des verdicts (préparation 8.2-8.5) ──────────────────
+// Chaque verrou de verdict construit sa config EXPLICITEMENT, champ par champ :
+// un verdict est une mesure HISTORIQUE, il ne doit pas bouger quand les défauts
+// de SwingConfig évoluent (les items 8.2-8.5 adoptent leurs réglages comme
+// nouveaux défauts au fil du sprint). cfg81() = l'état exact de la stratégie à
+// la livraison de l'item 8.1 (défauts d'alors, D30 : prod ≡ défaut).
+SwingConfig cfg81() {
+    SwingConfig c;
+    c.symbol          = "QQQ";
+    c.emaFast         = 9;
+    c.emaSlow         = 21;
+    c.rsiPeriod       = 14;
+    c.rsiBuyMax       = 55.0;
+    c.rsiSellMin      = 70.0;
+    c.stopLossPct     = 0.05;
+    c.takeProfitPct   = 0.10;
+    c.trailingStopPct = 0.03;
+    c.riskPerTradePct = 0.02;
+    c.minHoldDays     = 3;
+    c.smaTrendPeriod  = 200;
+    return c;
+}
+
 double meanOosAlpha(const std::vector<WfWindow>& w) {
     if (w.empty()) return 0.0;
     double s = 0.0;
     for (const auto& x : w) s += x.oos.alpha;
+    return s / static_cast<double>(w.size());
+}
+
+// ── Agrégats sur trades OOS POOLÉS (préparation 8.2-8.5) ─────────────────────
+// Les fenêtres OOS individuelles portent trop peu de trades (1-3) pour des
+// ratios par fenêtre : profitFactor dégénère en sentinelle 999 sans perdant,
+// avgWinPct vaut 0 sans gagnant. On agrège donc les trades de TOUTES les
+// fenêtres OOS avant de calculer gain moyen / facteur de profit / espérance.
+std::vector<TradeRecord> tradesOos(const std::vector<WfWindow>& w) {
+    std::vector<TradeRecord> out;
+    for (const auto& x : w)
+        out.insert(out.end(), x.oos.trades.begin(), x.oos.trades.end());
+    return out;
+}
+
+// Gain moyen (%) des trades gagnants ; 0 si aucun gagnant.
+double gainMoyenGagnants(const std::vector<TradeRecord>& t) {
+    double s = 0.0; int n = 0;
+    for (const auto& tr : t) if (tr.isWin) { s += tr.pnlPct; ++n; }
+    return n ? s / n : 0.0;
+}
+
+// Facteur de profit = Σ gains / Σ |pertes| ; sentinelle 999 si aucune perte.
+double facteurProfit(const std::vector<TradeRecord>& t) {
+    double gains = 0.0, pertes = 0.0;
+    for (const auto& tr : t) (tr.pnl >= 0 ? gains : pertes) += tr.pnl;
+    if (pertes == 0.0) return gains > 0.0 ? 999.0 : 0.0;
+    return gains / -pertes;
+}
+
+// Espérance par trade en dollars ; 0 si aucun trade.
+double esperanceParTrade(const std::vector<TradeRecord>& t) {
+    if (t.empty()) return 0.0;
+    double s = 0.0;
+    for (const auto& tr : t) s += tr.pnl;
+    return s / static_cast<double>(t.size());
+}
+
+// Moyenne d'un champ de BacktestResult sur les fenêtres OOS (alpha,
+// pctTimeInvested…).
+double moyenneOos(const std::vector<WfWindow>& w, double BacktestResult::*champ) {
+    if (w.empty()) return 0.0;
+    double s = 0.0;
+    for (const auto& x : w) s += x.oos.*champ;
     return s / static_cast<double>(w.size());
 }
 
@@ -37,8 +103,8 @@ double meanOosAlpha(const std::vector<WfWindow>& w) {
 // La régime-config et la base produisent le MÊME pavage de fenêtres (mêmes
 // bornes IS/OOS) — condition d'une comparaison honnête.
 TEST(StrategyV2Integration, RegimeAndBaselineShareWindowTiling) {
-    SwingConfig regime = prodSwingConfig();        // smaTrendPeriod = 200
-    SwingConfig base   = prodSwingConfig(); base.smaTrendPeriod = 1;  // filtre off
+    SwingConfig regime = cfg81();                  // smaTrendPeriod = 200
+    SwingConfig base   = cfg81(); base.smaTrendPeriod = 1;  // filtre off
 
     const auto wr = WalkForward(regime, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
     const auto wb = WalkForward(base,   SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
@@ -60,8 +126,8 @@ TEST(StrategyV2Integration, RegimeAndBaselineShareWindowTiling) {
 // de départ chiffré des items 8.2-8.5 (laisser courir, entrer sur la force,
 // réduire le cash drag), pas une raison de déployer.
 TEST(StrategyV2Integration, RegimeFilterOosVerdictIsLocked) {
-    SwingConfig regime = prodSwingConfig();
-    SwingConfig base   = prodSwingConfig(); base.smaTrendPeriod = 1;
+    SwingConfig regime = cfg81();
+    SwingConfig base   = cfg81(); base.smaTrendPeriod = 1;
 
     const auto wr = WalkForward(regime, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
     const auto wb = WalkForward(base,   SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
