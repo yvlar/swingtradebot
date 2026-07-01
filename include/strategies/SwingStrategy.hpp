@@ -29,6 +29,13 @@ namespace trading {
         // ses ventes supprimées à son insu. Faux = comportement historique
         // (vente sur RSI seul quel que soit le régime).
         bool   rsiSellOnlyIfRegimeDown = true;
+        // Item 8.5 (T4 — cash drag) : à plat, régime haussier confirmé et prix
+        // au-dessus des deux EMA → ré-entrer SANS attendre un nouveau
+        // croisement (il n'arrive qu'une fois par cycle de tendance ; sans
+        // re-entrée, une sortie sur trailing laissait le bot en cash pendant
+        // tout le reste de la tendance). Faux = comportement historique
+        // (entrée uniquement sur croisement).
+        bool   regimeReentry           = true;
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -154,6 +161,25 @@ namespace trading {
                                      ? "Croisement baissier EMA"
                                      : "RSI suracheté (" + std::to_string(static_cast<int>(lastRsi)) + ")";
                 return makeSignal(SignalType::SELL, bars, reason);
+            }
+
+            // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────
+            // APRÈS le bloc VENTE : les signaux de sortie gardent la priorité
+            // (un croisement baissier ou une vente RSI active ne sont jamais
+            // masqués par la re-entrée). À plat, régime haussier confirmé et
+            // prix au-dessus des deux EMA → BUY sans attendre un nouveau
+            // croisement. La stratégie est sans état : le BUY est ré-émis à
+            // chaque barre qualifiante, TradingBot l'ignore s'il est déjà en
+            // position.
+            if (config_.regimeReentry
+                && regimeUp
+                && lastClose > lastEmaFast
+                && lastClose > lastEmaSlow)
+            {
+                return makeSignal(SignalType::BUY, bars,
+                                  "Re-entrée régime : prix > SMA" +
+                                  std::to_string(config_.smaTrendPeriod) +
+                                  " et > EMAs");
             }
 
             return makeSignal(SignalType::HOLD, bars,

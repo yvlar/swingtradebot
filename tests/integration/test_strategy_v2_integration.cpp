@@ -47,6 +47,7 @@ SwingConfig cfg81() {
     // Flags nés APRÈS 8.1 : explicitement à leur valeur « comportement 8.1 »
     // (les défauts ont bougé depuis — c'est tout l'objet de ce snapshot).
     c.rsiSellOnlyIfRegimeDown = false;   // item 8.4
+    c.regimeReentry           = false;   // item 8.5
     return c;
 }
 
@@ -64,6 +65,14 @@ SwingConfig cfg82() {
 SwingConfig cfg83() {
     SwingConfig c = cfg82();
     c.rsiBuyMax = 100.0;
+    return c;
+}
+
+// cfg84() = chaîne retenue après l'item 8.4 : vente RSI gatée par le régime
+// (acceptation OOS satisfaite, adopté en défaut).
+SwingConfig cfg84() {
+    SwingConfig c = cfg83();
+    c.rsiSellOnlyIfRegimeDown = true;
     return c;
 }
 
@@ -310,4 +319,118 @@ TEST(StrategyV2Integration, RsiSellRegimeGateOosVerdictIsLocked) {
     EXPECT_GE(alphaV, alphaB);             // alpha net OOS ≥ base
     EXPECT_NEAR(alphaV, -13.1085, 1e-2);
     EXPECT_LT(alphaV, 0.0);                // ne bat toujours pas le B&H
+}
+
+// Verdict OOS de l'item 8.5 (re-entrée sur régime, T4 — cash drag).
+// Acceptation ROADMAP : « % de temps investi ↑, alpha net ↑ ». Base = cfg84
+// (chaîne : 8.1 + 8.2 + 8.3 + 8.4 retenus) ; variante = cfg84 + regimeReentry.
+//
+// VERDICT MESURÉ (figé) : ACCEPTATION SATISFAITE sur les 2 critères —
+// % temps investi 30,65 → 54,02, alpha OOS −13,11 → −10,03 (+3,08 pts),
+// trades 5 → 11. La re-entrée est le plus gros contributeur d'alpha du
+// sprint : rester avec la tendance rapporte plus que la seule qualité des
+// sorties. Défaut adopté : regimeReentry = true.
+TEST(StrategyV2Integration, RegimeReentryOosVerdictIsLocked) {
+    SwingConfig base    = cfg84();
+    SwingConfig variant = cfg84(); variant.regimeReentry = true;
+
+    const auto wb = WalkForward(base,    SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto wv = WalkForward(variant, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    ASSERT_EQ(wb.size(), 2u);
+    ASSERT_EQ(wv.size(), 2u);
+
+    const auto tb = tradesOos(wb);
+    const auto tv = tradesOos(wv);
+    const double expoB  = moyenneOos(wb, &BacktestResult::pctTimeInvested);
+    const double expoV  = moyenneOos(wv, &BacktestResult::pctTimeInvested);
+    const double alphaB = meanOosAlpha(wb), alphaV = meanOosAlpha(wv);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  ITEM 8.5 — RE-ENTREE SUR REGIME (trades OOS pooles, 2 fenetres QQQ)\n"
+              << "    trades          : base " << tb.size() << " / variante " << tv.size() << "\n"
+              << "    % temps investi : base " << expoB << " / variante " << expoV << "\n"
+              << "    alpha OOS moyen : base " << alphaB << " / variante " << alphaV << "\n";
+
+    for (const auto& x : wv) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    EXPECT_EQ(tb.size(),  5u);
+    EXPECT_EQ(tv.size(), 11u);             // trades ↑
+    EXPECT_GT(expoV, expoB);               // % temps investi ↑
+    EXPECT_NEAR(expoV, 54.0201, 1e-2);     // golden de mesure
+    EXPECT_GT(alphaV, alphaB);             // alpha net ↑
+    EXPECT_NEAR(alphaV, -10.0277, 1e-2);
+    EXPECT_LT(alphaV, 0.0);                // ne bat toujours pas le B&H
+}
+
+// ─── Verdict de SPRINT : chaîne 8.1→8.5 complète vs état 8.1 ─────────────────
+// Le juge de paix du Sprint 8 : la stratégie retenue (défauts actuels = cfg85)
+// comparée à l'état de départ (cfg81), mêmes fenêtres OOS. Alimente la DoD du
+// sprint : « bat le B&H net de coûts en OOS, OU le sous-performe de moins de
+// 5 pts avec un drawdown réduit d'au moins 50 % — sinon pas d'edge démontré,
+// pas de déploiement ». Inclut la RÉ-EXAMINATION promise de 8.2 : TP off
+// jugé sur la chaîne finale, maintenant que l'échantillon porte des trades.
+//
+// VERDICT DE SPRINT MESURÉ (figé) : le sprint a produit +4,07 pts d'alpha OOS
+// (−14,10 → −10,03), temps investi 0 → 54,02 %, 11 trades OOS de qualité
+// (gain moyen des gagnants +4,46 %, facteur de profit 3,71, espérance
+// +77,93 $). Ré-exam 8.2 : TP off VALIDÉ positivement sur la chaîne finale
+// (−10,03 vs −10,20 avec TP 10 % — laisser courir rapporte aussi en OOS).
+// MAIS l'alpha reste NÉGATIF et sous-performe le B&H de plus de 5 pts →
+// **DoD non atteinte : pas d'edge démontré, pas de déploiement** (résultat
+// valide — on ne met jamais d'argent réel sur un edge non prouvé).
+TEST(StrategyV2Integration, SprintChainVsBaselineOosVerdictIsLocked) {
+    SwingConfig chain = cfg84(); chain.regimeReentry = true;   // = cfg85 retenue
+    SwingConfig start = cfg81();
+    SwingConfig chainTp = chain; chainTp.takeProfitPct = 0.10; // ré-exam 8.2
+
+    const auto wc = WalkForward(chain,   SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto ws = WalkForward(start,   SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto wt = WalkForward(chainTp, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    ASSERT_EQ(wc.size(), 2u);
+    ASSERT_EQ(ws.size(), 2u);
+    ASSERT_EQ(wt.size(), 2u);
+
+    const auto tc = tradesOos(wc);
+    const double alphaC = meanOosAlpha(wc), alphaS = meanOosAlpha(ws);
+    const double alphaT = meanOosAlpha(wt);
+    const double expoC  = moyenneOos(wc, &BacktestResult::pctTimeInvested);
+    const double expoS  = moyenneOos(ws, &BacktestResult::pctTimeInvested);
+    const double ddC    = moyenneOos(wc, &BacktestResult::maxDrawdownPct);
+    const double ddS    = moyenneOos(ws, &BacktestResult::maxDrawdownPct);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  SPRINT 8 — CHAINE COMPLETE vs ETAT 8.1 (2 fenetres OOS QQQ)\n"
+              << "    alpha OOS moyen : 8.1 " << alphaS << " -> chaine " << alphaC
+              << " (delta " << (alphaC - alphaS) << ")\n"
+              << "    % temps investi : 8.1 " << expoS << " -> chaine " << expoC << "\n"
+              << "    max DD OOS moyen: 8.1 " << ddS << " -> chaine " << ddC << "\n"
+              << "    trades OOS      : chaine " << tc.size()
+              << " (gain moyen gagnants " << gainMoyenGagnants(tc)
+              << " %, PF " << facteurProfit(tc)
+              << ", esperance " << esperanceParTrade(tc) << " $)\n"
+              << "    re-exam 8.2     : chaine TP off " << alphaC
+              << " vs chaine TP 10% " << alphaT << "\n";
+
+    for (const auto& x : wc) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    // Progression du sprint (chaîne > état 8.1), valeurs figées.
+    EXPECT_GT(alphaC, alphaS);
+    EXPECT_NEAR(alphaC, -10.0277, 1e-2);
+    EXPECT_NEAR(alphaS, -14.1015, 1e-2);
+    EXPECT_GT(expoC, expoS);
+    EXPECT_NEAR(expoC, 54.0201, 1e-2);
+    EXPECT_EQ(tc.size(), 11u);
+    EXPECT_NEAR(gainMoyenGagnants(tc),  4.4644, 1e-2);
+    EXPECT_NEAR(facteurProfit(tc),      3.7088, 1e-2);
+    EXPECT_NEAR(esperanceParTrade(tc), 77.9315, 1e-2);
+
+    // Ré-exam 8.2 sur la chaîne finale : TP off ≥ TP 10 % (adoption confirmée).
+    EXPECT_GE(alphaC, alphaT);
+    EXPECT_NEAR(alphaT, -10.2012, 1e-2);
+
+    // DoD du Sprint 8 : NON atteinte — alpha OOS négatif et sous-performance
+    // > 5 pts vs B&H → pas d'edge démontré, pas de déploiement. Si ce verrou
+    // casse « dans le bon sens » un jour, re-dérouler la DoD complète (drawdown
+    // −50 %…) avant tout déploiement.
+    EXPECT_LT(alphaC, -5.0);
 }

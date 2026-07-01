@@ -78,6 +78,7 @@ EXPECT_DOUBLE_EQ(cfg.riskPerTradePct, 0.02);
 EXPECT_EQ(cfg.minHoldDays, 3);
 EXPECT_EQ(cfg.smaTrendPeriod, 200);   // filtre de régime SMA200 (item 8.1)
 EXPECT_TRUE(cfg.rsiSellOnlyIfRegimeDown);  // vente RSI gatée par le régime (item 8.4)
+EXPECT_TRUE(cfg.regimeReentry);            // re-entrée sur régime (item 8.5)
 }
 
 TEST(SwingStrategyUnit, CustomConfigIsStored) {
@@ -348,6 +349,7 @@ Signal evalRsiSellCase(bool flagOn, double smaLast,
 
     SwingConfig cfg;
     cfg.rsiSellOnlyIfRegimeDown = flagOn;
+    cfg.regimeReentry           = false;   // isole le gate 8.4 de la re-entrée 8.5
     SwingStrategy strat(cfg,
         std::make_unique<ValueIndicator>(emaFast),
         std::make_unique<ValueIndicator>(emaSlow),
@@ -384,6 +386,79 @@ TEST(SwingStrategyUnit, BearishCrossStillSellsInUpRegimeWhenGated) {
               SignalType::SELL);
 }
 
+// ════════════════════════════════════════════════════════════
+//  Re-entrée sur régime (item 8.5, T4 — cash drag)
+// ════════════════════════════════════════════════════════════
+// Le croisement EMA n'arrive qu'une fois par cycle de tendance : après une
+// sortie sur trailing, le bot restait en cash pendant TOUT le reste de la
+// tendance (temps investi ~2 %). Flag regimeReentry : à plat, régime
+// haussier confirmé (prix > SMA de fond) et prix au-dessus des deux EMA →
+// BUY sans attendre un nouveau croisement. La stratégie est sans état :
+// le BUY répété est correct (TradingBot ignore un BUY en position). Les
+// signaux de VENTE gardent la priorité (bloc évalué avant la re-entrée).
+
+namespace {
+
+// Harnais 8.5 : EMA rapide AU-DESSUS de la lente sans croisement (tendance
+// déjà installée), prix 110 au-dessus des deux EMA et de la SMA (sauf cas
+// contraire), RSI paramétrable.
+Signal evalReentryCase(bool flagOn, double smaLast, double rsiLast = 50.0,
+                       bool bearishCross = false, bool gateRsiSell = true) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 105.0);       // au-dessus, sans croisement
+    if (bearishCross) emaFast[n-1] = 95.0;       // passage au-dessus → dessous
+    std::vector<double> rsi(n, rsiLast);
+    std::vector<double> sma(n, smaLast);
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg;
+    cfg.regimeReentry           = flagOn;
+    cfg.rsiSellOnlyIfRegimeDown = gateRsiSell;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// Flag actif + régime up (110 > SMA 100) + prix > EMAs, PAS de croisement :
+// re-entrée → BUY, avec une raison explicite.
+TEST(SwingStrategyUnit, RegimeReentryBuysWithoutCrossover) {
+    auto sig = evalReentryCase(true, 100.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Re-entr"), std::string::npos);
+}
+
+// Flag inactif : comportement historique — sans croisement, HOLD.
+TEST(SwingStrategyUnit, NoReentryWhenFlagDisabled) {
+    EXPECT_EQ(evalReentryCase(false, 100.0).type, SignalType::HOLD);
+}
+
+// Flag actif mais régime NON haussier (110 < SMA 120) : pas de re-entrée.
+TEST(SwingStrategyUnit, NoReentryWhenRegimeDown) {
+    EXPECT_EQ(evalReentryCase(true, 120.0).type, SignalType::HOLD);
+}
+
+// Priorité des sorties : croisement baissier + flag actif → SELL, jamais
+// masqué par la re-entrée.
+TEST(SwingStrategyUnit, BearishCrossOutranksReentry) {
+    EXPECT_EQ(evalReentryCase(true, 100.0, 50.0, /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Priorité des sorties (bis) : RSI 80 avec vente RSI NON gatée (flag 8.4
+// off) → SELL — la re-entrée ne masque pas la vente RSI quand elle est active.
+TEST(SwingStrategyUnit, RsiSellOutranksReentryWhenUngated) {
+    EXPECT_EQ(evalReentryCase(true, 100.0, 80.0, false,
+                              /*gateRsiSell=*/false).type,
+              SignalType::SELL);
+}
+
 // Compatibilité : un plafond ACTIF (rsiBuyMax = 55) bloque toujours une
 // entrée à RSI 60 — le comportement historique reste accessible par config.
 TEST(SwingStrategyUnit, ActiveRsiBuyCapStillBlocksEntry) {
@@ -396,6 +471,7 @@ TEST(SwingStrategyUnit, ActiveRsiBuyCapStillBlocksEntry) {
     for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
 
     SwingConfig cfg; cfg.rsiBuyMax = 55.0; cfg.rsiSellMin = 101.0;
+    cfg.regimeReentry = false;   // isole le plafond 8.3 de la re-entrée 8.5
     SwingStrategy strat(cfg,
         std::make_unique<ValueIndicator>(emaFast),
         std::make_unique<ValueIndicator>(emaSlow),
