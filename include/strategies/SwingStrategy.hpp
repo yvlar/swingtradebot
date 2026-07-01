@@ -14,14 +14,28 @@ namespace trading {
         int    emaFast            = 9;
         int    emaSlow            = 21;
         int    rsiPeriod          = 14;
-        double rsiBuyMax          = 55.0;  // N'achète pas si RSI > 55
+        double rsiBuyMax          = 100.0; // ≥ 100 = plafond désactivé (item 8.3, D26 : entrer sur la force, pas la faiblesse)
         double rsiSellMin         = 70.0;  // Vend si RSI > 70
         double stopLossPct        = 0.05;  // -5%
-        double takeProfitPct      = 0.10;  // +10%
+        double takeProfitPct      = 0.0;   // ≤ 0 = désactivé (item 8.2, D26 : laisser courir les gagnants, sortie au trailing)
         double trailingStopPct    = 0.03;  // -3% depuis le pic
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
         int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
+        // Item 8.4 (D26/T2) : si vrai, RSI > rsiSellMin ne vend que si le
+        // régime de fond n'est PAS haussier (RSI > 70 en tendance = force,
+        // pas retournement). Flag INDÉPENDANT de smaTrendPeriod : la base A/B
+        // 8.1 (smaTrendPeriod = 1 → régime toujours « up ») garderait sinon
+        // ses ventes supprimées à son insu. Faux = comportement historique
+        // (vente sur RSI seul quel que soit le régime).
+        bool   rsiSellOnlyIfRegimeDown = true;
+        // Item 8.5 (T4 — cash drag) : à plat, régime haussier confirmé et prix
+        // au-dessus des deux EMA → ré-entrer SANS attendre un nouveau
+        // croisement (il n'arrive qu'une fois par cycle de tendance ; sans
+        // re-entrée, une sortie sur trailing laissait le bot en cash pendant
+        // tout le reste de la tendance). Faux = comportement historique
+        // (entrée uniquement sur croisement).
+        bool   regimeReentry           = true;
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -112,11 +126,17 @@ namespace trading {
 
             // ── Signal d'ACHAT ────────────────────────────────────────────────
             // Conditions: régime de fond haussier (prix > SMA200) + croisement
-            // haussier + RSI < seuil + prix > EMAs. Le filtre de régime (8.1)
-            // coupe les entrées à contre-tendance (whipsaws de range/marché baissier).
+            // haussier + prix > EMAs. Le filtre de régime (8.1) coupe les
+            // entrées à contre-tendance (whipsaws de range/marché baissier).
+            // Plafond RSI d'achat — rsiBuyMax ≥ 100 = désactivé (item 8.3,
+            // D26/T3) : exiger un croisement haussier (momentum ↑) ET un RSI
+            // faible s'auto-annulait (7 entrées en 5 ans) et ratait les
+            // breakouts forts. On entre sur la force ; convention ≥ 100 car
+            // RSI == 100.0 est atteignable (série de gains purs).
+            const bool rsiGateOff = config_.rsiBuyMax >= 100.0;
             if (regimeUp
                 && cross == CrossoverDetector::Cross::BULLISH
-                && lastRsi     < config_.rsiBuyMax
+                && (rsiGateOff || lastRsi < config_.rsiBuyMax)
                 && lastClose   > lastEmaFast
                 && lastClose   > lastEmaSlow)
             {
@@ -128,14 +148,38 @@ namespace trading {
             }
 
             // ── Signal de VENTE ───────────────────────────────────────────────
-            // Conditions: croisement baissier OU RSI suracheté
-            if (cross == CrossoverDetector::Cross::BEARISH
-                || lastRsi > config_.rsiSellMin)
+            // Conditions: croisement baissier OU RSI suracheté. Item 8.4
+            // (D26/T2) : si rsiSellOnlyIfRegimeDown, la vente sur RSI SEUL est
+            // supprimée en régime haussier confirmé (RSI > 70 en tendance =
+            // force, pas retournement) — le croisement baissier vend toujours.
+            // SMA incalculable → regimeUp faux → la vente RSI reste active.
+            const bool venteRsi = lastRsi > config_.rsiSellMin
+                && !(config_.rsiSellOnlyIfRegimeDown && regimeUp);
+            if (cross == CrossoverDetector::Cross::BEARISH || venteRsi)
             {
                 std::string reason = (cross == CrossoverDetector::Cross::BEARISH)
                                      ? "Croisement baissier EMA"
                                      : "RSI suracheté (" + std::to_string(static_cast<int>(lastRsi)) + ")";
                 return makeSignal(SignalType::SELL, bars, reason);
+            }
+
+            // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────
+            // APRÈS le bloc VENTE : les signaux de sortie gardent la priorité
+            // (un croisement baissier ou une vente RSI active ne sont jamais
+            // masqués par la re-entrée). À plat, régime haussier confirmé et
+            // prix au-dessus des deux EMA → BUY sans attendre un nouveau
+            // croisement. La stratégie est sans état : le BUY est ré-émis à
+            // chaque barre qualifiante, TradingBot l'ignore s'il est déjà en
+            // position.
+            if (config_.regimeReentry
+                && regimeUp
+                && lastClose > lastEmaFast
+                && lastClose > lastEmaSlow)
+            {
+                return makeSignal(SignalType::BUY, bars,
+                                  "Re-entrée régime : prix > SMA" +
+                                  std::to_string(config_.smaTrendPeriod) +
+                                  " et > EMAs");
             }
 
             return makeSignal(SignalType::HOLD, bars,

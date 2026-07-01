@@ -77,8 +77,11 @@ public:
         if (pnlPct <= -stopLossPct)
             return "stop-loss (" + formatPct(pnlPct) + ")";
 
-        // 2. Take-profit
-        if (pnlPct >= takeProfitPct)
+        // 2. Take-profit — takeProfitPct ≤ 0 = désactivé (item 8.2, D26) :
+        // une stratégie de tendance gagne sur les queues, on ne plafonne pas
+        // les gagnants ; la sortie est pilotée par le trailing/structure.
+        // Même convention « seuil ≤ 0 = off » que le kill-switch.
+        if (takeProfitPct > 0 && pnlPct >= takeProfitPct)
             return "take-profit (" + formatPct(pnlPct) + ")";
 
         // 3. Trailing stop (seulement après minHoldDays)

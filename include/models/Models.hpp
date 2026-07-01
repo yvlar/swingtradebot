@@ -82,7 +82,7 @@ struct KillSwitchConfig {
 struct RiskConfig {
     std::string symbol     = "QQQ";
     double stopLossPct     = 0.05;  // -5%
-    double takeProfitPct   = 0.10;  // +10%
+    double takeProfitPct   = 0.0;   // ≤ 0 = désactivé (item 8.2 : ne pas plafonner les gagnants)
     double trailingStopPct = 0.03;  // -3% depuis le pic
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;

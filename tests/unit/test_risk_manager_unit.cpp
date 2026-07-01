@@ -189,6 +189,48 @@ TEST(RiskManagerUnit, TrailingSkippedWhenPeakPriceZero) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Take-profit désactivable (item 8.2, D26)
+// ════════════════════════════════════════════════════════════
+// Une stratégie de tendance gagne sur les QUEUES : plafonner les gagnants à
+// +10 % ampute le ratio gain/risque. Convention : takeProfitPct ≤ 0 désactive
+// le take-profit (même convention que les seuils du kill-switch), la sortie
+// des gagnants est pilotée par le trailing/structure.
+
+// +15 % depuis l'achat, TP=0 (désactivé) : AUCUNE sortie — la position court.
+// Sans la garde, `pnlPct >= 0.0` sortirait en « take-profit » dès +0 %.
+TEST(RiskManagerUnit, TakeProfitDisabledWhenZero) {
+    RiskManager rm;
+    EXPECT_FALSE(rm.checkExitConditions(460.0, 400.0, 1, 460.0,
+                                        0.05, 0.0, 0.03, 3).has_value());
+}
+
+// Même contrat avec un seuil négatif (config défensive).
+TEST(RiskManagerUnit, TakeProfitDisabledWhenNegative) {
+    RiskManager rm;
+    EXPECT_FALSE(rm.checkExitConditions(460.0, 400.0, 1, 460.0,
+                                        0.05, -1.0, 0.03, 3).has_value());
+}
+
+// TP désactivé mais -4 % depuis le pic (trailing, minHold atteint) : le
+// trailing reste la sortie des gagnants — seul le PLAFOND disparaît.
+TEST(RiskManagerUnit, TrailingStillFiresWhenTakeProfitDisabled) {
+    RiskManager rm;
+    auto r = rm.checkExitConditions(432.0, 400.0, 5, 450.0,
+                                    0.05, 0.0, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("trailing"), std::string::npos);
+}
+
+// TP désactivé et -7,5 % sous l'achat : le stop-loss protège toujours.
+TEST(RiskManagerUnit, StopLossStillFiresWhenTakeProfitDisabled) {
+    RiskManager rm;
+    auto r = rm.checkExitConditions(370.0, 400.0, 0, 400.0,
+                                    0.05, 0.0, 0.03, 3);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("stop-loss"), std::string::npos);
+}
+
+// ════════════════════════════════════════════════════════════
 //  checkKillSwitch — garde-fous de coupure d'entrée (item 18)
 // ════════════════════════════════════════════════════════════
 
