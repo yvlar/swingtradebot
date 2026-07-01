@@ -47,6 +47,15 @@ SwingConfig cfg81() {
     return c;
 }
 
+// cfg82() = chaîne retenue après l'item 8.2 : take-profit désactivé (adopté
+// comme retrait d'une contrainte morte — delta strictement nul, voir le
+// verdict 8.2 ci-dessous).
+SwingConfig cfg82() {
+    SwingConfig c = cfg81();
+    c.takeProfitPct = 0.0;
+    return c;
+}
+
 double meanOosAlpha(const std::vector<WfWindow>& w) {
     if (w.empty()) return 0.0;
     double s = 0.0;
@@ -198,4 +207,49 @@ TEST(StrategyV2Integration, TakeProfitOffOosVerdictIsLocked) {
     EXPECT_EQ(tv.size(), 0u);
     EXPECT_DOUBLE_EQ(alphaV, alphaB);
     EXPECT_NEAR(alphaB, -14.1015, 1e-2);   // cohérent avec le verdict 8.1
+}
+
+// Verdict OOS de l'item 8.3 (entrée sur la force, D26/T3). Acceptation
+// ROADMAP : « nombre de trades et exposition ↑, expectancy nette ≥ 0 ».
+// Base = cfg82 (chaîne : 8.1 + 8.2 retenus) ; variante = cfg82 + plafond
+// RSI d'achat désactivé (rsiBuyMax = 100).
+//
+// VERDICT MESURÉ (figé) : ACCEPTATION SATISFAITE sur les 3 critères —
+// trades OOS 0 → 5, exposition 0 → 22,11 %, espérance +2,97 $/trade.
+// L'alpha OOS reste ~inchangé (−14,10 → −14,12) : entrer sur la force met
+// ENFIN la stratégie en position en OOS sans détruire de valeur — le gain
+// d'alpha est attendu de 8.5 (rester investi), pas de l'entrée seule.
+// Défaut adopté : rsiBuyMax → 100 (plafond désactivé).
+TEST(StrategyV2Integration, RsiEntryCapOffOosVerdictIsLocked) {
+    SwingConfig base    = cfg82();
+    SwingConfig variant = cfg82(); variant.rsiBuyMax = 100.0;  // plafond off
+
+    const auto wb = WalkForward(base,    SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    const auto wv = WalkForward(variant, SWINGBOT_QQQ_CSV, kIs, kOos, kStep).run();
+    ASSERT_EQ(wb.size(), 2u);
+    ASSERT_EQ(wv.size(), 2u);
+
+    const auto tb = tradesOos(wb);
+    const auto tv = tradesOos(wv);
+    const double expoB  = moyenneOos(wb, &BacktestResult::pctTimeInvested);
+    const double expoV  = moyenneOos(wv, &BacktestResult::pctTimeInvested);
+    const double espV   = esperanceParTrade(tv);
+    const double alphaB = meanOosAlpha(wb), alphaV = meanOosAlpha(wv);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  ITEM 8.3 — PLAFOND RSI ACHAT OFF (trades OOS pooles, 2 fenetres QQQ)\n"
+              << "    trades              : base " << tb.size() << " / variante " << tv.size() << "\n"
+              << "    % temps investi     : base " << expoB << " / variante " << expoV << "\n"
+              << "    esperance/trade ($) : variante " << espV << "\n"
+              << "    alpha OOS moyen     : base " << alphaB << " / variante " << alphaV << "\n";
+
+    for (const auto& x : wv) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    EXPECT_EQ(tb.size(), 0u);              // la base ne trade toujours pas en OOS
+    EXPECT_EQ(tv.size(), 5u);              // trades ↑ (0 → 5)
+    EXPECT_GT(expoV, expoB);               // exposition ↑
+    EXPECT_NEAR(expoV, 22.1106, 1e-2);     // golden de mesure
+    EXPECT_GE(espV, 0.0);                  // expectancy nette ≥ 0
+    EXPECT_NEAR(espV, 2.9667, 1e-2);
+    EXPECT_NEAR(alphaV, -14.1234, 1e-2);   // alpha ~inchangé vs base (−14,1015)
 }

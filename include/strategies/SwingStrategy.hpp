@@ -14,7 +14,7 @@ namespace trading {
         int    emaFast            = 9;
         int    emaSlow            = 21;
         int    rsiPeriod          = 14;
-        double rsiBuyMax          = 55.0;  // N'achète pas si RSI > 55
+        double rsiBuyMax          = 100.0; // ≥ 100 = plafond désactivé (item 8.3, D26 : entrer sur la force, pas la faiblesse)
         double rsiSellMin         = 70.0;  // Vend si RSI > 70
         double stopLossPct        = 0.05;  // -5%
         double takeProfitPct      = 0.0;   // ≤ 0 = désactivé (item 8.2, D26 : laisser courir les gagnants, sortie au trailing)
@@ -112,11 +112,17 @@ namespace trading {
 
             // ── Signal d'ACHAT ────────────────────────────────────────────────
             // Conditions: régime de fond haussier (prix > SMA200) + croisement
-            // haussier + RSI < seuil + prix > EMAs. Le filtre de régime (8.1)
-            // coupe les entrées à contre-tendance (whipsaws de range/marché baissier).
+            // haussier + prix > EMAs. Le filtre de régime (8.1) coupe les
+            // entrées à contre-tendance (whipsaws de range/marché baissier).
+            // Plafond RSI d'achat — rsiBuyMax ≥ 100 = désactivé (item 8.3,
+            // D26/T3) : exiger un croisement haussier (momentum ↑) ET un RSI
+            // faible s'auto-annulait (7 entrées en 5 ans) et ratait les
+            // breakouts forts. On entre sur la force ; convention ≥ 100 car
+            // RSI == 100.0 est atteignable (série de gains purs).
+            const bool rsiGateOff = config_.rsiBuyMax >= 100.0;
             if (regimeUp
                 && cross == CrossoverDetector::Cross::BULLISH
-                && lastRsi     < config_.rsiBuyMax
+                && (rsiGateOff || lastRsi < config_.rsiBuyMax)
                 && lastClose   > lastEmaFast
                 && lastClose   > lastEmaSlow)
             {

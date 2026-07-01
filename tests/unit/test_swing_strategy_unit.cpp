@@ -69,7 +69,7 @@ SwingConfig cfg;
 EXPECT_EQ(cfg.emaFast,    9);
 EXPECT_EQ(cfg.emaSlow,   21);
 EXPECT_EQ(cfg.rsiPeriod, 14);
-EXPECT_DOUBLE_EQ(cfg.rsiBuyMax,       55.0);
+EXPECT_DOUBLE_EQ(cfg.rsiBuyMax,       100.0);  // ≥ 100 = plafond désactivé (item 8.3)
 EXPECT_DOUBLE_EQ(cfg.rsiSellMin,      70.0);
 EXPECT_DOUBLE_EQ(cfg.stopLossPct,     0.05);
 EXPECT_DOUBLE_EQ(cfg.takeProfitPct,   0.0);   // ≤ 0 = désactivé (item 8.2)
@@ -284,6 +284,54 @@ TEST(SwingStrategyUnit, RegimeFilterGatesBuyOnPriceVsSma) {
     EXPECT_EQ(build(100.0).evaluate(bars).type, SignalType::BUY);
     // Régime baissier (prix 110 < SMA 120) → entrée bloquée → HOLD
     EXPECT_EQ(build(120.0).evaluate(bars).type, SignalType::HOLD);
+}
+
+// ════════════════════════════════════════════════════════════
+//  Entrée sur la force (item 8.3, D26/T3)
+// ════════════════════════════════════════════════════════════
+// Exiger un croisement haussier (momentum ↑) ET RSI < 55 (peu de momentum)
+// s'auto-annulait : on ratait précisément les breakouts forts. Convention :
+// rsiBuyMax ≥ 100 = plafond désactivé (RSI == 100.0 est atteignable sur une
+// série de gains purs, donc `lastRsi < 100.0` ne suffit PAS).
+
+// Croisement haussier + régime up + RSI épinglé à 100.0 exactement :
+// plafond désactivé (rsiBuyMax = 100) → l'entrée doit passer.
+TEST(SwingStrategyUnit, RsiBuyCapDisabledAllowsEntryAtMaxRsi) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 99.0); emaFast[n-1] = 105.0;  // croisement BULLISH
+    std::vector<double> rsi(n, 100.0);                           // force maximale
+    std::vector<double> sma(n, 100.0);                           // prix 110 > SMA → régime up
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg; cfg.rsiBuyMax = 100.0;  // ≥ 100 = désactivé
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    EXPECT_EQ(strat.evaluate(bars).type, SignalType::BUY);
+}
+
+// Compatibilité : un plafond ACTIF (rsiBuyMax = 55) bloque toujours une
+// entrée à RSI 60 — le comportement historique reste accessible par config.
+TEST(SwingStrategyUnit, ActiveRsiBuyCapStillBlocksEntry) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 99.0); emaFast[n-1] = 105.0;
+    std::vector<double> rsi(n, 60.0);                            // > 55
+    std::vector<double> sma(n, 100.0);
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg; cfg.rsiBuyMax = 55.0; cfg.rsiSellMin = 101.0;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    EXPECT_EQ(strat.evaluate(bars).type, SignalType::HOLD);
 }
 
 // La conversion RiskConfig aligne le lookback sur la période de régime (item 8.1) :
