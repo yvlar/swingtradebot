@@ -57,10 +57,14 @@ public:
 
     // Annule le stop résident courant (DELETE /order/{id}). Évite qu'un stop
     // orphelin se déclenche après une sortie logicielle (réduit le risque de
-    // double-vente, D14).
-    bool cancelStopLoss(const std::string& /*symbol*/) override {
-        if (residentStopOrderId_.empty()) return false;
+    // double-vente, D14). Après un redémarrage, l'orderId (mémoire seulement)
+    // est perdu : on le re-découvre via les ordres ouverts du Gateway grâce
+    // au tag cOID « swingbot-SYM-STOP- » (D38).
+    bool cancelStopLoss(const std::string& symbol) override {
         try {
+            if (residentStopOrderId_.empty())
+                residentStopOrderId_ = findResidentStopOrderId(symbol);
+            if (residentStopOrderId_.empty()) return false;
             request("DELETE",
                     gatewayUrl_ + "/v1/api/iserver/account/" + accountId_
                         + "/order/" + residentStopOrderId_,
@@ -291,6 +295,33 @@ private:
         if (it != KNOWN_CONIDS.end()) return it->second;
         throw std::runtime_error("Conid inconnu pour " + symbol
             + " — ajoute-le dans KNOWN_CONIDS dans IBKRDataFeed.hpp");
+    }
+
+    // ── Re-découverte du stop résident (D38) ──────────────────
+    // Cherche dans les ordres OUVERTS du Gateway un stop portant notre tag
+    // cOID (le format de makeClientOrderId encode symbole et côté stop).
+    // Schéma toléré : {"orders":[...]} ou tableau nu ; le cOID revient sous
+    // « order_ref » (versions courantes) ou « cOID » ; orderId nombre ou
+    // chaîne. Les statuts terminaux sont ignorés (rien à annuler).
+    std::string findResidentStopOrderId(const std::string& symbol) {
+        auto j = json::parse(request("GET",
+            gatewayUrl_ + "/v1/api/iserver/account/orders", ""));
+        const json& orders =
+            (j.is_object() && j.contains("orders")) ? j["orders"] : j;
+        if (!orders.is_array()) return "";
+        const std::string tag = "swingbot-" + symbol + "-STOP-";
+        for (const auto& o : orders) {
+            std::string ref = o.value("order_ref", o.value("cOID", ""));
+            if (ref.find(tag) == std::string::npos) continue;
+            std::string st = o.value("status", "");
+            if (st == "Filled" || st == "Cancelled" || st == "Inactive") continue;
+            if (!o.contains("orderId")) continue;
+            if (o["orderId"].is_number())
+                return std::to_string(o["orderId"].get<long long>());
+            if (o["orderId"].is_string())
+                return o["orderId"].get<std::string>();
+        }
+        return "";
     }
 
     // ── HTTP helpers ──────────────────────────────────────────

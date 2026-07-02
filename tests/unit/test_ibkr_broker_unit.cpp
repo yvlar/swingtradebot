@@ -305,6 +305,53 @@ TEST(IbkrBrokerUnit, AccountSummaryWithSingleBalanceIsInactive) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  D38 — re-découverte de l'orderId du stop résident au restart.
+//  BUG : residentStopOrderId_ vivait en mémoire seulement — après
+//  un redémarrage, cancelStopLoss était un no-op et le stop IBKR
+//  restait orphelin chez le broker (déclenchement après coup).
+// ════════════════════════════════════════════════════════════
+
+// Broker NEUF (restart simulé) : cancelStopLoss re-découvre l'ordre stop via
+// GET /iserver/account/orders (order_ref porte le tag swingbot-SYM-STOP-)
+// puis envoie le DELETE sur l'id retrouvé.
+TEST(IbkrBrokerUnit, CancelStopLossRediscoversOrderAfterRestart) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/iserver/account/orders", R"({"orders":[
+        {"orderId": 77, "order_ref": "swingbot-QQQ-STOP-2026070214",
+         "status": "PreSubmitted", "side": "SELL", "ticker": "QQQ"}
+    ]})"}};
+
+    EXPECT_TRUE(b.cancelStopLoss("QQQ"));
+    EXPECT_EQ(b.countUrlContaining("/iserver/account/orders"), 1);
+    EXPECT_EQ(b.countUrlContaining("/order/77"), 1);
+    ASSERT_EQ(b.calls.size(), 2u);
+    EXPECT_EQ(b.calls[1].method, "DELETE");
+}
+
+// Aucun ordre stop ouvert → false, et surtout AUCUN DELETE
+TEST(IbkrBrokerUnit, CancelStopLossNoOpenStopReturnsFalseWithoutDelete) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/iserver/account/orders", R"({"orders":[]})"}};
+
+    EXPECT_FALSE(b.cancelStopLoss("QQQ"));
+    EXPECT_EQ(b.countUrlContaining("/order/"), 0);
+}
+
+// Les stops d'un AUTRE symbole et les stops en statut terminal sont ignorés
+TEST(IbkrBrokerUnit, CancelStopLossIgnoresOtherSymbolsAndTerminalStops) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/iserver/account/orders", R"({"orders":[
+        {"orderId": 11, "order_ref": "swingbot-SPY-STOP-2026070214",
+         "status": "PreSubmitted"},
+        {"orderId": 22, "order_ref": "swingbot-QQQ-STOP-2026070113",
+         "status": "Cancelled"}
+    ]})"}};
+
+    EXPECT_FALSE(b.cancelStopLoss("QQQ"));
+    EXPECT_EQ(b.countUrlContaining("/order/"), 0);
+}
+
+// ════════════════════════════════════════════════════════════
 //  Compléments de couverture — confirmations épuisées, exceptions
 // ════════════════════════════════════════════════════════════
 
