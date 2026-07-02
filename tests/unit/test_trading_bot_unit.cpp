@@ -710,6 +710,77 @@ TEST(TradingBotUnit, PositionClosedOutsideBotCancelsResidentStop) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  M2 — cooldown de ré-entrée : pas de rachat le jour de bourse
+//  d'une sortie. Sans cela (cycle prod 60 min + regimeReentry),
+//  une sortie stop à 10h30 pouvait être suivie d'un rachat à
+//  11h30 : churn, coûts, wash-trades.
+// ════════════════════════════════════════════════════════════
+
+// Sortie stop puis signal BUY le même jour → aucune ré-entrée ;
+// le lendemain, l'entrée repart normalement.
+TEST(TradingBotUnit, SameDayReentryAfterStopExitIsBlocked) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée
+    ASSERT_EQ(h.broker->buyCount(), 1);
+
+    h.setLastBar(380.0, "2024-03-01");           // -9,5 % → stop logiciel
+    h.broker->setFillPrice(380.0);
+    h.bot->runOnce();                            // sortie (même jour)
+    ASSERT_EQ(h.broker->sellCount(), 1);
+    ASSERT_FALSE(h.bot->state().inPosition);
+
+    h.bot->runOnce();                            // signal BUY, même jour
+    EXPECT_EQ(h.broker->buyCount(), 1);          // ré-entrée bloquée
+
+    h.setLastBar(385.0, "2024-03-04");           // jour de bourse suivant
+    h.broker->setFillPrice(385.0);
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->buyCount(), 2);          // cooldown levé
+}
+
+// Position fermée HORS bot (stop résident, vente manuelle) : même churn à
+// bloquer — la réconciliation pose aussi le cooldown du jour
+TEST(TradingBotUnit, ReentryCooldownAppliesAfterPositionClosedOutsideBot) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    h.store->preload(persisted);
+    h.broker->setPosition(std::nullopt);         // fermée hors bot
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();                            // reset + tentative de ré-entrée
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.broker->buyCount(), 0);          // bloquée le jour même
+}
+
+// Le cooldown survit à un redémarrage (lastExitDate est persisté)
+TEST(TradingBotUnit, ReentryCooldownSurvivesRestart) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted;                          // à plat, sortie déjà faite ce jour
+    persisted.lastExitDate = "2024-03-08";
+    h.store->preload(persisted);
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 0);
+}
+
+// Une sortie de la VEILLE ne bloque pas l'entrée du jour
+TEST(TradingBotUnit, CooldownDoesNotBlockNextTradingDay) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted;
+    persisted.lastExitDate = "2024-03-07";       // sortie hier
+    h.store->preload(persisted);
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 1);
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 5 item 18 — kill-switch : coupe les ENTRÉES, jamais les sorties
 // ════════════════════════════════════════════════════════════
 

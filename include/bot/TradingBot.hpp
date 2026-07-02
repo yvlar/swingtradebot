@@ -180,7 +180,12 @@ public:
                     // Annule le stop résident : la sortie logicielle a déjà
                     // vendu — pas de stop orphelin (item 19, réduit D14)
                     broker_->cancelStopLoss(riskCfg_.symbol);
-                    state_ = BotState{};  // reset
+                    // Reset + cooldown (M2) : pas de ré-entrée le même jour
+                    // de bourse (cycle 60 min : sortie 10h30 → rachat 11h30
+                    // sinon, churn/wash-trades)
+                    BotState fresh;
+                    fresh.lastExitDate = bars.back().date;
+                    state_ = fresh;
                     saveState_();
                 } else {
                     logger_->error("Ordre de vente non exécuté (" + orderStatusStr(order)
@@ -191,6 +196,15 @@ public:
 
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
+            // Cooldown de ré-entrée (M2) : une sortie a déjà eu lieu ce jour
+            // de bourse — on ne rachète pas avant la barre suivante.
+            if (!state_.lastExitDate.empty()
+                && state_.lastExitDate == bars.back().date) {
+                logger_->info("Ré-entrée bloquée (cooldown) : sortie déjà "
+                              "exécutée le " + state_.lastExitDate);
+                return;
+            }
+
             auto account = broker_->getAccount();
 
             // Compte non ACTIF (panne, résumé incomplet…) : la cause réelle
@@ -336,7 +350,11 @@ private:
             // sinon un ordre orphelin peut se déclencher après coup (B1).
             // No-op si aucun stop n'est suivi côté broker.
             broker_->cancelStopLoss(riskCfg_.symbol);
-            state_ = BotState{};
+            // Sortie exécutée hors bot ce jour → même cooldown de ré-entrée
+            // que pour une sortie logicielle (M2)
+            BotState fresh;
+            fresh.lastExitDate = barDate;
+            state_ = fresh;
             saveState_();
         } else if (!state_.inPosition && pos.has_value()) {
             double basis = pos->avgPrice > 0 ? pos->avgPrice : price;
