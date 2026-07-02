@@ -14,8 +14,8 @@
 | FinTech      | 83        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-02 (Sprint Sécurité-Réel, 2e passe — D38 soldée (re-découverte du stop), 9.1 clos (config JSON chargée par le golden), 9.3 clos (barres clôturées IBKR), E2E SMS watchdog. 1re passe le même jour : B1/B2/B3/B4/M2/M3, goldens re-figés, le candidat d'edge SURVIT et se renforce, gate 8b.4 s'OUVRE — voir D37)
-- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi — décision utilisateur du 2026-07-02. **⚠️ À re-caler post-B2** : le plateau retenu par la grille 18 combos est désormais (9, 250, trail=0,03), alpha OOS +0,23 (voir D37)
+- **Dernière mise à jour** : 2026-07-02 (Sprint Sécurité-Réel, 3e passe — durcissement PRODUCTION : gate live mécanique (le « paper tant que pas d'edge » est désormais un verrou testé), heartbeat sur cycle sain, secrets par env, kill-switch alerté et externalisé, CI Release+sanitizers (2 fuites et 1 data race trouvées et corrigées), Docker prod Release+healthcheck, README/RUNBOOK, prompts protégés. 2e passe : D38, 9.1, 9.3, SMS E2E. 1re passe : B1/B2/B3/B4/M2/M3 + re-baseline (D37))
+- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi (candidat post-B2 : 9/250/0,03, alpha OOS +0,23 — re-calé, voir D37) — décision utilisateur du 2026-07-02
 
 > ### ⚠️ Rentabilité : premier CANDIDAT d'edge (grille 8b.1) — non adopté, à valider hors-grille
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -37,9 +37,11 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **30**  | Premier réglage à alpha OOS > 0 sur 3 actifs sur 4, trouvé et VERROUILLÉ honnêtement (jamais l'IS, plateau, filtre alpha) — mais non validé hors de la grille qui l'a choisi, et la chaîne par défaut reste négative (−7,15). La note ne franchira 50 qu'avec le candidat CONFIRMÉ hors-grille (Sprint 8-ter), et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 510/510 verts (439 unitaires + 71 intégration). +25 à la
-  1re passe du Sprint Sécurité-Réel (470 → 495), +15 à la 2e passe (495 → 510),
-  aucune dérive hors cycle (`ctest -N` recalé à chaque passe). Détail au changelog.
+- **État des tests** : 537/537 verts (465 unitaires + 72 intégration) — et la
+  suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
+  suites concurrentes. +25 à la 1re passe du Sprint Sécurité-Réel (470 → 495),
+  +15 à la 2e passe (495 → 510), +27 à la 3e passe (510 → 537), aucune dérive
+  hors cycle (`ctest -N` recalé à chaque passe). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -567,17 +569,73 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   copie le JSON dans l'image runtime. 6 tests ConfigLoaderUnit rouges→verts,
   les 3 goldens « config prod » passent par le JSON réel SANS re-figeage.
 
+## 3e passe (même jour) — durcissement production (audit workflow/docs/règles)
+
+> Demande utilisateur : « tout doit être solide, l'app va trader de l'argent
+> réel ». Audit croisé (CI/déploiement/secrets/monitoring + docs/règles) :
+> le moteur était mûr mais l'ENVIRONNEMENT de production était de niveau
+> prototype. Neuf items, chacun rouge→vert :
+
+- [x] **S.14 (B1')** **`-Wall -Wextra -Werror` sur tout le build** → `4fea48e`
+  Fixes : sign-compare (BackTester), variable morte (DayTradeStrategy),
+  dangling-else ×2, agrégats BotState incomplets remplacés par un helper.
+- [x] **S.15 (A2)** **Santé du cycle** → `d949da2`
+  `runOnce` → enveloppe de `runCycle_()` ; `lastCycleHealthy()` — pannes
+  feed/broker/compte = cycle non sain ; marché fermé/HOLD/kill-switch =
+  sain. 5 tests.
+- [x] **S.16 (A6)** **Notification kill-switch** → `8c0cc60`
+  `setHaltObserver` (dédup par raison/séance) + `Watchdog::alertNow`. 3 tests.
+- [x] **S.17 (C1)** **Seuils kill-switch dans prod.json** → `f0048ad`
+  `KillSwitchConfig` rejoint SwingConfig (copié dans RiskConfig) ; objet
+  `killSwitch` REQUIS et validé ; valeurs = défauts → goldens intacts. 4 tests.
+- [x] **S.18 (A1)** **Gate live mécanique en 4 couches** → `336f0f1`
+  `liveTradingApproved` (ProdSettings) + canal d'alerte + TTY + « OUI » tapé
+  (LiveGate.hpp pur). Verrou d'intégration
+  `LiveTradingStaysDisapprovedUntilEdgeDoD` : le « paper tant que pas
+  d'edge » devient un MÉCANISME. 11 tests.
+- [x] **S.19 (A4)** **Secrets par env `SWINGBOT_*`** → `402cafc`
+  `alertConfigFromEnv` (canal activé ssi variables complètes), défauts
+  exemples purgés, `.env.example` + `!.env.example` au .gitignore. 4 tests.
+- [x] **S.20 (A3/A5 + câblage)** **Boucle live défensive** → `9142ee6`
+  Auth Gateway re-vérifiée à chaque cycle (session ~24 h), heartbeat émis
+  seulement sur cycle sain, sync equity sautée si compte non ACTIF (fini
+  l'equity=0 fictive), haltObserver branché. Gate vérifié manuellement
+  (`--live < /dev/null` refuse, « NON » refuse, config false refuse).
+- [x] **S.21 (B2')** **CI Release + ASan/UBSan + TSan ciblé** → `5500e73`
+  Le binaire de prod (Release) est enfin compilé ET testé en CI. Les
+  sanitizers ont IMMÉDIATEMENT payé : fuites sqlite3 dans les
+  constructeurs qui lèvent (DbLogger, SqliteStateStore) et data race
+  `MiniHttpServer::stop()/loop_()` — corrigées, 3 suites vertes en local
+  (Release 537, ASan 537, TSan ciblé 59).
+- [x] **S.22 (B3')** **Docker prod** → `f28899b`
+  Service bot → image multistage runtime RELEASE testée au build,
+  HEALTHCHECK TCP (process gelé → unhealthy), `network_mode: host` (le
+  Gateway localhost:5000 était structurellement injoignable), `env_file
+  .env` optionnel, logs json-file avec rotation.
+- [x] **S.23 (docs/règles)** → `aa488c0`
+  README (avertissement argent réel), RUNBOOK (incidents, kill-switch
+  manuel, politique de risque chiffrée, checklist pré-live signée),
+  CLAUDE.md « Live-safety rules », prompts : l'auto-amendement des règles
+  requiert désormais une décision utilisateur ; DoD complétée (pas de live
+  sans gate, fichiers de règles protégés) ; docs binaires marquées
+  obsolètes ; UML complété.
+
 # 🟣 SPRINT 8-TER — Valider le candidat d'edge hors-grille — **sprint courant**
 
 > Décision utilisateur (2026-07-02) à la clôture du Sprint 8-bis : la grille a produit
-> le premier candidat d'edge — (emaFast=9, smaTrendPeriod=250, trailingStopPct=0,05),
-> alpha OOS +0,10 QQQ / +1,26 IWM / +0,81 MDY / −0,53 SPY — mais il est entaché d'un
-> biais de sélection (meilleur de 18 combos jugés sur les MÊMES fenêtres OOS que son
-> verdict) et les échantillons sont minces (4-8 trades OOS/actif). **Consigner, ne pas
+> le premier candidat d'edge. **RE-CALÉ post-B2 (D37, correction du look-ahead)** : le
+> candidat est désormais **(emaFast=9, smaTrendPeriod=250, trailingStopPct=0,03)**,
+> alpha OOS **+0,23** sur QQQ, Sharpe OOS 1,267 (les valeurs pré-B2 — trail 0,05,
+> +0,10 — sont historiques ; les alphas par actif +1,26 IWM / +0,81 MDY / −0,53 SPY
+> datent aussi d'avant B2 et sont à re-mesurer en 8t.1). Il reste entaché d'un biais
+> de sélection (meilleur de 18 combos jugés sur les MÊMES fenêtres OOS que son
+> verdict) et d'échantillons minces (4-8 trades OOS/actif). **Consigner, ne pas
 > adopter** : ce sprint fait passer au candidat une validation dédiée HORS de la grille
 > qui l'a choisi. Aucune adoption de défaut sans que la DoD ci-dessous passe. Point
-> d'entrée : le verdict 8b.1 (`tests/integration/test_grid_optimizer_integration.cpp`,
+> d'entrée : le verdict 8b.1 re-figé post-B2 (`test_grid_optimizer_integration.cpp`,
 > `V2ChainExtendedGridOosVerdictIsLocked`) et la section 6 du CLI (`main_validate.cpp`).
+> NB : le gate 8b.4 (trailing ATR) est OUVERT depuis B2 (trailing = axe le plus
+> sensible) — à ré-examiner après ce sprint.
 
 - [ ] **8t.1** **Verdict du candidat sur des fenêtres qu'il n'a PAS choisies** : re-juger
   le candidat vs la chaîne v2 sur le pavage canonique 2 fenêtres (IS=700/OOS=400,
@@ -591,9 +649,11 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   la chaîne v2. **Acceptation** : verdict verrouillé ; p50 CAGR du candidat ≥ chaîne et
   p95 drawdown non dégradé, sinon « non confirmé ».
 - [ ] **8t.3** **Grille de CONFIRMATION resserrée autour du candidat** : voisinage fin
-  smaT {225,250,275} × trail {0,04/0,05/0,06} × emaFast {7,9,11}, mêmes objectif/pavage
-  que 8b.1 — un vrai plateau doit rester alpha > 0 quand on resserre les crans (D36 :
-  les axes EMA du plateau bougent entre 18 et 81 combos, seul smaT=250 est stable).
+  smaT {225,250,275} × trail **{0,02/0,03/0,04}** (centré sur le candidat post-B2 —
+  l'ancienne grille {0,04/0,05/0,06} excluait trail=0,03) × emaFast {7,9,11}, mêmes
+  objectif/pavage que 8b.1 — un vrai plateau doit rester alpha > 0 quand on resserre
+  les crans (D36 : les axes EMA du plateau bougent entre 18 et 81 combos, seul
+  smaT=250 est stable).
   **Acceptation** : verdict verrouillé ; le plateau resserré reste alpha > 0 et contient
   smaT=250, sinon « artefact de grille ».
 - [ ] **8t.4** **Décision d'adoption (Décision requise)** : si 8t.1 ET 8t.2 ET 8t.3
@@ -665,6 +725,47 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D38 | ✅ | (Sprint Sécurité-Réel) **`IBKRBroker::residentStopOrderId_` n'est pas persisté** : après un restart, `cancelStopLoss` ne retrouve pas l'orderId du stop résident déposé par le process précédent → l'annulation à la sortie est un no-op et le stop IBKR peut rester orphelin chez le broker (se déclencherait après coup). Mitigé par : (a) `stopArmed` persisté empêche d'empiler un 2e stop, (b) le cas « position fermée par le stop résident » est réconcilié proprement (reset + cooldown de ré-entrée) | ✅ Corrigé à la 2e passe (S.10, `75339e2`) : re-découverte broker-locale via GET `/iserver/account/orders` + tag cOID « swingbot-SYM-STOP- » — pas de persistance nécessaire |
 
 ## Changelog
+
+### Sprint Sécurité-Réel, 3e passe — durcissement production (2026-07-02)
+
+**Baseline réelle à l'ouverture** : **510/510 verte** (`ctest -N` conforme).
+
+**Origine** : demande utilisateur — « analyse le workflow, les fichiers md,
+skills et rules ; tout doit être solide, l'app va trader de l'argent réel ».
+Verdict d'audit : moteur mûr, environnement de production de niveau prototype
+(gate live inexistant, watchdog vert pendant les pannes, secrets hardcodés,
+binaire de prod jamais testé en Release, ni runbook ni checklist, processus
+capable de réécrire ses propres règles).
+
+**Commits** : `4fea48e` -Werror · `d949da2` santé du cycle · `8c0cc60`
+alerte kill-switch · `f0048ad` kill-switch dans prod.json · `336f0f1` gate
+live · `402cafc` secrets env · `9142ee6` boucle live défensive · `5500e73`
+CI Release+sanitizers · `f28899b` Docker prod · `aa488c0` docs/règles.
+
+**Tests** : 510 → **537** (+27 : 465 unitaires + 72 intégration — santé du
+cycle 5, kill-switch alerte 3, loader killSwitch 4, LiveGate 7, ProdSettings 3,
+env 4, verrou live 1). La suite passe en Debug, **Release**, **ASan/UBSan**
+et TSan ciblé. **Goldens strictement inchangés** (A1/C1 golden-neutres par
+construction, vérifié).
+
+**Trouvailles des sanitizers (corrigées dans la passe)** : fuites du handle
+sqlite3 dans les constructeurs qui lèvent (`DbLogger`, `SqliteStateStore` —
+LeakSanitizer) ; data race `MiniHttpServer::stop()/loop_()` (TSan) ;
+`-Wno-tsan` requis pour `atomic_thread_fence` de Boost (faux positif compile).
+
+**Nouveaux verrous de gouvernance** :
+- `LiveTradingStaysDisapprovedUntilEdgeDoD` : `liveTradingApproved` ne peut
+  passer à true sans re-figer ce test (décision utilisateur + checklist
+  RUNBOOK) — le « paper tant que pas d'edge » est un mécanisme.
+- Les fichiers de règles (`prompt-*.md`, DoD, Live-safety rules de CLAUDE.md)
+  ne sont plus auto-amendables : proposition de diff → décision utilisateur.
+- Politique de risque = bloc `killSwitch` de prod.json, backtesté par le
+  golden ; RUNBOOK §6 la documente en clair.
+
+**Reste hors périmètre** (assumé) : dashboard React ; mock SMTP (email testé
+en échec seulement) ; branch protection GitHub (réglage du dépôt, côté
+utilisateur) ; épinglage des versions apt ; ré-auth AUTOMATIQUE du Gateway
+(la détection + alerte existent, la ré-auth reste manuelle — navigateur).
 
 ### Sprint Sécurité-Réel, 2e passe — corrections restantes de l'audit (2026-07-02)
 
