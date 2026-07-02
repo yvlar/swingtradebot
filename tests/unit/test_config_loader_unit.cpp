@@ -45,7 +45,8 @@ protected:
                 "maxDailyDrawdownPct": 0.05,
                 "maxConsecutiveLosses": 4,
                 "maxOrdersPerDay": 10
-            }
+            },
+            "liveTradingApproved": false
         })";
     }
 
@@ -156,6 +157,29 @@ TEST_F(ConfigLoaderUnit, KillSwitchBoundViolationThrows) {
               "\"maxDailyDrawdownPct\": 1.5");
     write(j);
     expectThrowContaining("maxDailyDrawdownPct");
+}
+
+// ── ProdSettings (A1) — réglages opérationnels, hors stratégie ──
+
+TEST_F(ConfigLoaderUnit, ProdSettingsLoadsFalse) {
+    write(validJson());                              // contient false
+    EXPECT_FALSE(loadProdSettingsJson(path_).liveTradingApproved);
+}
+
+TEST_F(ConfigLoaderUnit, ProdSettingsMissingFieldThrows) {
+    write(R"({"symbol": "QQQ"})");                   // liveTradingApproved absent
+    try {
+        loadProdSettingsJson(path_);
+        FAIL() << "aucune exception levée";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("liveTradingApproved"),
+                  std::string::npos);
+    }
+}
+
+TEST_F(ConfigLoaderUnit, ProdSettingsWrongTypeThrows) {
+    write(R"({"liveTradingApproved": "false"})");    // chaîne, pas booléen
+    EXPECT_THROW(loadProdSettingsJson(path_), std::runtime_error);
 }
 
 TEST_F(ConfigLoaderUnit, MalformedJsonThrows) {

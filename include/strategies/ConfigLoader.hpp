@@ -64,7 +64,38 @@ inline void borne(bool ok, const std::string& message) {
     if (!ok) throw std::runtime_error("Config : " + message);
 }
 
+// Ouvre et parse un fichier JSON — erreurs bruyantes (fichier/syntaxe)
+inline nlohmann::json parseJsonFile(const std::string& path) {
+    std::ifstream f(path);
+    if (!f.is_open())
+        throw std::runtime_error("Config prod introuvable : " + path);
+    try {
+        return nlohmann::json::parse(f);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Config prod malformée (" + path + ") : "
+                                 + e.what());
+    }
+}
+
 } // namespace configdetail
+
+// ─── ProdSettings — réglages OPÉRATIONNELS (hors stratégie) ──────────────────
+// Vivent dans le même config/prod.json mais ne traversent PAS le backtest :
+// un flag d'autorisation de live n'a aucun sens dans SwingConfig.
+struct ProdSettings {
+    // Gate mécanique du mode --live (A1) : tant que la DoD d'edge n'est pas
+    // atteinte (checklist pré-live du RUNBOOK), ce champ RESTE false — et un
+    // test d'intégration le verrouille. JAMAIS true par défaut.
+    bool liveTradingApproved = false;
+};
+
+inline ProdSettings loadProdSettingsJson(const std::string& path) {
+    using namespace configdetail;
+    auto j = parseJsonFile(path);
+    ProdSettings s;
+    s.liveTradingApproved = requireBool(j, "liveTradingApproved");
+    return s;
+}
 
 // Charge et VALIDE une SwingConfig depuis un fichier JSON.
 // Lève std::runtime_error (message français explicite) sur toute anomalie.
@@ -73,17 +104,7 @@ inline void borne(bool ok, const std::string& message) {
 inline SwingConfig loadSwingConfigJson(const std::string& path) {
     using namespace configdetail;
 
-    std::ifstream f(path);
-    if (!f.is_open())
-        throw std::runtime_error("Config prod introuvable : " + path);
-
-    nlohmann::json j;
-    try {
-        j = nlohmann::json::parse(f);
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Config prod malformée (" + path + ") : "
-                                 + e.what());
-    }
+    auto j = parseJsonFile(path);
 
     SwingConfig cfg;
     cfg.symbol                  = requireString(j, "symbol");

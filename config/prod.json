@@ -17,5 +17,6 @@
     "maxDailyDrawdownPct": 0.05,
     "maxConsecutiveLosses": 4,
     "maxOrdersPerDay": 10
-  }
+  },
+  "liveTradingApproved": false
 }
