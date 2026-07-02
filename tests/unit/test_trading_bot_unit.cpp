@@ -105,6 +105,25 @@ TEST(TradingBotUnit, InactiveAccountLogsExplicitErrorAndSubmitsNoOrder) {
     EXPECT_FALSE(MockLogger::contains(logger->warns(), "Cash insuffisant"));
 }
 
+// B3.2 : feed plus court que le lookback demandé → WARN explicite (le filtre
+// de régime SMA200 peut être incalculable → aucune entrée, il faut le voir)
+TEST(TradingBotUnit, ShortHistoryLogsWarn) {
+    auto feed     = std::make_shared<MockDataFeed>();
+    auto broker   = std::make_shared<MockBroker>();
+    auto strategy = std::make_shared<MockStrategy>();
+    auto logger   = std::make_shared<MockLogger>();
+    feed->setBars(BotHarness::barsEndingAt(420.0, "2024-03-01"));  // 60 barres
+    TradingBot bot(feed, broker, strategy,
+                   std::make_shared<RiskManager>(), logger);
+    RiskConfig cfg;
+    cfg.lookback = 230;                              // SMA200 → ~230 demandées
+    bot.setConfig(cfg);
+
+    bot.runOnce();
+
+    EXPECT_TRUE(MockLogger::contains(logger->warns(), "Historique incomplet"));
+}
+
 // Cas nominal : cash suffisant → l'achat part avec le sizing calculé (9 actions)
 TEST(TradingBotUnit, BuySignalWithSufficientCashSubmitsOrder) {
     BotHarness h(420.0, "2024-03-01");

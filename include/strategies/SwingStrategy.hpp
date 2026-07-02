@@ -119,6 +119,12 @@ namespace trading {
             const bool regimeUp = config_.smaTrendPeriod <= 1
                                   || (!smaVals.empty() && lastClose > smaVals[n-1]);
 
+            // Historique < smaTrendPeriod : régime INCONNU (pas « baissier »).
+            // Aucune entrée ne partira jamais — le HOLD final doit le dire
+            // explicitement (B3.2 : sinon le bot reste muet pour toujours).
+            const bool historiqueInsuffisant = config_.smaTrendPeriod > 1
+                && n < static_cast<size_t>(config_.smaTrendPeriod);
+
             // Détection du croisement
             // warmup=emaSlow : ignore les croisements pendant la convergence des EMA
             auto cross = CrossoverDetector::detect(emaFastVals, emaSlowVals,
@@ -181,6 +187,13 @@ namespace trading {
                                   std::to_string(config_.smaTrendPeriod) +
                                   " et > EMAs");
             }
+
+            if (historiqueInsuffisant)
+                return makeSignal(SignalType::HOLD, bars,
+                                  "Régime inconnu : historique insuffisant (" +
+                                  std::to_string(n) + "/" +
+                                  std::to_string(config_.smaTrendPeriod) +
+                                  " barres) — aucune entrée possible");
 
             return makeSignal(SignalType::HOLD, bars,
                               "RSI=" + std::to_string(static_cast<int>(lastRsi)) +

@@ -83,6 +83,14 @@ public:
             logger_->warn("Aucune barre reçue");
             return;
         }
+        // Feed plus court que demandé (B3.2) : le filtre de régime (SMA200)
+        // peut être incalculable → aucune entrée ne partira. Signalé chaque
+        // cycle, sinon le non-trade est indiscernable d'un marché sans signal.
+        if (bars.size() < static_cast<size_t>(riskCfg_.lookback)) {
+            logger_->warn("Historique incomplet : " + std::to_string(bars.size())
+                          + "/" + std::to_string(riskCfg_.lookback)
+                          + " barres reçues — le filtre de régime peut être incalculable");
+        }
 
         // 2. Génération du signal
         Signal signal = strategy_->evaluate(bars);
