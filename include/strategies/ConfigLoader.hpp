@@ -101,6 +101,18 @@ inline SwingConfig loadSwingConfigJson(const std::string& path) {
     cfg.rsiSellOnlyIfRegimeDown = requireBool  (j, "rsiSellOnlyIfRegimeDown");
     cfg.regimeReentry           = requireBool  (j, "regimeReentry");
 
+    // Garde-fous de coupure (C1) : objet REQUIS — le risque fait partie de la
+    // config validée, pas des défauts silencieux du binaire.
+    // Copie volontaire (objet minuscule) : gcc 13 émet un faux positif
+    // -Wdangling-reference sur une référence retournée par requireField.
+    const nlohmann::json ks = requireField(j, "killSwitch");
+    if (!ks.is_object())
+        throw std::runtime_error("Config : type invalide pour « killSwitch » "
+                                 "(objet attendu)");
+    cfg.killSwitch.maxDailyDrawdownPct  = requireDouble(ks, "maxDailyDrawdownPct");
+    cfg.killSwitch.maxConsecutiveLosses = requireInt   (ks, "maxConsecutiveLosses");
+    cfg.killSwitch.maxOrdersPerDay      = requireInt   (ks, "maxOrdersPerDay");
+
     borne(!cfg.symbol.empty(),          "« symbol » ne doit pas être vide");
     borne(cfg.emaFast   >= 1,           "« emaFast » doit être ≥ 1");
     borne(cfg.emaSlow   >= 1,           "« emaSlow » doit être ≥ 1");
@@ -119,6 +131,10 @@ inline SwingConfig loadSwingConfigJson(const std::string& path) {
           "« riskPerTradePct » doit être dans (0, 1)");
     borne(cfg.minHoldDays    >= 0,      "« minHoldDays » doit être ≥ 0");
     borne(cfg.smaTrendPeriod >= 0,      "« smaTrendPeriod » doit être ≥ 0");
+    // Kill-switch : ≤ 0 = garde-fou désactivé (légitime, cf. Models.hpp),
+    // mais un drawdown ≥ 100 % est forcément une faute de saisie.
+    borne(cfg.killSwitch.maxDailyDrawdownPct < 1.0,
+          "« killSwitch.maxDailyDrawdownPct » doit être < 1");
 
     return cfg;
 }
