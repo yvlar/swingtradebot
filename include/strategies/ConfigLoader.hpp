@@ -1,0 +1,126 @@
+#pragma once
+// ============================================================
+//  ConfigLoader.hpp — chargement STRICT de SwingConfig depuis
+//  un fichier JSON (item 9.1, E1/D21)
+//
+//  La config de production ne vit plus dans le C++ : elle est
+//  chargée depuis config/prod.json et VALIDÉE au démarrage.
+//  Philosophie : échec BRUYANT — champ manquant, type faux ou
+//  borne violée → std::runtime_error avec un message qui nomme
+//  le champ. Aucun défaut silencieux : les 14 champs de
+//  SwingConfig sont tous requis (tenir cette liste synchronisée
+//  avec SwingStrategy.hpp si un champ est ajouté).
+// ============================================================
+#include "strategies/SwingStrategy.hpp"
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <stdexcept>
+#include <string>
+
+namespace trading {
+
+namespace configdetail {
+
+inline const nlohmann::json& requireField(const nlohmann::json& j,
+                                          const std::string& key) {
+    if (!j.contains(key))
+        throw std::runtime_error("Config : champ manquant « " + key + " »");
+    return j.at(key);
+}
+
+inline int requireInt(const nlohmann::json& j, const std::string& key) {
+    const auto& v = requireField(j, key);
+    if (!v.is_number_integer())
+        throw std::runtime_error("Config : type invalide pour « " + key
+                                 + " » (entier attendu)");
+    return v.get<int>();
+}
+
+inline double requireDouble(const nlohmann::json& j, const std::string& key) {
+    const auto& v = requireField(j, key);
+    if (!v.is_number())        // un entier JSON est accepté là où un double l'est
+        throw std::runtime_error("Config : type invalide pour « " + key
+                                 + " » (nombre attendu)");
+    return v.get<double>();
+}
+
+inline bool requireBool(const nlohmann::json& j, const std::string& key) {
+    const auto& v = requireField(j, key);
+    if (!v.is_boolean())
+        throw std::runtime_error("Config : type invalide pour « " + key
+                                 + " » (booléen attendu)");
+    return v.get<bool>();
+}
+
+inline std::string requireString(const nlohmann::json& j, const std::string& key) {
+    const auto& v = requireField(j, key);
+    if (!v.is_string())
+        throw std::runtime_error("Config : type invalide pour « " + key
+                                 + " » (chaîne attendue)");
+    return v.get<std::string>();
+}
+
+inline void borne(bool ok, const std::string& message) {
+    if (!ok) throw std::runtime_error("Config : " + message);
+}
+
+} // namespace configdetail
+
+// Charge et VALIDE une SwingConfig depuis un fichier JSON.
+// Lève std::runtime_error (message français explicite) sur toute anomalie.
+// NB : takeProfitPct = 0 et rsiBuyMax ≥ 100 sont des valeurs « désactivé »
+// légitimes (items 8.2/8.3) — les bornes ne les rejettent pas.
+inline SwingConfig loadSwingConfigJson(const std::string& path) {
+    using namespace configdetail;
+
+    std::ifstream f(path);
+    if (!f.is_open())
+        throw std::runtime_error("Config prod introuvable : " + path);
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(f);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Config prod malformée (" + path + ") : "
+                                 + e.what());
+    }
+
+    SwingConfig cfg;
+    cfg.symbol                  = requireString(j, "symbol");
+    cfg.emaFast                 = requireInt   (j, "emaFast");
+    cfg.emaSlow                 = requireInt   (j, "emaSlow");
+    cfg.rsiPeriod               = requireInt   (j, "rsiPeriod");
+    cfg.rsiBuyMax               = requireDouble(j, "rsiBuyMax");
+    cfg.rsiSellMin              = requireDouble(j, "rsiSellMin");
+    cfg.stopLossPct             = requireDouble(j, "stopLossPct");
+    cfg.takeProfitPct           = requireDouble(j, "takeProfitPct");
+    cfg.trailingStopPct         = requireDouble(j, "trailingStopPct");
+    cfg.riskPerTradePct         = requireDouble(j, "riskPerTradePct");
+    cfg.minHoldDays             = requireInt   (j, "minHoldDays");
+    cfg.smaTrendPeriod          = requireInt   (j, "smaTrendPeriod");
+    cfg.rsiSellOnlyIfRegimeDown = requireBool  (j, "rsiSellOnlyIfRegimeDown");
+    cfg.regimeReentry           = requireBool  (j, "regimeReentry");
+
+    borne(!cfg.symbol.empty(),          "« symbol » ne doit pas être vide");
+    borne(cfg.emaFast   >= 1,           "« emaFast » doit être ≥ 1");
+    borne(cfg.emaSlow   >= 1,           "« emaSlow » doit être ≥ 1");
+    borne(cfg.emaFast < cfg.emaSlow,    "« emaFast » doit être < « emaSlow »");
+    borne(cfg.rsiPeriod >= 1,           "« rsiPeriod » doit être ≥ 1");
+    borne(cfg.rsiBuyMax > 0.0,          "« rsiBuyMax » doit être > 0");
+    borne(cfg.rsiSellMin >= 0.0 && cfg.rsiSellMin <= 100.0,
+          "« rsiSellMin » doit être dans [0, 100]");
+    borne(cfg.stopLossPct     >= 0.0 && cfg.stopLossPct     < 1.0,
+          "« stopLossPct » doit être dans [0, 1)");
+    borne(cfg.takeProfitPct   >= 0.0 && cfg.takeProfitPct   < 1.0,
+          "« takeProfitPct » doit être dans [0, 1)");
+    borne(cfg.trailingStopPct >= 0.0 && cfg.trailingStopPct < 1.0,
+          "« trailingStopPct » doit être dans [0, 1)");
+    borne(cfg.riskPerTradePct > 0.0 && cfg.riskPerTradePct < 1.0,
+          "« riskPerTradePct » doit être dans (0, 1)");
+    borne(cfg.minHoldDays    >= 0,      "« minHoldDays » doit être ≥ 0");
+    borne(cfg.smaTrendPeriod >= 0,      "« smaTrendPeriod » doit être ≥ 0");
+
+    return cfg;
+}
+
+} // namespace trading

@@ -41,6 +41,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 COPY --from=builder /app/build/swing_bot .
+# Config prod externalisée (item 9.1) : le chemin est figé à la compilation
+# (/app/config/prod.json) — sans ce fichier, le binaire refuse de démarrer.
+COPY --from=builder /app/config/prod.json /app/config/prod.json
 COPY --from=builder /vcpkg/installed/x64-linux/lib/*.so* /usr/local/lib/
 RUN ldconfig
 

@@ -1,5 +1,13 @@
 #pragma once
 #include "strategies/SwingStrategy.hpp"
+#include "strategies/ConfigLoader.hpp"
+
+// Chemin du JSON de prod, injecté par CMake (target_compile_definitions).
+// Compile-time exprès : une cible qui consomme prodSwingConfig() sans
+// déclarer quel fichier elle charge est une erreur de build, pas de runtime.
+#ifndef SWINGBOT_PROD_CONFIG_JSON
+#error "SWINGBOT_PROD_CONFIG_JSON doit être défini par la cible CMake (config/prod.json)"
+#endif
 
 namespace trading {
 
@@ -22,9 +30,14 @@ namespace trading {
 // les paramètres par DÉFAUT, désormais la meilleure config mesurée honnêtement.
 // La refonte de la stratégie (capter la tendance, battre le B&H) reste l'objet
 // du Sprint 8 ; ici on ne fait que ne plus trader des paramètres dominés.
+//
+// ITEM 9.1 (clos) : la config prod est désormais EXTERNALISÉE — chargée et
+// validée depuis config/prod.json (ConfigLoader.hpp, échec bruyant). Le golden
+// « config prod » charge LE MÊME fichier que main_ibkr : aucune config non
+// validée ne peut partir en live, et aucune divergence fichier ↔ golden n'est
+// possible. Le JSON actuel reproduit la config par défaut validée au Sprint 7.
 inline SwingConfig prodSwingConfig() {
-    // La config prod EST la config par défaut validée (symbol "QQQ" par défaut).
-    return SwingConfig{};
+    return loadSwingConfigJson(SWINGBOT_PROD_CONFIG_JSON);
 }
 
 } // namespace trading

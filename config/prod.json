@@ -1,0 +1,16 @@
+{
+  "symbol": "QQQ",
+  "emaFast": 9,
+  "emaSlow": 21,
+  "rsiPeriod": 14,
+  "rsiBuyMax": 100.0,
+  "rsiSellMin": 70.0,
+  "stopLossPct": 0.05,
+  "takeProfitPct": 0.0,
+  "trailingStopPct": 0.03,
+  "riskPerTradePct": 0.02,
+  "minHoldDays": 3,
+  "smaTrendPeriod": 200,
+  "rsiSellOnlyIfRegimeDown": true,
+  "regimeReentry": true
+}

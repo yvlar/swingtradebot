@@ -120,9 +120,16 @@ int main(int argc, char* argv[]) {
     }
 
     // ── Configuration de la stratégie ─────────────────────────
-    // Source unique : ProdConfig.hpp — la même config est backtestée par le
-    // golden « config prod » (D21). Ne pas redéfinir les paramètres ici.
-    trading::SwingConfig cfg = trading::prodSwingConfig();
+    // Source unique : config/prod.json chargé et VALIDÉ par ProdConfig.hpp
+    // (item 9.1) — le même fichier est backtesté par le golden « config
+    // prod » (D21). Ne pas redéfinir les paramètres ici.
+    trading::SwingConfig cfg;
+    try {
+        cfg = trading::prodSwingConfig();
+    } catch (const std::exception& e) {
+        std::cerr << "❌ Config de production invalide : " << e.what() << "\n";
+        return 1;
+    }
 
     // ── Infrastructure ────────────────────────────────────────
     BotState botState;
