@@ -83,6 +83,63 @@ TEST_F(StateStoreUnit, SymbolsAreIsolated) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Champs B1/M2 — stopArmed et lastExitDate persistés
+// ════════════════════════════════════════════════════════════
+
+TEST_F(StateStoreUnit, RoundTripPersistsStopArmedAndLastExitDate) {
+    SqliteStateStore store(path_);
+    BotState s = sampleState();
+    s.stopArmed    = true;
+    s.lastExitDate = "2024-03-05";
+    ASSERT_TRUE(store.save("QQQ", s));
+
+    auto loaded = store.load("QQQ");
+    ASSERT_TRUE(loaded.has_value());
+    EXPECT_TRUE(loaded->stopArmed);
+    EXPECT_EQ(loaded->lastExitDate, "2024-03-05");
+}
+
+// Base créée AVANT B1/M2 (schéma 7 colonnes, sans stop_armed/last_exit_date) :
+// l'ouverture migre le schéma, la ligne existante se lit avec les défauts,
+// et save/load fonctionnent avec les nouveaux champs.
+TEST_F(StateStoreUnit, OpensAndMigratesLegacySchema) {
+    {
+        sqlite3* raw = nullptr;
+        ASSERT_EQ(sqlite3_open(path_.c_str(), &raw), SQLITE_OK);
+        ASSERT_EQ(sqlite3_exec(raw, R"(
+            CREATE TABLE bot_state (
+                symbol        TEXT PRIMARY KEY,
+                in_position   INTEGER NOT NULL,
+                buy_price     REAL    NOT NULL,
+                peak_price    REAL    NOT NULL,
+                hold_days     INTEGER NOT NULL,
+                last_bar_date TEXT    NOT NULL,
+                updated_at    TEXT    NOT NULL
+            );
+            INSERT INTO bot_state VALUES
+                ('QQQ', 1, 400.0, 405.0, 2, '2024-03-04', '2024-03-04');
+        )", nullptr, nullptr, nullptr), SQLITE_OK);
+        sqlite3_close(raw);
+    }
+
+    SqliteStateStore store(path_);           // migration au constructeur
+    auto legacy = store.load("QQQ");
+    ASSERT_TRUE(legacy.has_value());
+    EXPECT_TRUE(legacy->inPosition);
+    EXPECT_FALSE(legacy->stopArmed);         // défaut de migration
+    EXPECT_EQ(legacy->lastExitDate, "");
+
+    BotState s = *legacy;
+    s.stopArmed    = true;
+    s.lastExitDate = "2024-03-06";
+    ASSERT_TRUE(store.save("QQQ", s));
+    auto reloaded = store.load("QQQ");
+    ASSERT_TRUE(reloaded.has_value());
+    EXPECT_TRUE(reloaded->stopArmed);
+    EXPECT_EQ(reloaded->lastExitDate, "2024-03-06");
+}
+
+// ════════════════════════════════════════════════════════════
 //  Branches d'erreur SQLite — fichier corrompu, schéma en conflit
 // ════════════════════════════════════════════════════════════
 

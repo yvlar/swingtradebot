@@ -35,9 +35,16 @@ public:
                 peak_price    REAL    NOT NULL,
                 hold_days     INTEGER NOT NULL,
                 last_bar_date TEXT    NOT NULL,
-                updated_at    TEXT    NOT NULL
+                updated_at    TEXT    NOT NULL,
+                stop_armed     INTEGER NOT NULL DEFAULT 0,
+                last_exit_date TEXT    NOT NULL DEFAULT ''
             );
         )");
+        // Migration d'un schéma antérieur (base créée avant B1/M2) : les
+        // ALTER échouent avec « duplicate column name » sur une base déjà à
+        // jour — erreur avalée exprès, tout autre échec lèverait au 1er save.
+        execIgnore_("ALTER TABLE bot_state ADD COLUMN stop_armed INTEGER NOT NULL DEFAULT 0;");
+        execIgnore_("ALTER TABLE bot_state ADD COLUMN last_exit_date TEXT NOT NULL DEFAULT '';");
     }
 
     ~SqliteStateStore() override { if (db_) sqlite3_close(db_); }
@@ -48,7 +55,8 @@ public:
     std::optional<BotState> load(const std::string& symbol) override {
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql =
-            "SELECT in_position, buy_price, peak_price, hold_days, last_bar_date"
+            "SELECT in_position, buy_price, peak_price, hold_days, last_bar_date,"
+            " stop_armed, last_exit_date"
             " FROM bot_state WHERE symbol=?;";
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
@@ -65,6 +73,9 @@ public:
             s.holdDays   = sqlite3_column_int(stmt, 3);
             const unsigned char* d = sqlite3_column_text(stmt, 4);
             s.lastBarDate = d ? reinterpret_cast<const char*>(d) : "";
+            s.stopArmed   = sqlite3_column_int(stmt, 5) != 0;
+            const unsigned char* x = sqlite3_column_text(stmt, 6);
+            s.lastExitDate = x ? reinterpret_cast<const char*>(x) : "";
             result = s;
         }
         sqlite3_finalize(stmt);
@@ -75,15 +86,17 @@ public:
         std::lock_guard<std::mutex> lk(mtx_);
         const char* sql =
             "INSERT INTO bot_state(symbol, in_position, buy_price, peak_price,"
-            " hold_days, last_bar_date, updated_at)"
-            " VALUES(?,?,?,?,?,?,datetime('now'))"
+            " hold_days, last_bar_date, stop_armed, last_exit_date, updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,datetime('now'))"
             " ON CONFLICT(symbol) DO UPDATE SET"
-            "  in_position   = excluded.in_position,"
-            "  buy_price     = excluded.buy_price,"
-            "  peak_price    = excluded.peak_price,"
-            "  hold_days     = excluded.hold_days,"
-            "  last_bar_date = excluded.last_bar_date,"
-            "  updated_at    = excluded.updated_at;";
+            "  in_position    = excluded.in_position,"
+            "  buy_price      = excluded.buy_price,"
+            "  peak_price     = excluded.peak_price,"
+            "  hold_days      = excluded.hold_days,"
+            "  last_bar_date  = excluded.last_bar_date,"
+            "  stop_armed     = excluded.stop_armed,"
+            "  last_exit_date = excluded.last_exit_date,"
+            "  updated_at     = excluded.updated_at;";
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK)
             return false;
@@ -94,6 +107,8 @@ public:
         sqlite3_bind_double(stmt, 4, state.peakPrice);
         sqlite3_bind_int   (stmt, 5, state.holdDays);
         sqlite3_bind_text  (stmt, 6, state.lastBarDate.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int   (stmt, 7, state.stopArmed ? 1 : 0);
+        sqlite3_bind_text  (stmt, 8, state.lastExitDate.c_str(), -1, SQLITE_TRANSIENT);
 
         bool ok = sqlite3_step(stmt) == SQLITE_DONE;
         sqlite3_finalize(stmt);
@@ -111,6 +126,14 @@ private:
             sqlite3_free(err);
             throw std::runtime_error("SqliteStateStore exec: " + msg);
         }
+    }
+
+    // Variante tolérante pour les migrations : l'échec est avalé (colonne
+    // déjà présente) — ne PAS l'utiliser pour autre chose que des ALTER.
+    void execIgnore_(const std::string& sql) {
+        char* err = nullptr;
+        sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &err);
+        sqlite3_free(err);
     }
 };
 
