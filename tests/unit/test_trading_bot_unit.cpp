@@ -198,6 +198,42 @@ TEST(TradingBotUnit, MarketClosedIsHealthy) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  A6 (passe 3) — le déclenchement du kill-switch doit être
+//  NOTIFIÉ (haltObserver) : un garde-fou de risque qui s'arme
+//  sans alerter l'opérateur est invisible en prod.
+// ════════════════════════════════════════════════════════════
+
+// Drawdown journalier > 5 % → observer appelé UNE fois (dédup par raison)
+TEST(TradingBotUnit, KillSwitchTriggersHaltObserverOnceWithDedup) {
+    BotHarness h(420.0, "2024-03-01");
+    std::vector<std::string> halts;
+    h.bot->setHaltObserver([&](const std::string& r) { halts.push_back(r); });
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);   // pas de position prise
+
+    h.bot->runOnce();                       // fixe dayStartEquity = 10 000
+    ASSERT_TRUE(halts.empty());
+
+    h.broker->setAccount({9'000.0, 9'000.0, "ACTIVE"}); // -10 % intra-journée
+    h.bot->runOnce();                       // même date → kill-switch
+    ASSERT_EQ(halts.size(), 1u);
+    EXPECT_NE(halts[0].find("drawdown"), std::string::npos);
+
+    h.bot->runOnce();                       // même raison → pas de re-notification
+    EXPECT_EQ(halts.size(), 1u);
+}
+
+// Sans observer branché : aucun crash (backtest, tests existants)
+TEST(TradingBotUnit, KillSwitchWithoutObserverDoesNotCrash) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::REJECTED);
+    h.bot->runOnce();
+    h.broker->setAccount({9'000.0, 9'000.0, "ACTIVE"});
+    EXPECT_NO_THROW(h.bot->runOnce());
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 1 item 2 — le statut d'ordre doit être vérifié
 // ════════════════════════════════════════════════════════════
 

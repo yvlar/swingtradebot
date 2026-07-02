@@ -121,6 +121,7 @@ private:
             killSwitchDay_  = bars.back().date;
             ordersToday_    = 0;
             dayStartEquity_ = broker_->getAccount().equity;
+            lastHaltNotified_.clear();   // nouvelle séance : ré-alerter si rechute (A6)
         }
 
         // 3. Gestion de la position ouverte
@@ -236,7 +237,13 @@ private:
                     riskCfg_.killSwitch, dayStartEquity_, account.equity,
                     consecutiveLosses_, ordersToday_)) {
                 logger_->warn("🛑 Kill-switch (" + *halt + ") — entrée bloquée");
-                return true;    // garde-fou assumé (alerté via haltObserver), pas une panne
+                // Notification opérateur (A6), dédupliquée par raison : la
+                // boucle 60 min re-frapperait sinon l'alerte à chaque cycle.
+                if (haltObserver_ && *halt != lastHaltNotified_) {
+                    haltObserver_(*halt);
+                    lastHaltNotified_ = *halt;
+                }
+                return true;    // garde-fou assumé (alerté ci-dessus), pas une panne
             }
 
             int shares = riskManager_->positionSize(
@@ -328,6 +335,13 @@ public:
         tradeObserver_ = std::move(obs);
     }
 
+    // Observateur du kill-switch (A6) : notifié avec la raison quand un
+    // garde-fou bloque les entrées — une fois par raison et par séance
+    // (dédup). Le composition root y branche l'alerte opérateur.
+    void setHaltObserver(std::function<void(const std::string&)> obs) {
+        haltObserver_ = std::move(obs);
+    }
+
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
     std::shared_ptr<IBroker>      broker_;
@@ -343,6 +357,8 @@ private:
     bool lastCycleHealthy_ = false;   // pessimiste avant le 1er cycle (A2)
     std::function<void(const std::string&)> exitObserver_;
     std::function<void(const TradeFill&)>   tradeObserver_;
+    std::function<void(const std::string&)> haltObserver_;
+    std::string lastHaltNotified_;   // dédup des notifications kill-switch (A6)
 
     // ── Compteurs du kill-switch (item 18) ────────────────────────────────────
     // Réinitialisés au changement de jour de bourse (sauf la série de pertes

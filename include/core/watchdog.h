@@ -92,6 +92,14 @@ public:
         alert_cb_ = std::move(cb);
     }
 
+    // Envoi IMMÉDIAT d'une alerte, hors détection de silence (A6 : kill-switch
+    // déclenché, événement critique). Thread-safe : dispatch_alerts_ ne lit
+    // que cfg_ (const après construction) et alert_cb_ est posé avant start().
+    void alertNow(const std::string& msg) {
+        if (alert_cb_) alert_cb_(msg);
+        dispatch_alerts_(msg);
+    }
+
 private:
     AlertConfig   cfg_;
     BotState&     state_;

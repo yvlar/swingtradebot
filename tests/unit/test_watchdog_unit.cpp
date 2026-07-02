@@ -39,6 +39,17 @@ TEST_F(WatchdogUnit, DefaultTimingsCoherent) {
     EXPECT_GT(c.max_silence_sec, c.heartbeat_interval_sec);
 }
 
+// ── alertNow (A6) — envoi immédiat hors détection de silence ──
+TEST_F(WatchdogUnit, AlertNowTriggersCallbackWithoutStart) {
+    Watchdog wd(cfg_, state_);
+    std::string received;
+    wd.on_alert([&](const std::string& m) { received = m; });
+
+    wd.alertNow("KILL-SWITCH : drawdown journalier");
+
+    EXPECT_EQ(received, "KILL-SWITCH : drawdown journalier");
+}
+
 // ── Heartbeat ─────────────────────────────────────────────
 TEST_F(WatchdogUnit, HeartbeatNoThrow) {
     Watchdog wd(cfg_, state_);
