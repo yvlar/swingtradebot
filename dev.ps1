@@ -16,9 +16,8 @@ param([string]$cmd = "help", [string]$arg = "")
 $COMPOSE = "docker compose -f docker-compose.dev.yml"
 $EXEC    = "docker exec swing_bot_dev"
 
-# Commande cmake commune (retire CMP0167 comme dans ton Dockerfile)
+# Commande cmake commune
 $CMAKE_CONFIGURE = @"
-sed -i '/cmake_policy(SET CMP0167/d' CMakeLists.txt 2>/dev/null; \
 cmake -B build \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \

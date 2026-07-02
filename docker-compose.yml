@@ -8,19 +8,20 @@ services:
     build: .
     container_name: swing_bot
     ports:
-      - "9001:9001"       # WebSocket → dashboard React
+      - "9001:9001"       # WebSocket → dashboard (front à venir)
     volumes:
-      - ./data:/app/data  # swingbot.db persisté sur l'hôte
-    environment:
-      - BOT_MODE=paper
-      - BOT_DRY_RUN=true
+      - ./data:/app/data  # les DB (data/swingbot_ibkr*.db) persistées sur l'hôte
     restart: unless-stopped
 
   # ── Tests (s'arrête après exécution) ──────────────────
+  # Le stage `builder` n'existe que dans Dockerfile.multistage — le
+  # Dockerfile par défaut est monolithique (docker compose --profile test
+  # échouait avec « target builder not found »).
   unit_tests:
     build:
       context: .
-      target: builder     # utilise le stage intermédiaire
+      dockerfile: Dockerfile.multistage
+      target: builder     # stage intermédiaire avec les binaires de test
     container_name: unit_tests
     command: ./build/unit_tests --gtest_color=yes
     profiles: ["test"]    # lancé seulement avec --profile test
@@ -28,6 +29,7 @@ services:
   integration_tests:
     build:
       context: .
+      dockerfile: Dockerfile.multistage
       target: builder
     container_name: integration_tests
     command: ./build/integration_tests --gtest_color=yes

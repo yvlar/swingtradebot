@@ -103,6 +103,10 @@ struct BotState {
     double peakPrice  = 0.0;
     int    holdDays   = 0;          // jours de BOURSE depuis l'entrée (pas cycles)
     std::string lastBarDate;        // date de la dernière barre comptée
+    // Champs ajoutés EN FIN de struct : l'ordre ci-dessus est figé par les
+    // initialisations agrégat existantes (tests, preload des mocks).
+    bool   stopArmed  = false;      // stop résident déposé chez le broker pour CETTE position (B1)
+    std::string lastExitDate;       // dernier jour de bourse avec une sortie — cooldown de ré-entrée (M2)
 };
 
 } // namespace trading

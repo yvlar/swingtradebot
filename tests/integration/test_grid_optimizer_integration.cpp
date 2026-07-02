@@ -115,17 +115,19 @@ TEST(GridOptimizerIntegration, SmallGridProducesSensitivityMapInOos) {
 // adaptatif ATR : ne s'ouvre que si trailingStopPct est l'axe le plus
 // sensible).
 //
-// VERDICT MESURÉ (figé) — PREMIER CANDIDAT D'EDGE du projet :
-//   - le filtre alpha > 0 PASSE : plateau (emaFast=9, smaT=250, trail=0,05),
-//     Sharpe OOS moyen 1,219, alpha OOS moyen +0,097 pt. C'est MARGINAL
-//     (+0,10 pt vs B&H) et entaché d'un biais de sélection (meilleur de 18
-//     combos jugés sur les MÊMES fenêtres OOS) : la sélection de plateau
-//     l'atténue, ne l'élimine pas. « Retenir » = décision utilisateur +
-//     re-déroulement de la DoD complète — PAS une adoption automatique.
-//   - axe le plus sensible : smaTrendPeriod (0,244) devant trailingStopPct
-//     (0,210) et emaFast (0,072) → le GATE 8b.4 est FERMÉ à la lettre
-//     (trailing n'est pas strictement premier), mais l'écart est modéré
-//     (~16 %) — arbitrage consigné au sprint.
+// VERDICT MESURÉ (re-figé le 2026-07-02, B2 — exécution à l'open i+1) :
+//   - le CANDIDAT D'EDGE SURVIT à la correction du look-ahead : le filtre
+//     alpha > 0 PASSE toujours, et le plateau se renforce même — (emaFast=9,
+//     smaT=250, trail=0,03), Sharpe OOS moyen 1,267, alpha OOS moyen
+//     +0,231 pt (vs +0,097 avant correction). Toujours MARGINAL et entaché
+//     du même biais de sélection (meilleur de 18 combos jugés sur les MÊMES
+//     fenêtres OOS) : « retenir » = décision utilisateur + re-déroulement de
+//     la DoD complète — PAS une adoption automatique.
+//   - INVERSION vs l'ancien verdict : le trailing retenu passe de 0,05 à
+//     0,03, et l'axe le plus sensible devient trailingStopPct (0,266) devant
+//     smaTrendPeriod (0,194) et emaFast (0,105) → le GATE 8b.4 (trailing
+//     adaptatif ATR) s'OUVRE désormais à la lettre. Historique pré-B2 :
+//     plateau (9, 250, 0,05), metric 1,219, alpha +0,097, axe smaT (0,244).
 TEST(GridOptimizerIntegration, V2ChainExtendedGridOosVerdictIsLocked) {
     GridOptimizer opt(
         /*emaFast   */ {9, 13},
@@ -167,8 +169,8 @@ TEST(GridOptimizerIntegration, V2ChainExtendedGridOosVerdictIsLocked) {
     EXPECT_TRUE(sel.passedAlphaFilter);
     EXPECT_EQ(sel.point.cfg.emaFast, 9);
     EXPECT_EQ(sel.point.cfg.smaTrendPeriod, 250);
-    EXPECT_NEAR(sel.point.cfg.trailingStopPct, 0.05, 1e-9);
-    EXPECT_NEAR(sel.point.score.metric, 1.2193, 1e-2);   // Sharpe OOS moyen
-    EXPECT_NEAR(sel.point.score.alpha,  0.0971, 1e-2);   // alpha OOS moyen
-    EXPECT_EQ(plusSensible, 6u);   // smaTrendPeriod → gate 8b.4 FERMÉ
+    EXPECT_NEAR(sel.point.cfg.trailingStopPct, 0.03, 1e-9);
+    EXPECT_NEAR(sel.point.score.metric, 1.2674, 1e-2);   // Sharpe OOS moyen
+    EXPECT_NEAR(sel.point.score.alpha,  0.2312, 1e-2);   // alpha OOS moyen
+    EXPECT_EQ(plusSensible, 7u);   // trailingStopPct → gate 8b.4 OUVERT (B2)
 }

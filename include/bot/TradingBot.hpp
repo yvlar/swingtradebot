@@ -83,6 +83,14 @@ public:
             logger_->warn("Aucune barre reçue");
             return;
         }
+        // Feed plus court que demandé (B3.2) : le filtre de régime (SMA200)
+        // peut être incalculable → aucune entrée ne partira. Signalé chaque
+        // cycle, sinon le non-trade est indiscernable d'un marché sans signal.
+        if (bars.size() < static_cast<size_t>(riskCfg_.lookback)) {
+            logger_->warn("Historique incomplet : " + std::to_string(bars.size())
+                          + "/" + std::to_string(riskCfg_.lookback)
+                          + " barres reçues — le filtre de régime peut être incalculable");
+        }
 
         // 2. Génération du signal
         Signal signal = strategy_->evaluate(bars);
@@ -120,6 +128,10 @@ public:
         reconcilePosition_(pos, price, bars.back().date);
 
         if (state_.inPosition && pos.has_value()) {
+            // Filet B1 : si le stop résident n'a pas pu être déposé (échec
+            // réseau, adoption ancienne), on retente à chaque cycle.
+            armResidentStopIfNeeded_(pos->shares, state_.buyPrice);
+
             // holdDays = jours de bourse réels : +1 seulement quand la DATE de
             // la dernière barre change (la boucle prod tourne toutes les 60 min)
             bool dirty = false;
@@ -168,7 +180,12 @@ public:
                     // Annule le stop résident : la sortie logicielle a déjà
                     // vendu — pas de stop orphelin (item 19, réduit D14)
                     broker_->cancelStopLoss(riskCfg_.symbol);
-                    state_ = BotState{};  // reset
+                    // Reset + cooldown (M2) : pas de ré-entrée le même jour
+                    // de bourse (cycle 60 min : sortie 10h30 → rachat 11h30
+                    // sinon, churn/wash-trades)
+                    BotState fresh;
+                    fresh.lastExitDate = bars.back().date;
+                    state_ = fresh;
                     saveState_();
                 } else {
                     logger_->error("Ordre de vente non exécuté (" + orderStatusStr(order)
@@ -179,7 +196,25 @@ public:
 
         // 4. Entrée en position
         else if (!state_.inPosition && signal.isBuy()) {
+            // Cooldown de ré-entrée (M2) : une sortie a déjà eu lieu ce jour
+            // de bourse — on ne rachète pas avant la barre suivante.
+            if (!state_.lastExitDate.empty()
+                && state_.lastExitDate == bars.back().date) {
+                logger_->info("Ré-entrée bloquée (cooldown) : sortie déjà "
+                              "exécutée le " + state_.lastExitDate);
+                return;
+            }
+
             auto account = broker_->getAccount();
+
+            // Compte non ACTIF (panne, résumé incomplet…) : la cause réelle
+            // doit être visible — sans ce garde, on tombait dans « Cash
+            // insuffisant » (cash=0), diagnostic trompeur en prod.
+            if (account.status != "ACTIVE") {
+                logger_->error("Compte broker non ACTIF (status=" + account.status
+                               + ") — entrée bloquée");
+                return;
+            }
 
             // Kill-switch (item 18) : si un garde-fou est franchi, on ne prend
             // AUCUNE nouvelle position. Les positions déjà ouvertes sont gérées
@@ -227,8 +262,7 @@ public:
                 // Stop résident côté broker en COMPLÉMENT du stop logiciel
                 // (item 19, décision « doubler ») : protège la position même
                 // si le bot est hors-ligne. No-op sur PaperBroker/backtest.
-                broker_->submitStopLoss(riskCfg_.symbol, fillQty,
-                                        fillPrice * (1.0 - riskCfg_.stopLossPct));
+                armResidentStopIfNeeded_(fillQty, fillPrice);
             } else if (order.has_value() && order->status == OrderStatus::PENDING) {
                 logger_->warn("Ordre d'achat en attente d'exécution — "
                               "réconciliation au prochain cycle");
@@ -312,7 +346,15 @@ private:
         if (state_.inPosition && !pos.has_value()) {
             logger_->warn("Position absente chez le broker (fermée hors bot ?) — "
                           "réinitialisation de l'état");
-            state_ = BotState{};
+            // Le stop résident éventuel ne protège plus rien : l'annuler,
+            // sinon un ordre orphelin peut se déclencher après coup (B1).
+            // No-op si aucun stop n'est suivi côté broker.
+            broker_->cancelStopLoss(riskCfg_.symbol);
+            // Sortie exécutée hors bot ce jour → même cooldown de ré-entrée
+            // que pour une sortie logicielle (M2)
+            BotState fresh;
+            fresh.lastExitDate = barDate;
+            state_ = fresh;
             saveState_();
         } else if (!state_.inPosition && pos.has_value()) {
             double basis = pos->avgPrice > 0 ? pos->avgPrice : price;
@@ -326,6 +368,30 @@ private:
                                       // les stops (prioritaires) sont actifs immédiatement
             state_.lastBarDate = barDate;
             saveState_();
+            // B1 : une position adoptée (ordre PENDING exécuté entre deux
+            // cycles, restart…) doit être protégée comme une entrée normale —
+            // c'était LE trou : la réconciliation n'armait jamais le stop.
+            armResidentStopIfNeeded_(pos->shares, basis);
+        }
+    }
+
+    // ── Stop résident (B1) — armement idempotent ──────────────────────────────
+    // Dépose le stop broker si nécessaire. state_.stopArmed (persisté) garantit
+    // qu'on ne dépose JAMAIS deux stops pour la même position ; un échec de
+    // dépôt laisse stopArmed=false → nouvel essai au cycle suivant (filet).
+    void armResidentStopIfNeeded_(int qty, double basisPrice) {
+        if (state_.stopArmed || qty <= 0 || basisPrice <= 0) return;
+        double stopPrice = basisPrice * (1.0 - riskCfg_.stopLossPct);
+        auto stop = broker_->submitStopLoss(riskCfg_.symbol, qty, stopPrice);
+        if (stop.has_value()) {
+            state_.stopArmed = true;
+            saveState_();
+            logger_->info("Stop résident armé │ " + std::to_string(qty) +
+                          " parts @ $" + std::to_string(static_cast<int>(stopPrice)));
+        } else {
+            // Broker sans support (défaut no-op Paper/Alpaca) ou échec réseau :
+            // en debug pour ne pas polluer chaque cycle des brokers no-op.
+            logger_->debug("Stop résident non armé — nouvel essai au prochain cycle");
         }
     }
 

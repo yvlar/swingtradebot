@@ -193,6 +193,30 @@ EXPECT_NE(SwingStrategy::create(cfg)->evaluate(bullish_cross_at_last(40)).type,
 SignalType::BUY);
 }
 
+// B3.2 : historique < smaTrendPeriod → le HOLD doit DIRE pourquoi (« régime
+// inconnu, N/200 barres »), pas la raison générique « RSI=… ». Sans cela, un
+// feed trop court laissait le bot en HOLD éternel sans diagnostic possible.
+TEST(SwingStrategyUnit, InsufficientHistoryHoldReasonIsExplicit) {
+SwingConfig cfg;                     // smaTrendPeriod = 200 par défaut
+std::vector<Bar> bars;
+for (int i = 0; i < 60; ++i)         // baisse douce : RSI bas, aucun signal
+bars.push_back(make_bar(i, 200.0 - i * 0.1));
+auto sig = SwingStrategy::create(cfg)->evaluate(bars);
+EXPECT_EQ(sig.type, SignalType::HOLD);
+EXPECT_NE(sig.reason.find("historique insuffisant"), std::string::npos)
+    << "raison réelle : " << sig.reason;
+EXPECT_NE(sig.reason.find("60/200"), std::string::npos)
+    << "raison réelle : " << sig.reason;
+}
+
+// La garde d'historique ne doit JAMAIS bloquer une sortie : la SMA de fond ne
+// gate que les achats (une position ouverte doit toujours pouvoir se vendre).
+TEST(SwingStrategyUnit, SellStillFiresWithInsufficientSmaHistory) {
+SwingConfig cfg;                     // smaTrendPeriod = 200 > 60 barres
+EXPECT_EQ(SwingStrategy::create(cfg)->evaluate(strong_uptrend(60)).type,
+SignalType::SELL);                   // RSI > 70, régime non confirmé → vente RSI
+}
+
 // rsiSellMin très bas → SELL rapide
 TEST(SwingStrategyUnit, LowRsiSellMinTriggersSellEarly) {
 SwingConfig cfg; cfg.rsiSellMin = 30.0;

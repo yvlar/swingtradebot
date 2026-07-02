@@ -85,6 +85,45 @@ TEST(TradingBotUnit, InsufficientCashSubmitsNoOrder) {
     EXPECT_FALSE(h.bot->state().inPosition);
 }
 
+// Compte non ACTIF (ex : résumé IBKR incomplet → INACTIVE) : aucune entrée,
+// et la cause est signalée en ERROR — pas le trompeur « Cash insuffisant »
+TEST(TradingBotUnit, InactiveAccountLogsExplicitErrorAndSubmitsNoOrder) {
+    auto feed     = std::make_shared<MockDataFeed>();
+    auto broker   = std::make_shared<MockBroker>();
+    auto strategy = std::make_shared<MockStrategy>();
+    auto logger   = std::make_shared<MockLogger>();
+    feed->setBars(BotHarness::barsEndingAt(420.0, "2024-03-01"));
+    broker->setAccount({0.0, 0.0, "INACTIVE"});
+    strategy->setSignal(SignalType::BUY);
+    TradingBot bot(feed, broker, strategy,
+                   std::make_shared<RiskManager>(), logger);
+
+    bot.runOnce();
+
+    EXPECT_EQ(broker->buyCount(), 0);
+    EXPECT_TRUE(MockLogger::contains(logger->errors(), "non ACTIF"));
+    EXPECT_FALSE(MockLogger::contains(logger->warns(), "Cash insuffisant"));
+}
+
+// B3.2 : feed plus court que le lookback demandé → WARN explicite (le filtre
+// de régime SMA200 peut être incalculable → aucune entrée, il faut le voir)
+TEST(TradingBotUnit, ShortHistoryLogsWarn) {
+    auto feed     = std::make_shared<MockDataFeed>();
+    auto broker   = std::make_shared<MockBroker>();
+    auto strategy = std::make_shared<MockStrategy>();
+    auto logger   = std::make_shared<MockLogger>();
+    feed->setBars(BotHarness::barsEndingAt(420.0, "2024-03-01"));  // 60 barres
+    TradingBot bot(feed, broker, strategy,
+                   std::make_shared<RiskManager>(), logger);
+    RiskConfig cfg;
+    cfg.lookback = 230;                              // SMA200 → ~230 demandées
+    bot.setConfig(cfg);
+
+    bot.runOnce();
+
+    EXPECT_TRUE(MockLogger::contains(logger->warns(), "Historique incomplet"));
+}
+
 // Cas nominal : cash suffisant → l'achat part avec le sizing calculé (9 actions)
 TEST(TradingBotUnit, BuySignalWithSufficientCashSubmitsOrder) {
     BotHarness h(420.0, "2024-03-01");
@@ -559,6 +598,186 @@ TEST(TradingBotUnit, NoResidentStopWhenBuyNotFilled) {
     h.bot->runOnce();
 
     EXPECT_TRUE(h.broker->stops().empty());
+}
+
+// ════════════════════════════════════════════════════════════
+//  B1 — le stop résident doit s'armer aussi à l'ADOPTION.
+//  BUG : submitStopLoss n'était appelé que dans la branche FILLED
+//  de l'achat. Or IBKR répond typiquement Submitted → PENDING → la
+//  position est adoptée par réconciliation au cycle suivant… sans
+//  stop. La protection « hors-ligne » était inopérante dans le cas
+//  nominal, et après chaque restart.
+// ════════════════════════════════════════════════════════════
+
+// Position broker adoptée après restart → stop résident armé sur le coût moyen
+TEST(TradingBotUnit, AdoptedPositionArmsResidentStop) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+
+    h.bot->runOnce();                            // adoption
+
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    EXPECT_EQ(h.broker->stops()[0].qty, 9);
+    EXPECT_DOUBLE_EQ(h.broker->stops()[0].stopPrice, 400.0 * 0.95);
+}
+
+// Achat PENDING (cas nominal IBKR) : pas de stop à la soumission, mais dès
+// que la position se matérialise chez le broker, le stop s'arme — UNE fois.
+TEST(TradingBotUnit, PendingBuyThenMaterializedPositionArmsStopOnce) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::PENDING);
+    h.bot->runOnce();                            // achat PENDING
+    ASSERT_TRUE(h.broker->stops().empty());
+    ASSERT_FALSE(h.bot->state().inPosition);
+
+    // L'ordre s'exécute entre deux cycles : la position apparaît chez le broker
+    h.broker->setPosition(Position{"QQQ", 9, 420.0, 9 * 420.0, 0.0});
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();                            // réconciliation → adoption
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+
+    h.bot->runOnce();                            // cycles suivants : idempotent
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->stops().size(), 1u);
+}
+
+// Jamais deux stops pour la même position, même après plusieurs cycles
+TEST(TradingBotUnit, ResidentStopNotStackedAcrossCycles) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée FILLED → 1 stop
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(425.0, "2024-03-04");
+    h.bot->runOnce();
+    h.setLastBar(428.0, "2024-03-05");
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->stops().size(), 1u);
+}
+
+// État restauré avec stopArmed=true : le stop existe déjà chez le broker,
+// on ne le re-dépose PAS (sinon deux stops actifs → double vente)
+TEST(TradingBotUnit, RestoredStateWithArmedStopDoesNotRearm) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+    BotState persisted{true, 400.0, 405.0, 2, "2024-03-07"};
+    persisted.stopArmed = true;                  // stop déjà déposé avant le restart
+    h.store->preload(persisted);
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.broker->stops().empty());
+}
+
+// Échec du dépôt (panne réseau) : pas d'état menteur, nouvel essai au cycle
+// suivant dès que le broker répond
+TEST(TradingBotUnit, FailedStopArmIsRetriedNextCycle) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setStopSubmitFails(true);
+    h.bot->runOnce();                            // entrée, dépôt du stop échoue
+    ASSERT_TRUE(h.bot->state().inPosition);
+    ASSERT_TRUE(h.broker->stops().empty());
+    ASSERT_TRUE(h.store->lastSaved().has_value());
+    EXPECT_FALSE(h.store->lastSaved()->stopArmed);
+
+    h.broker->setStopSubmitFails(false);
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();                            // filet : retente et réussit
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    EXPECT_TRUE(h.store->lastSaved()->stopArmed);
+}
+
+// Position fermée hors bot (ou par le stop résident lui-même) : le stop
+// broker est annulé — pas d'ordre orphelin qui se déclencherait après coup
+TEST(TradingBotUnit, PositionClosedOutsideBotCancelsResidentStop) {
+    BotHarness h(415.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    persisted.stopArmed = true;
+    h.store->preload(persisted);
+    h.broker->setPosition(std::nullopt);         // plus de position broker
+
+    h.bot->runOnce();                            // réconciliation → reset
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.broker->cancelStopCount(), 1);
+}
+
+// ════════════════════════════════════════════════════════════
+//  M2 — cooldown de ré-entrée : pas de rachat le jour de bourse
+//  d'une sortie. Sans cela (cycle prod 60 min + regimeReentry),
+//  une sortie stop à 10h30 pouvait être suivie d'un rachat à
+//  11h30 : churn, coûts, wash-trades.
+// ════════════════════════════════════════════════════════════
+
+// Sortie stop puis signal BUY le même jour → aucune ré-entrée ;
+// le lendemain, l'entrée repart normalement.
+TEST(TradingBotUnit, SameDayReentryAfterStopExitIsBlocked) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée
+    ASSERT_EQ(h.broker->buyCount(), 1);
+
+    h.setLastBar(380.0, "2024-03-01");           // -9,5 % → stop logiciel
+    h.broker->setFillPrice(380.0);
+    h.bot->runOnce();                            // sortie (même jour)
+    ASSERT_EQ(h.broker->sellCount(), 1);
+    ASSERT_FALSE(h.bot->state().inPosition);
+
+    h.bot->runOnce();                            // signal BUY, même jour
+    EXPECT_EQ(h.broker->buyCount(), 1);          // ré-entrée bloquée
+
+    h.setLastBar(385.0, "2024-03-04");           // jour de bourse suivant
+    h.broker->setFillPrice(385.0);
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->buyCount(), 2);          // cooldown levé
+}
+
+// Position fermée HORS bot (stop résident, vente manuelle) : même churn à
+// bloquer — la réconciliation pose aussi le cooldown du jour
+TEST(TradingBotUnit, ReentryCooldownAppliesAfterPositionClosedOutsideBot) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    h.store->preload(persisted);
+    h.broker->setPosition(std::nullopt);         // fermée hors bot
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();                            // reset + tentative de ré-entrée
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.broker->buyCount(), 0);          // bloquée le jour même
+}
+
+// Le cooldown survit à un redémarrage (lastExitDate est persisté)
+TEST(TradingBotUnit, ReentryCooldownSurvivesRestart) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted;                          // à plat, sortie déjà faite ce jour
+    persisted.lastExitDate = "2024-03-08";
+    h.store->preload(persisted);
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 0);
+}
+
+// Une sortie de la VEILLE ne bloque pas l'entrée du jour
+TEST(TradingBotUnit, CooldownDoesNotBlockNextTradingDay) {
+    BotHarness h(415.0, "2024-03-08");
+    BotState persisted;
+    persisted.lastExitDate = "2024-03-07";       // sortie hier
+    h.store->preload(persisted);
+    h.strategy->setSignal(SignalType::BUY);
+
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->buyCount(), 1);
 }
 
 // ════════════════════════════════════════════════════════════

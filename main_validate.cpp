@@ -49,7 +49,14 @@ void titre(const std::string& t) {
 
 int main() {
     const std::string qqq = SWINGBOT_QQQ_CSV;
-    const SwingConfig cfg = prodSwingConfig();
+    // Config prod chargée depuis config/prod.json (item 9.1) — échec bruyant
+    SwingConfig cfg;
+    try {
+        cfg = prodSwingConfig();
+    } catch (const std::exception& e) {
+        std::cerr << "❌ Config de production invalide : " << e.what() << "\n";
+        return 1;
+    }
 
     // 1. Backtest de référence ────────────────────────────────────────────────
     titre("1. BACKTEST DE REFERENCE — QQQ total-return (config prod)");

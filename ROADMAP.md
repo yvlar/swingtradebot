@@ -14,8 +14,8 @@
 | FinTech      | 83        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-02 (clôture Sprint 8-bis — PREMIER CANDIDAT D'EDGE trouvé par la grille, consigné NON adopté ; gate 8b.4 fermé)
-- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi — décision utilisateur du 2026-07-02
+- **Dernière mise à jour** : 2026-07-02 (Sprint Sécurité-Réel, 2e passe — D38 soldée (re-découverte du stop), 9.1 clos (config JSON chargée par le golden), 9.3 clos (barres clôturées IBKR), E2E SMS watchdog. 1re passe le même jour : B1/B2/B3/B4/M2/M3, goldens re-figés, le candidat d'edge SURVIT et se renforce, gate 8b.4 s'OUVRE — voir D37)
+- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi — décision utilisateur du 2026-07-02. **⚠️ À re-caler post-B2** : le plateau retenu par la grille 18 combos est désormais (9, 250, trail=0,03), alpha OOS +0,23 (voir D37)
 
 > ### ⚠️ Rentabilité : premier CANDIDAT d'edge (grille 8b.1) — non adopté, à valider hors-grille
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -37,9 +37,9 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **30**  | Premier réglage à alpha OOS > 0 sur 3 actifs sur 4, trouvé et VERROUILLÉ honnêtement (jamais l'IS, plateau, filtre alpha) — mais non validé hors de la grille qui l'a choisi, et la chaîne par défaut reste négative (−7,15). La note ne franchira 50 qu'avec le candidat CONFIRMÉ hors-grille (Sprint 8-ter), et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 470/470 verts (401 unitaires + 69 intégration). +10 à la
-  clôture du Sprint 8-bis (460 → 470), aucune dérive hors cycle (`ctest -N`
-  valait bien 460 à l'ouverture). Détail au changelog Sprint 8-bis.
+- **État des tests** : 510/510 verts (439 unitaires + 71 intégration). +25 à la
+  1re passe du Sprint Sécurité-Réel (470 → 495), +15 à la 2e passe (495 → 510),
+  aucune dérive hors cycle (`ctest -N` recalé à chaque passe). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -467,6 +467,106 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   le plus sensible → l'item ne s'ouvre pas, conformément à sa condition. Reste au
   backlog, ré-ouvrable si un futur verdict de grille inverse le classement.
 
+# 🔴 SPRINT SÉCURITÉ-RÉEL — Audit complet + correctifs bloquants ✅ (clos le 2026-07-02)
+
+> Demande utilisateur : analyse complète du projet (docs, workflow, code, bot) +
+> verdict « prêt à trader ? » + améliorations. Verdict de l'audit : **NON prêt**
+> — 4 défauts bloquants (B1-B4) et 2 modérés (M2-M3) identifiés et corrigés dans
+> ce sprint. Chaque item : test rouge → fix → test vert → commit atomique.
+> Baseline d'ouverture : 470/470 verts (`ctest -N` conforme au tableau de bord).
+
+- [x] **S.1 (B3.1)** **getAccount IBKR : schéma incomplet masqué en ACTIVE** → `b0410fe`
+  Un résumé Gateway sans `availablefunds`/`netliquidation` donnait cash=0 +
+  status=ACTIVE → positionSize=0 → le bot ne tradait plus JAMAIS, sans erreur
+  visible (le log disait « Cash insuffisant »). Fix : INACTIVE bruyant +
+  `lastError_`, et TradingBot logue « Compte broker non ACTIF » en ERROR.
+  Tests rouges : AccountSummaryWithoutBalancesIsInactive, …WithSingleBalance…,
+  InactiveAccountLogsExplicitErrorAndSubmitsNoOrder (+ MockLogger dans Mocks.hpp).
+- [x] **S.2 (B3.2)** **Historique < SMA200 = HOLD muet éternel** → `0d2c2ad`
+  Raison de HOLD explicite « Régime inconnu : historique insuffisant (N/200
+  barres) » + WARN TradingBot si le feed renvoie moins que `lookback`. La vente
+  reste possible (la SMA ne gate que les achats — verrouillé).
+  Tests rouges : InsufficientHistoryHoldReasonIsExplicit, ShortHistoryLogsWarn.
+- [x] **S.3 (M3)** **main_alpaca sans stateStore** → `36a0823`
+  `SqliteStateStore("data/swingbot_alpaca_state.db")` câblé (holdDays/peakPrice
+  survivent au restart, comme main_ibkr). Vérifié par `g++ -fsyntax-only`.
+- [x] **S.4 (B4)** **Jours fériés NYSE absents du calendrier de repli** → `d62287e`
+  `isNyseHoliday` : fériés calculables (MLK, Presidents, Memorial, Labor,
+  Thanksgiving), Good Friday via Pâques (Butcher/Meeus), observances NYSE
+  (sam→ven, dim→lun, New Year samedi NON observé — 2021-12-31 ouvert, cas de
+  test), Juneteenth ≥ 2022. Demi-séances hors périmètre (documenté).
+  Tests : 6 nouveaux MarketCalendarUnit (Pâques 2024/25/26, 10 fériés 2024…).
+- [x] **S.5 (socle)** **BotState.stopArmed + lastExitDate persistés** → `dd939ca`
+  Champs ajoutés EN FIN de struct (init agrégat des tests préservée), migration
+  `ALTER TABLE` tolérante (« duplicate column » avalé), save/load 7 colonnes.
+  Tests rouges : RoundTripPersistsStopArmedAndLastExitDate,
+  OpensAndMigratesLegacySchema (base à l'ancien schéma créée en direct).
+- [x] **S.6 (B1 — BLOQUANT)** **Le stop résident ne s'armait presque jamais** → `c7949d8`
+  `submitStopLoss` n'était appelé que dans la branche FILLED de l'achat ; or le
+  CP Gateway répond typiquement Submitted → PENDING → adoption par
+  `reconcilePosition_` SANS stop (idem après tout restart) : la protection
+  « position couverte bot hors-ligne » était inopérante dans le cas nominal
+  (c'était D27, requalifié bloquant). Fix : `armResidentStopIfNeeded_` idempotent
+  via `stopArmed` persisté, appelé à l'achat FILLED, à l'adoption, et en filet à
+  chaque cycle (retente un dépôt échoué) ; position disparue → `cancelStopLoss`.
+  6 tests rouges→verts (AdoptedPositionArmsResidentStop, PendingBuyThen…, etc.).
+  Goldens INTACTS (no-op PaperBroker). Risque résiduel → D38.
+- [x] **S.7 (M2)** **Churn : rachat possible le jour même d'une sortie** → `d2d96d1`
+  Cycle prod 60 min + regimeReentry : sortie stop à 10h30 → rachat à 11h30.
+  Fix dans TradingBot (stratégie stateless préservée) : `lastExitDate` posé à
+  chaque sortie (vente FILLED + position fermée hors bot), entrée bloquée tant
+  que la date de barre n'a pas changé ; persisté (survit au restart). Impact
+  backtest nul par construction (vérifié : goldens intacts après S.7).
+  4 tests rouges→verts (SameDayReentryAfterStopExitIsBlocked, etc.).
+- [x] **S.8 (B2 — BLOQUANT)** **LOOK-AHEAD du backtest** → `f89d35a`
+  Décision ET fill au close de la même barre — impossible en réel. Fix :
+  décision au close i, exécution à l'OPEN de i+1 (PaperBroker
+  `setNextFillPrice/Date`, rétro-compatible ; valorisation toujours au close).
+  Preuve : `FillsAtNextBarOpenNotAtDecisionClose` (CSV synthétique à gap).
+  RE-BASELINE de ~40 goldens (5 fichiers) — changement de vérité de mesure,
+  AUCUNE inversion des verdicts OOS (DoD toujours non atteinte)… sauf la grille
+  8b.1 où le candidat SURVIT et se renforce → D37. Contrôles de santé intacts
+  (B&H +226,12 %, 1790 points d'équité).
+- [x] **S.9 (doc/infra)** → `9f859fe`
+  docker-compose réparé (`dockerfile: Dockerfile.multistage` pour le stage
+  `builder` ; env vars mortes BOT_MODE/BOT_DRY_RUN supprimées), DB déplacées
+  dans `data/` (le volume `./data` ne persistait rien), sed anti-CMP0167 retiré
+  (Dockerfile + dev.ps1, no-op depuis le Sprint 1), CLAUDE.md rafraîchi
+  (gotchas périmés retirés), `SwingBot_UML.mermaid` réécrit sur l'architecture
+  réelle (Result<T>, IStateStore, stops résidents, kill-switch, harnais 7/8).
+
+## 2e passe (même jour) — corrections restantes de l'audit
+
+- [x] **S.10 (D38)** **Re-découverte de l'orderId du stop résident** → `75339e2`
+  `residentStopOrderId_` (mémoire seulement) rendait `cancelStopLoss` no-op
+  après restart → stop GTC orphelin chez IBKR. Fix : si l'id est inconnu,
+  GET `/v1/api/iserver/account/orders` et re-découverte par le tag cOID
+  « swingbot-SYM-STOP- » (order_ref/cOID, orderId nombre ou chaîne, statuts
+  terminaux ignorés) avant le DELETE. Tests rouges→verts :
+  CancelStopLossRediscoversOrderAfterRestart (+ 2 verrous négatifs).
+- [x] **S.11 (9.3, volet barres clôturées)** **La barre du jour en formation
+  n'est plus livrée** → `2d2d962`
+  Le HMDS IBKR incluait la barre journalière EN FORMATION pendant la séance
+  (close mouvant → flap du croisement EMA intra-journée, E6/D25). Nouveau
+  helper pur `usEasternDateOfUtc` (market_calendar.h, bascule DST gérée) ;
+  `IBKRDataFeed::getBars` retire la dernière barre si datée d'aujourd'hui-ET
+  (horloge injectable `now_`). Alpaca bornait déjà à end=hier ; CsvDataFeed/
+  ReplayDataFeed non concernés — goldens intacts. 5 tests rouges→verts.
+- [x] **S.12 (watchdog)** **E2E réel du canal SMS Twilio** → `ac9382a`
+  L'URL api.twilio.com était codée en dur → jamais exercée. `twilio_base_url`
+  configurable (défaut prod inchangé) + test SmsDeliveredToLocalServer
+  (MiniHttpServer : chemin Twilio complet, form-urlencoded, %2B, Basic auth).
+  L'email reste couvert par son chemin d'échec (pas de mock SMTP — documenté).
+- [x] **S.13 (9.1)** **Config prod externalisée en JSON validé** → `1e617a6`
+  `config/prod.json` (14 champs) chargé STRICTEMENT par `ConfigLoader.hpp`
+  (champs requis, types, bornes ; échec bruyant nommant le champ) ;
+  `prodSwingConfig()` charge le fichier injecté à la compilation
+  (`SWINGBOT_PROD_CONFIG_JSON` sur swing_bot/validate/integration_tests) →
+  LE MÊME fichier sert la prod ET le golden (acceptation 9.1) ; main_ibkr et
+  main_validate refusent de démarrer sur config invalide ; Dockerfile.multistage
+  copie le JSON dans l'image runtime. 6 tests ConfigLoaderUnit rouges→verts,
+  les 3 goldens « config prod » passent par le JSON réel SANS re-figeage.
+
 # 🟣 SPRINT 8-TER — Valider le candidat d'edge hors-grille — **sprint courant**
 
 > Décision utilisateur (2026-07-02) à la clôture du Sprint 8-bis : la grille a produit
@@ -507,11 +607,15 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 
 > Ne s'ouvre qu'après un edge OOS démontré (Sprint 8-bis). Sinon, la prod reste en paper.
 
-- [ ] **9.1** Externaliser la config (fichier JSON **validé** au démarrage) ; fin de la dérive
-  prod ≠ backtest (E1/D21). **Acceptation** : la config de prod EST chargée par le golden.
+- [x] **9.1** Externaliser la config (fichier JSON **validé** au démarrage) ; fin de la dérive
+  prod ≠ backtest (E1/D21). **Acceptation ATTEINTE** : la config de prod EST chargée par le
+  golden — fait au Sprint Sécurité-Réel 2e passe (S.13, `1e617a6` : config/prod.json +
+  ConfigLoader strict + macro compile-time partagée prod/golden).
 - [ ] **9.2** (D19) Lookback configurable unifié prod/backtest (`TradingBot.hpp:62`).
-- [ ] **9.3** (item 20 + E6/D25) Calendrier de marché correct (UTC/DST) + n'évaluer que sur
-  **barres clôturées** (pas la barre du jour en formation).
+- [x] **9.3** (item 20 + E6/D25) Calendrier de marché correct (UTC/DST) + n'évaluer que sur
+  **barres clôturées** (pas la barre du jour en formation). Fait en deux temps : calendrier
+  UTC/DST au Sprint 5 (item 20) + fériés NYSE (S.4/B4, `d62287e`) ; barres clôturées côté
+  IBKR au Sprint Sécurité-Réel 2e passe (S.11, `2d2d962` — Alpaca bornait déjà à end=hier).
 - [ ] **9.4** Procédure de **re-calibration walk-forward** documentée (cadence, critère de
   reprise des paramètres) — pour que l'edge ne se dégrade pas en silence.
 
@@ -547,7 +651,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D24 | 🟠 | (Méta-audit) **Aucune validation hors-échantillon.** Paramètres = nombres magiques, validés sur un seul actif (QQQ) et un seul régime (~2018-2026, quasi 100 % haussier). Pas d'IS/OOS, pas de walk-forward, pas de Monte-Carlo, pas de multi-actifs → edge non démontré, risque de sur-ajustement | Sprint 7 |
 | D25 | 🟡 | (Méta-audit) Prod : boucle 60 min sur barres **journalières** → la dernière barre n'est pas clôturée, le croisement EMA peut osciller intra-journée (flap/look-ahead absent du backtest qui ne voit que des barres complètes) | Sprint 9 (9.3) |
 | D26 | ✅ | (Méta-audit) **Défauts structurels de la stratégie (cause racine de l'alpha −229 pts)** : take-profit fixe qui ampute les gagnants (`RiskManager.hpp:81`) ; vente sur RSI > 70 qui sort des tendances haussières (`SwingStrategy.hpp:109`) ; filtre d'entrée contradictoire croisement-haussier + `RSI<55` (`SwingStrategy.hpp:96-99`) → 7 trades/5 ans ; aucun filtre de régime ; long-only mono-actif → cash drag massif | ✅ Les 5 défauts corrigés au Sprint 8 (8.1 régime, 8.2 TP, 8.3 entrée, 8.4 vente RSI, 8.5 cash drag), chacun validé en OOS. L'edge reste à démontrer (Sprint 8-bis) |
-| D27 | 🟡 | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Bénin tant que le stop logiciel tourne ; à combler pour une vraie symétrie entrée/adoption | Sprint 9 (mise en prod) ou backlog |
+| D27 | ✅ | (Sprint 5) **Le stop résident broker (item 19) n'est posé qu'à l'ENTRÉE, pas à l'adoption.** `reconcilePosition_` (TradingBot.hpp) adopte une position broker non suivie (redémarrage) avec le stop logiciel, mais ne dépose aucun stop résident — une position adoptée n'est protégée côté broker que si elle avait été ouverte par ce process. Requalifié BLOQUANT à l'audit 2026-07-02 : le CP Gateway répond typiquement PENDING à l'achat → la position passe par l'adoption dans le cas NOMINAL, pas seulement au restart | ✅ Corrigé au Sprint Sécurité-Réel (S.6/B1, `c7949d8` — armement idempotent via `stopArmed` persisté : achat FILLED, adoption, filet par cycle). Résidu : D38 |
 | D28 | 🟢 | (Sprint 5) Le drawdown journalier du kill-switch (item 18) est **inerte en backtest** : un `runOnce` = une barre journalière, donc `dayStartEquity` se recale à chaque cycle et le drawdown intra-séance vaut toujours ~0. Voulu (préserve le golden) et correct en prod (boucle 60 min, plusieurs cycles/jour), mais signifie que ce garde-fou précis n'est jamais exercé par le golden — seuls les tests unitaires purs le couvrent | Documenté (couvert par RiskManagerUnit) |
 | D29 | ✅ | (Sprint 6) **QQQ.csv ne porte aucune information de dividende** : `Adj Close == Close` sur les 1858 lignes (export sans ajustement). Le code 6.3 utilise bien Adj Close (stratégie ET B&H, OHL mis à l'échelle), mais le delta est NUL sur ce dataset — le B&H +238,55 % reste hors dividendes, et l'alpha réel est donc encore PIRE que mesuré (~+0,6 pt/an de dividendes QQQ non comptés). Ré-exporter un CSV total-return (Yahoo Finance, Close non ajusté + Adj Close) pour que 6.3 produise son effet | ✅ Corrigé au Sprint 7 (7.4, `eb46e38`) : QQQ/SPY/IWM/MDY ré-exportés en total-return réel (Adj ≠ Close), B&H QQQ +262,08 %. Garde `auditTotalReturnCsv` (`43b4015`) pour ne plus jamais charger un export sans dividende sans le voir |
 | D30 | 🟠 | (Sprint 7) **La config prod historique était dominée par le défaut sur données honnêtes.** Sur QQQ total-return, l'ancienne config prod (EMA 13/21, RSI 65/80, SL 7 %, TP 15 %, minHold 2 — celle figée au Sprint 6.1, jamais validée hors d'un dataset sans dividende) rend +4,45 % (Sharpe 0,30, 23 trades) vs le défaut +4,85 % (Sharpe 0,39, 6 trades). Le test côte à côte (6.1) a déclenché sa « Décision requise ». **Décision utilisateur** : aligner `prodSwingConfig()` sur le défaut validé (`eb46e38`). Leçon : une config « validée » sur de mauvaises données n'est pas validée — la qualité des données prime (D29). La vraie refonte est le Sprint 8 | ✅ Décidé/appliqué au Sprint 7 (prod = défaut) ; sera re-jugée en OOS au Sprint 8 |
@@ -557,8 +661,99 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D34 | 🟡 | (Sprint 8) **Les 2 fenêtres OOS du pavage IS=700/OOS=400 ne portaient AUCUN trade sous la config 8.1** : l'alpha OOS −14,10 du verdict 8.1 était du pur cash drag (jamais en position). Conséquence : l'acceptation de 8.2 (« gain moyen des gagnants ↑ ») était INDÉCIDABLE à son tour de rôle — adoptée comme retrait de contrainte morte, ré-examinée (et validée : −10,03 vs −10,20) sur la chaîne finale une fois 8.3/8.5 livrés. Leçon : un verdict OOS sans trades ne juge que le temps en cash ; vérifier le nombre de trades poolés AVANT d'interpréter les ratios. Le pavage fin (8b.3) réduit ce risque structurellement | ✅ Adressé au Sprint 8-bis (8b.3, `481f713`) : 13 trades OOS poolés sur 4 fenêtres, chaque verrou fige désormais son NOMBRE de trades. Résidu : l'état 8.1 reste à 0 trade OOS même sur 4 fenêtres (constat, pas un défaut du pavage) |
 | D35 | 🟡 | (Sprint 8-bis) **Le warmup local de `runRange` (~201 barres, SMA200) consomme le début de CHAQUE fenêtre** (`BackTester.hpp:142-145` : chaque sous-fenêtre ré-amorce ses indicateurs — isolation honnête, mais coût fixe). Une fenêtre OOS de 250 barres n'aurait que ~49 barres tradables → verdict quasi pur cash drag (le piège D34 sous une autre forme). Règle adoptée : **dimensionner toute fenêtre OOS largement au-dessus du warmup** (OOS=300 → ~99 tradables pour le pavage fin ; l'exemple littéral « OOS=250 » de l'item 8b.3 a été ajusté en conséquence, décision utilisateur 2026-07-02). Garde-fou possible (backlog) : `WalkForward` pourrait AVERTIR si `oosBars ≤ warmup + marge` | Documenté (choix consigné dans `test_strategy_v2_integration.cpp`) ; garde-fou au backlog qualité harnais |
 | D36 | 🟠 | (Sprint 8-bis) **Premier candidat d'edge — mais le plateau de grille n'est PAS stable entre les tailles de grille.** La grille 18 combos retient (emaFast=9, smaT=250, trail=0,05) ; la grille pleine 81 combos (axes emaSlow/emaFast élargis) retient (emaFast=5, emaSlow=50, smaT=250, trail=0,03). Seul **smaTrendPeriod=250** est commun aux deux plateaux. S'y ajoutent le biais de sélection (le « meilleur de N combos » est jugé sur les MÊMES fenêtres OOS que son verdict) et des échantillons minces (4-8 trades OOS/actif). Leçon : un gagnant de grille n'est pas un edge — c'est une HYPOTHÈSE à confirmer hors de la grille qui l'a choisie. **Décision utilisateur (2026-07-02) : consigner sans adopter** | **Sprint 8-ter** (validation hors-grille : fenêtres non-choisies, Monte-Carlo, grille resserrée, décision d'adoption gatée) |
+| D37 | 🔴 | (Sprint Sécurité-Réel) **Le backtest avait un biais de LOOK-AHEAD structurel** : décision ET fill au close de la même barre (`BackTester.hpp` + `PaperBroker`), alors qu'en prod la décision porte sur le close d'hier et l'exécution se fait au prix d'aujourd'hui. TOUTES les mesures historiques (goldens, verdicts OOS 8.x, grille 8b.1, Monte-Carlo) étaient prises sur un moteur flatté. Corrigé (S.8, `f89d35a` : exécution à l'open i+1) et re-mesuré : aucune inversion des verdicts qualitatifs (DoD toujours non atteinte, pas d'edge multi-actifs), l'in-sample QQQ monte même de +18,70 à +19,33 %. **MAIS le verdict de grille 8b.1 change** : le plateau devient (emaFast=9, smaT=250, **trail=0,03**) avec alpha OOS **+0,23** (vs 0,05/+0,10 pré-B2 — le candidat SURVIT à la correction, bon signe), et l'axe le plus sensible devient **trailingStopPct** (0,266 vs smaT 0,194) → **le gate 8b.4 (trailing adaptatif ATR) s'OUVRE désormais**. Le Sprint 8-ter doit re-caler son point d'entrée (candidat = 9/250/0,03) et ses grilles de confirmation | **Sprint 8-ter** (re-caler le candidat post-B2) + 8b.4 ré-ouvrable |
+| D38 | ✅ | (Sprint Sécurité-Réel) **`IBKRBroker::residentStopOrderId_` n'est pas persisté** : après un restart, `cancelStopLoss` ne retrouve pas l'orderId du stop résident déposé par le process précédent → l'annulation à la sortie est un no-op et le stop IBKR peut rester orphelin chez le broker (se déclencherait après coup). Mitigé par : (a) `stopArmed` persisté empêche d'empiler un 2e stop, (b) le cas « position fermée par le stop résident » est réconcilié proprement (reset + cooldown de ré-entrée) | ✅ Corrigé à la 2e passe (S.10, `75339e2`) : re-découverte broker-locale via GET `/iserver/account/orders` + tag cOID « swingbot-SYM-STOP- » — pas de persistance nécessaire |
 
 ## Changelog
+
+### Sprint Sécurité-Réel, 2e passe — corrections restantes de l'audit (2026-07-02)
+
+**Baseline réelle à l'ouverture** : **495/495 verte** (`ctest -N` conforme).
+
+**Origine** : demande utilisateur « fait les corrections » — les 4 restes de
+l'audit (hors features : dashboard et Sprint 8-ter restent à part).
+
+**Commits** :
+- `75339e2` fix(ibkr) : re-découverte de l'orderId du stop résident (D38)
+- `2d2d962` fix(feed) : barres clôturées seulement côté IBKR (9.3, E6/D25)
+- `ac9382a` test(watchdog) : E2E réel du canal SMS Twilio (twilio_base_url)
+- `1e617a6` feat(config) : config prod externalisée en JSON validé (9.1, E1/D21)
+
+**Tests** : 495 → **510** (+15 : 439 unitaires + 71 intégration — D38 +3,
+calendrier +2, feed +3, ConfigLoader +6, SMS +1). **Goldens strictement
+inchangés** : les 3 goldens « config prod » passent désormais par
+config/prod.json sans re-figeage (c'est l'acceptation 9.1), le backtest ne
+touche ni CsvDataFeed ni ReplayDataFeed.
+
+**Items ROADMAP soldés** : D38 ✅ (re-découverte broker-locale, pas de
+persistance nécessaire), 9.1 ✅ (JSON strict partagé prod/golden), 9.3 ✅
+(volet barres clôturées ; le calendrier UTC/DST+fériés datait de la 1re
+passe). Restent ouverts au Sprint 9 : 9.2 (lookback unifié D19) et 9.4
+(procédure de re-calibration).
+
+**Interfaces modifiées** (additives uniquement) : `AlertConfig.twilio_base_url`
+(défaut prod inchangé) ; `IBKRDataFeed::now_()` protégé virtuel (horloge
+injectable) ; `usEasternDateOfUtc` (market_calendar.h) ; nouveau
+`ConfigLoader.hpp` (`loadSwingConfigJson`) ; macro compile-time
+`SWINGBOT_PROD_CONFIG_JSON` sur swing_bot/validate/integration_tests.
+
+### Sprint Sécurité-Réel — Audit complet + correctifs bloquants (2026-07-02)
+
+**Baseline réelle à l'ouverture** : **470/470 verte**, conforme au tableau de bord.
+Environnement : Linux, paquets système (chemin CI, sans vcpkg).
+
+**Origine** : demande utilisateur d'analyse complète (docs, workflow, code, bot) +
+verdict « prêt à trader ? » + améliorations. **Verdict d'audit : NON prêt** —
+l'architecture et les tests sont solides, mais 4 bloquants réels : le stop résident
+broker ne s'armait presque jamais (B1), le backtest avait un look-ahead structurel
+(B2), deux pannes silencieuses « le bot ne trade jamais sans le dire » (B3.1/B3.2),
+et le calendrier de repli ignorait les fériés NYSE (B4).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `b0410fe` fix(ibkr) : résumé de compte incomplet = INACTIVE bruyant (B3.1)
+- `0d2c2ad` fix(strategy) : historique < SMA200 signalé explicitement (B3.2)
+- `36a0823` fix(alpaca) : SqliteStateStore câblé dans main_alpaca (M3)
+- `d62287e` feat(calendar) : jours fériés NYSE dans le repli horaire (B4)
+- `dd939ca` feat(state) : BotState.stopArmed + lastExitDate, migration SQLite (socle)
+- `c7949d8` fix(bot) : armement idempotent du stop résident à l'adoption + filet (B1)
+- `d2d96d1` fix(bot) : cooldown de ré-entrée le jour d'une sortie (M2)
+- `f89d35a` fix(backtest) : correction du look-ahead, exécution à l'open i+1 (B2)
+- `9f859fe` chore(infra+doc) : docker-compose, DB dans data/, CLAUDE.md, UML
+
+**Tests** : 470 → **495** (+25 : 425 unitaires + 70 intégration). Discipline
+rouge→vert respectée item par item ; les goldens d'intégration sont restés
+INCHANGÉS jusqu'à S.7 inclus (preuve que B1/M2/B3 ne touchent pas le backtest),
+puis re-figés en une seule passe à S.8.
+
+**RE-BASELINE B2 (anciennes → nouvelles valeurs ; changement de vérité de mesure,
+pas de stratégie)** :
+- Golden QQQ in-sample : retour +18,6980 → **+19,3257 %**, finalValue 11 869,80 →
+  **11 932,57 $**, Sharpe 0,7246 → **0,7347**, maxDD 6,5477 → **6,2429 %**,
+  22 trades (13G/9P → **12G/10P**), 1re entrée 2019-10-18 → **2019-10-21**,
+  dernière vente 2022-02-07 → **2022-02-14**. Contrôles de santé INCHANGÉS :
+  B&H +226,1235 %, 1790 points d'équité.
+- Verdicts OOS v2 (2 fenêtres) : alpha chaîne −10,0277 → **−9,9023** ; 8.3 espV
+  2,9667 → **12,0572**, alpha −14,1234 → **−13,8959** ; 8.4 gainV 4,1858 →
+  **5,3494**, PF 1,8411 → **2,2147**, alpha −13,1085 → **−12,5272** ; ré-exam TP
+  −10,2012 → **−10,1140** ; gagnants 4,4644 → **5,6792 %**, PF 3,7088 → **3,2203**,
+  espérance 77,9315 → **80,2136 $**. Pavage fin : alpha chaîne −7,1454 →
+  **−6,8794**, expo 73,7374 → **74,7475 %**, gagnants 7,4076 → **8,0393 %**,
+  PF 1,9784 → **2,0571**, espérance 62,5162 → **70,6659 $**. Aucune inversion :
+  DoD toujours non atteinte.
+- Multi-actifs : SPY −5,5162 → **−5,6813**, IWM −3,0086 → **−3,4564**,
+  MDY −3,6029 → **−3,5306** (expo MDY 68,4343 → **68,9394**). Toujours aucun
+  alpha OOS > 0 pour la chaîne par défaut.
+- Grille 8b.1 : plateau (9, 250, 0,05) → **(9, 250, 0,03)**, Sharpe OOS 1,2193 →
+  **1,2674**, alpha +0,0971 → **+0,2312** ; axe le plus sensible smaT (0,244) →
+  **trailingStopPct (0,266)** → gate 8b.4 OUVERT. Voir D37.
+- Monte-Carlo : CAGR p50 6,7628 → **6,9504 %**, DD p50 7,6477 → **8,5920 %**.
+
+**Découvertes** : D37 (look-ahead + inversion du verdict de grille), D38 (orderId
+du stop résident IBKR non persisté). D27 est soldée par S.6 (c'était son fix).
+
+**Reste à faire avant tout réel** (inchangé sur le fond) : edge non démontré
+(Sprint 8-ter à re-caler post-B2), externalisation de config (9.1), barres
+clôturées (9.3), alertes watchdog non testées de bout en bout, pas de dashboard.
 
 ### Sprint 8-bis — Chercher l'edge avec le harnais (2026-07-02)
 

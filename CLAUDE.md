@@ -8,7 +8,7 @@ SwingBot — a C++17 swing-trading bot for QQQ (EMA crossover + RSI strategy) wi
 
 ## Build & Test Commands
 
-The build requires the vcpkg toolchain (Boost.Beast/Asio/System, nlohmann-json, sqlite3, CURL, GTest). The canonical dev environment is the Docker container `swing_bot_dev` (Ubuntu 24.04 + vcpkg at `/vcpkg`), driven from a Windows host via `dev.ps1`:
+The build needs Boost.Beast/Asio/System, nlohmann-json, sqlite3, CURL and GTest — either via the vcpkg toolchain or plain system packages (the CI path: `apt-get install libboost-dev libboost-system-dev nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libgtest-dev googletest ninja-build`, then configure **without** `-DCMAKE_TOOLCHAIN_FILE`). The canonical dev environment is the Docker container `swing_bot_dev` (Ubuntu 24.04 + vcpkg at `/vcpkg`), driven from a Windows host via `dev.ps1`:
 
 ```powershell
 .\dev.ps1 start          # start container + configure CMake (once)
@@ -65,11 +65,10 @@ Only **`main_ibkr.cpp`** is built (target `swing_bot` in CMakeLists.txt). `main.
 
 ## Gotchas
 
-- **Two unrelated `BotState` types exist**: `trading::BotState` in `TradingBot.hpp` (position state: `inPosition`, `buyPrice`, `peakPrice`, `holdDays`) and global `::BotState` in `core/bot_state.h` (dashboard state). `main_ibkr.cpp` uses both.
-- `main.cpp` includes `"backtest/Backtester.hpp"` but the file is `BackTester.hpp` — a latent case-sensitivity break on Linux if that entry point is ever re-enabled.
-- The root `gitignore` file is missing its leading dot, so nothing is actually ignored — `cmake-build-debug/` (stale CLion artifacts, including a vendored googletest under `_deps/`) is committed. Exclude it when searching the codebase.
-- `docker-compose.yml`'s test services reference `target: builder`, which only exists in `Dockerfile.multistage`, not the default `Dockerfile`.
+- **Two unrelated `BotState` types exist**: `trading::BotState` in `include/models/Models.hpp` (position state: `inPosition`, `buyPrice`, `peakPrice`, `holdDays`, `stopArmed`, `lastExitDate` — persisted via `IStateStore`) and global `::BotState` in `core/bot_state.h` (dashboard state). `main_ibkr.cpp` uses both.
+- The backtester executes orders at the **open of bar i+1** (decision at close of bar i) — the anti-look-ahead convention locked by `BacktesterIntegration.FillsAtNextBarOpenNotAtDecisionClose`. Golden metric values are fill-date based; re-baseline them only for documented behavior changes (see ROADMAP.md changelog).
+- The runtime SQLite databases live under `data/` (`data/swingbot_ibkr.db`, `data/swingbot_ibkr_state.db`) — that's the directory docker-compose mounts as a host volume.
 
 ## Testing conventions
 
-Tests live in `tests/unit/` and `tests/integration/` (one file per component, five each). `gtest_discover_tests` registers every test as a separate process with prefixes `Unit.` / `Integration.` and hard timeouts (15 s unit, 30 s integration) — tests must be fast and fully independent. Suites are named `<Component>Unit` / `<Component>Integration`. `WsServer` tests construct the server with `port=0` and read `actual_port()` so parallel test processes never collide on a port. Unit tests use the mocks in `include/bot/Mocks.hpp` — no network access.
+Tests live in `tests/unit/` and `tests/integration/` (one file per component — ~26 unit and ~12 integration files). `gtest_discover_tests` registers every test as a separate process with prefixes `Unit.` / `Integration.` and hard timeouts (15 s unit, 30 s integration) — tests must be fast and fully independent. Suites are named `<Component>Unit` / `<Component>Integration`. `WsServer` tests construct the server with `port=0` and read `actual_port()` so parallel test processes never collide on a port. Unit tests use the mocks in `include/bot/Mocks.hpp` — no network access.

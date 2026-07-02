@@ -65,10 +65,11 @@ TEST(MonteCarloIntegration, DistributionFromQqqProdBacktestTrades) {
     // Re-figés au Sprint 8.1 (filtre de régime SMA200 : 6 → 4 trades), au
     // Sprint 8.3 (entrée sur la force : 4 → 20 trades), au Sprint 8.4 (vente
     // RSI gatée par le régime : les gagnants courent), puis au Sprint 8.5
-    // (re-entrée sur régime : 22 trades, 13 G / 9 P — médiane CAGR nettement
-    // positive, cohérente avec le golden in-sample +18,70 %). Toute dérive des
-    // trades du backtest (data, stratégie) ferait bouger ces médianes ; le
-    // golden de backtest les attraperait d'abord.
-    EXPECT_NEAR(r.cagrP50,  6.7628, 1e-3);
-    EXPECT_NEAR(r.ddP50,    7.6477, 1e-3);
+    // (re-entrée sur régime : 22 trades — médiane CAGR nettement positive),
+    // puis le 2026-07-02 (B2, exécution à l'open i+1 : 22 trades, 12 G / 10 P,
+    // cohérent avec le golden in-sample +19,33 %). Toute dérive des trades du
+    // backtest (data, stratégie) ferait bouger ces médianes ; le golden de
+    // backtest les attraperait d'abord.
+    EXPECT_NEAR(r.cagrP50,  6.9504, 1e-3);
+    EXPECT_NEAR(r.ddP50,    8.5920, 1e-3);
 }

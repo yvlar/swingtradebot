@@ -1,235 +1,234 @@
+%% ============================================================
+%%  SwingBot — Diagramme de classes (mis à jour le 2026-07-02)
+%%  Reflète l'architecture réelle : canal d'erreur Result<T>,
+%%  IStateStore (persistance de l'état), stop résident broker
+%%  (submitStopLoss/cancelStopLoss), kill-switch, computeBars,
+%%  champs stopArmed/lastExitDate (B1/M2), harnais de validation
+%%  (WalkForward/GridOptimizer/MonteCarlo) et backtest anti-
+%%  look-ahead (décision au close i, exécution à l'open i+1).
+%% ============================================================
 classDiagram
+    direction TB
 
-%% ─── INTERFACES (abstractions) ───────────────────────────────────────────────
+    %% ── Interfaces (include/core/Interfaces.hpp) ─────────────
+    class ILogger {
+        <<interface>>
+        +info(msg)
+        +warn(msg)
+        +error(msg)
+        +debug(msg)
+    }
 
-class ILogger {
-    <<interface>>
-    +info(msg) void
-    +warn(msg) void
-    +error(msg) void
-    +debug(msg) void
-}
+    class IDataFeed {
+        <<interface>>
+        +getBars(symbol, days) Result~vector~Bar~~
+        +isMarketOpen() bool
+    }
 
-class IDataFeed {
-    <<interface>>
-    +getBars(symbol, days) vector~Bar~
-    +getLatestPrice(symbol) optional~double~
-    +isMarketOpen() bool
-}
+    class IBroker {
+        <<interface>>
+        +submitBuy(symbol, qty) optional~Order~
+        +submitSell(symbol, qty) optional~Order~
+        +getPosition(symbol) Result~optional~Position~~
+        +getAccount() Account
+        +submitStopLoss(symbol, qty, stopPrice) optional~Order~
+        +cancelStopLoss(symbol) bool
+    }
 
-class IBroker {
-    <<interface>>
-    +submitBuy(symbol, qty) optional~Order~
-    +submitSell(symbol, qty) optional~Order~
-    +getPosition(symbol) optional~Position~
-    +getAccount() Account
-}
+    class IStrategy {
+        <<interface>>
+        +evaluate(bars) Signal
+        +name() string
+    }
 
-class IStrategy {
-    <<interface>>
-    +evaluate(bars) Signal
-    +name() string
-}
+    class IStateStore {
+        <<interface>>
+        +load(symbol) optional~BotState~
+        +save(symbol, state) bool
+    }
 
-class IRiskManager {
-    <<interface>>
-    +positionSize(capital, price, sl, risk) int
-    +isTradeAllowed(account, position) bool
-    +checkExitConditions(...) optional~string~
-}
+    class IRiskManager {
+        <<interface>>
+        +positionSize(capital, price, stopLossPct, riskPerTradePct) int
+        +isTradeAllowed(account, position, price, qty) bool
+        +checkExitConditions(price, buyPrice, holdDays, peakPrice, ...) optional~string~
+        +checkKillSwitch(cfg, dayStartEquity, equity, pertes, ordres) optional~string~
+    }
 
-class IIndicator {
-    <<interface>>
-    +compute(prices) vector~double~
-    +name() string
-}
+    class IIndicator~T~ {
+        <<interface>>
+        +compute(prices) vector~T~
+        +computeBars(bars) vector~T~
+        +name() string
+    }
 
-%% ─── MODÈLES ─────────────────────────────────────────────────────────────────
+    %% ── Orchestrateur (include/bot/TradingBot.hpp) ───────────
+    class TradingBot {
+        -state_ BotState
+        -riskCfg_ RiskConfig
+        -killSwitchDay_ string
+        -dayStartEquity_ double
+        -ordersToday_ int
+        -consecutiveLosses_ int
+        +runOnce()
+        +run(intervalSeconds)
+        +stop()
+        +setConfig(RiskConfig)
+        +setTradeObserver(fn)
+        +setExitObserver(fn)
+        -reconcilePosition_(pos, price, barDate)
+        -armResidentStopIfNeeded_(qty, basisPrice)
+        -saveState_()
+    }
+    TradingBot --> IDataFeed
+    TradingBot --> IBroker
+    TradingBot --> IStrategy
+    TradingBot --> IRiskManager
+    TradingBot --> ILogger
+    TradingBot --> IStateStore
 
-class Bar {
-    +string date
-    +double open
-    +double high
-    +double low
-    +double close
-    +long volume
-}
+    %% ── Modèles (include/models/Models.hpp) ──────────────────
+    class BotState {
+        +inPosition bool
+        +buyPrice double
+        +peakPrice double
+        +holdDays int
+        +lastBarDate string
+        +stopArmed bool
+        +lastExitDate string
+    }
+    class RiskConfig {
+        +symbol string
+        +stopLossPct double
+        +takeProfitPct double
+        +trailingStopPct double
+        +riskPerTradePct double
+        +minHoldDays int
+        +lookback int
+        +killSwitch KillSwitchConfig
+    }
+    TradingBot *-- BotState
+    TradingBot *-- RiskConfig
 
-class Signal {
-    +SignalType type
-    +string symbol
-    +double price
-    +string reason
-    +isBuy() bool
-    +isSell() bool
-}
+    %% ── Implémentations broker/feed (include/brokers/) ───────
+    class IBKRBroker {
+        +submitStopLoss() ordre STP résident
+        +cancelStopLoss()
+        confirmations chainées sans re-post, cOID idempotent
+    }
+    class AlpacaBroker {
+        client_order_id idempotent
+    }
+    class PaperBroker {
+        +setCurrentPrice(price)
+        +setNextFillPrice(optional~double~)
+        +setNextFillDate(optional~string~)
+        +trades() vector~TradeRecord~
+        +equitySnapshot(value, date)
+        +closeOpenPosition()
+    }
+    class IBKRDataFeed
+    class AlpacaDataFeed
+    class CsvDataFeed {
+        +allBars() vector~Bar~
+    }
+    IBroker <|.. IBKRBroker
+    IBroker <|.. AlpacaBroker
+    IBroker <|.. PaperBroker
+    IDataFeed <|.. IBKRDataFeed
+    IDataFeed <|.. AlpacaDataFeed
+    IDataFeed <|.. CsvDataFeed
 
-class Order {
-    +string symbol
-    +OrderSide side
-    +int quantity
-    +OrderStatus status
-}
+    %% ── Stratégies & indicateurs ─────────────────────────────
+    class SwingStrategy {
+        -config_ SwingConfig
+        +evaluate(bars) Signal
+        +create(cfg)$ shared_ptr~IStrategy~
+    }
+    class SwingConfig {
+        +emaFast int
+        +emaSlow int
+        +rsiPeriod int
+        +rsiBuyMax double
+        +rsiSellMin double
+        +stopLossPct double
+        +takeProfitPct double
+        +trailingStopPct double
+        +minHoldDays int
+        +smaTrendPeriod int
+        +rsiSellOnlyIfRegimeDown bool
+        +regimeReentry bool
+    }
+    class RiskManager
+    class EMA
+    class SMA
+    class RSI
+    class CrossoverDetector {
+        +detect(fast, slow, warmup)$ Cross
+    }
+    IStrategy <|.. SwingStrategy
+    SwingStrategy *-- SwingConfig
+    IRiskManager <|.. RiskManager
+    IIndicator <|.. EMA
+    IIndicator <|.. SMA
+    IIndicator <|.. RSI
+    SwingStrategy --> EMA
+    SwingStrategy --> SMA
+    SwingStrategy --> RSI
+    SwingStrategy --> CrossoverDetector
 
-class Position {
-    +string symbol
-    +int shares
-    +double avgPrice
-    +double unrealizedPnl
-}
+    %% ── Persistance de l'état ────────────────────────────────
+    class SqliteStateStore {
+        -db_ sqlite3*
+        +load(symbol) optional~BotState~
+        +save(symbol, state) bool
+        migration ALTER TABLE tolérante
+    }
+    IStateStore <|.. SqliteStateStore
 
-class Account {
-    +double cash
-    +double equity
-    +string status
-}
+    %% ── Backtest & validation (include/backtest/) ────────────
+    class Backtester {
+        +run() BacktestResult
+        +runRange(csv, startIdx, endIdx) BacktestResult
+        décision close i, fill open i+1
+    }
+    class WalkForward {
+        +run() vector~WindowResult~
+    }
+    class GridOptimizer {
+        +evaluate() vector~GridPoint~
+        +selectRobustPlateau(pts)$
+        +axisSensitivities(pts)
+    }
+    class MonteCarlo {
+        +run(trades, years) McResult
+    }
+    Backtester --> TradingBot
+    Backtester --> PaperBroker
+    Backtester --> CsvDataFeed
+    WalkForward --> Backtester
+    GridOptimizer --> WalkForward
+    MonteCarlo ..> Backtester : trades
 
-class BotState {
-    +bool inPosition
-    +double buyPrice
-    +double peakPrice
-    +int holdDays
-}
-
-class SwingConfig {
-    +string symbol
-    +int emaFast
-    +int emaSlow
-    +int rsiPeriod
-    +double rsiBuyMax
-    +double rsiSellMin
-    +double stopLossPct
-    +double takeProfitPct
-    +double trailingStopPct
-    +int minHoldDays
-}
-
-%% ─── INDICATEURS ─────────────────────────────────────────────────────────────
-
-class EMA {
-    -int period
-    +compute(prices) vector~double~
-    +name() string
-}
-
-class RSI {
-    -int period
-    +compute(prices) vector~double~
-    +name() string
-}
-
-class CrossoverDetector {
-    <<utility>>
-    +detect(fast, slow)$ Cross
-}
-
-%% ─── STRATÉGIE ───────────────────────────────────────────────────────────────
-
-class SwingStrategy {
-    -SwingConfig config
-    -IIndicator emaFast
-    -IIndicator emaSlow
-    -IIndicator rsi
-    +evaluate(bars) Signal
-    +name() string
-    +create(config)$ SwingStrategy
-}
-
-%% ─── RISK MANAGER ────────────────────────────────────────────────────────────
-
-class RiskManager {
-    -double maxCapitalUsagePct
-    +positionSize(...) int
-    +isTradeAllowed(...) bool
-    +checkExitConditions(...) optional~string~
-}
-
-%% ─── LOGGERS ─────────────────────────────────────────────────────────────────
-
-class ConsoleLogger {
-    +info(msg) void
-    +warn(msg) void
-    +error(msg) void
-}
-
-class FileLogger {
-    -ofstream file
-    +info(msg) void
-    +warn(msg) void
-    +error(msg) void
-}
-
-class CompositeLogger {
-    -vector~ILogger~ loggers
-    +addLogger(logger) void
-    +info(msg) void
-}
-
-class NullLogger {
-    +info(msg) void
-    +warn(msg) void
-    +error(msg) void
-}
-
-%% ─── MOCKS ───────────────────────────────────────────────────────────────────
-
-class MockDataFeed {
-    -vector~Bar~ bars
-    -bool marketOpen
-    +setBars(bars) void
-    +setMarketOpen(bool) void
-    +buildTrend(...)$ vector~Bar~
-}
-
-class MockBroker {
-    -Account account
-    -optional~Position~ position
-    +buyCount() int
-    +sellCount() int
-}
-
-%% ─── BOT PRINCIPAL ───────────────────────────────────────────────────────────
-
-class TradingBot {
-    -IDataFeed dataFeed
-    -IBroker broker
-    -IStrategy strategy
-    -IRiskManager riskManager
-    -ILogger logger
-    -BotState state
-    +runOnce() void
-    +run(intervalSec) void
-    +stop() void
-    +setState(state) void
-}
-
-%% ─── RELATIONS ───────────────────────────────────────────────────────────────
-
-IIndicator  <|.. EMA
-IIndicator  <|.. RSI
-IStrategy   <|.. SwingStrategy
-IRiskManager <|.. RiskManager
-ILogger     <|.. ConsoleLogger
-ILogger     <|.. FileLogger
-ILogger     <|.. CompositeLogger
-ILogger     <|.. NullLogger
-IDataFeed   <|.. MockDataFeed
-IBroker     <|.. MockBroker
-
-TradingBot o-- IDataFeed
-TradingBot o-- IBroker
-TradingBot o-- IStrategy
-TradingBot o-- IRiskManager
-TradingBot o-- ILogger
-TradingBot *-- BotState
-
-SwingStrategy o-- IIndicator
-SwingStrategy *-- SwingConfig
-
-IDataFeed ..> Bar : retourne
-IBroker   ..> Order : retourne
-IBroker   ..> Position : retourne
-IBroker   ..> Account : retourne
-IStrategy ..> Signal : retourne
-
-CompositeLogger o-- ILogger
+    %% ── Mocks de test (include/bot/Mocks.hpp) ────────────────
+    class MockDataFeed {
+        +setBars(bars)
+        +setFeedDown(err)
+        +buildTrend(...)$
+    }
+    class MockBroker {
+        +setSubmitResult(status)
+        +setStopSubmitFails(f)
+        +stops() vector~StopRecord~
+    }
+    class MockLogger {
+        +errors() warns() infos()
+    }
+    class MockStateStore {
+        +preload(state)
+        +setSaveFails(f)
+    }
+    IDataFeed <|.. MockDataFeed
+    IBroker <|.. MockBroker
+    ILogger <|.. MockLogger
+    IStateStore <|.. MockStateStore

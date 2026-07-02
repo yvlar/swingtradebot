@@ -61,6 +61,11 @@ add_executable(swing_bot
 )
 target_include_directories(swing_bot PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(swing_bot PRIVATE ${COMMON_LIBS})
+# Config de production externalisée (item 9.1) : chemin injecté à la
+# compilation — même fichier pour la prod ET le golden d'intégration.
+target_compile_definitions(swing_bot PRIVATE
+        SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
+)
 
 # ════════════════════════════════════════════════════════════
 #  HARNAIS DE VALIDATION (Sprint 7) — walk-forward / grille / Monte-Carlo
@@ -78,6 +83,7 @@ target_compile_definitions(validate PRIVATE
         SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
         SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
         SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+        SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
 # ════════════════════════════════════════════════════════════
@@ -113,6 +119,7 @@ add_executable(unit_tests
         tests/unit/test_walk_forward_unit.cpp
         tests/unit/test_grid_optimizer_unit.cpp
         tests/unit/test_monte_carlo_unit.cpp
+        tests/unit/test_config_loader_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -155,6 +162,7 @@ target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
         SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
         SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+        SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
 gtest_discover_tests(integration_tests

@@ -178,20 +178,22 @@ TEST(MultiAssetIntegration, GuardFlagsSyntheticNoDividendCsv) {
 //  sur QQQ est un artefact. Verdict QQQ de référence :
 //  SprintChainFinePavingOosVerdictIsLocked, alpha −7,15, 13 trades.)
 //
-//  VERDICT MESURÉ (figé) : AUCUN actif ne rend un alpha OOS > 0 —
-//  pas d'edge multi-actifs pour la chaîne v2. MAIS le comportement
-//  est COHÉRENT d'un actif à l'autre (la chaîne trade partout en
-//  OOS : 10-17 trades, exposition 53-81 %) et la sous-performance
-//  est PLUS FAIBLE que sur QQQ : SPY −5,52, IWM −3,01, MDY −3,60
-//  (vs −7,15 sur QQQ, chacun vs le B&H de SON actif). La chaîne
-//  n'est donc pas un artefact QQQ : elle se comporte pareil partout,
-//  et perd d'autant moins que le B&H de l'actif est moins violent.
+//  VERDICT MESURÉ (re-figé le 2026-07-02, B2 — exécution à
+//  l'open i+1) : conclusion INCHANGÉE — AUCUN actif ne rend un
+//  alpha OOS > 0, pas d'edge multi-actifs pour la chaîne v2. MAIS
+//  le comportement reste COHÉRENT d'un actif à l'autre (la chaîne
+//  trade partout en OOS : 10-17 trades, exposition 53-81 %) et la
+//  sous-performance est PLUS FAIBLE que sur QQQ : SPY −5,68,
+//  IWM −3,46, MDY −3,53 (vs −6,88 sur QQQ, chacun vs le B&H de
+//  SON actif). La chaîne n'est donc pas un artefact QQQ : elle se
+//  comporte pareil partout, et perd d'autant moins que le B&H de
+//  l'actif est moins violent.
 // ════════════════════════════════════════════════════════════
 
 TEST(MultiAssetIntegration, V2ChainOosVerdictLockedOnSpy) {
     const auto v = verdictChaineSur({"SPY", SWINGBOT_SPY_CSV});
     ASSERT_GE(v.fenetres, 4u);
-    EXPECT_NEAR(v.alphaOos, -5.5162, 1e-2);   // golden de mesure
+    EXPECT_NEAR(v.alphaOos, -5.6813, 1e-2);   // golden de mesure
     EXPECT_NEAR(v.expoOos,  80.8081, 1e-2);
     EXPECT_EQ(v.trades, 10u);                 // garde-fou D34 : non vide
     EXPECT_LT(v.alphaOos, 0.0);               // pas d'edge sur SPY
@@ -200,7 +202,7 @@ TEST(MultiAssetIntegration, V2ChainOosVerdictLockedOnSpy) {
 TEST(MultiAssetIntegration, V2ChainOosVerdictLockedOnIwm) {
     const auto v = verdictChaineSur({"IWM", SWINGBOT_IWM_CSV});
     ASSERT_GE(v.fenetres, 4u);
-    EXPECT_NEAR(v.alphaOos, -3.0086, 1e-2);   // golden de mesure
+    EXPECT_NEAR(v.alphaOos, -3.4564, 1e-2);   // golden de mesure
     EXPECT_NEAR(v.expoOos,  52.7778, 1e-2);
     EXPECT_EQ(v.trades, 13u);                 // garde-fou D34 : non vide
     EXPECT_LT(v.alphaOos, 0.0);               // pas d'edge sur IWM
@@ -209,8 +211,8 @@ TEST(MultiAssetIntegration, V2ChainOosVerdictLockedOnIwm) {
 TEST(MultiAssetIntegration, V2ChainOosVerdictLockedOnMdy) {
     const auto v = verdictChaineSur({"MDY", SWINGBOT_MDY_CSV});
     ASSERT_GE(v.fenetres, 4u);
-    EXPECT_NEAR(v.alphaOos, -3.6029, 1e-2);   // golden de mesure
-    EXPECT_NEAR(v.expoOos,  68.4343, 1e-2);
+    EXPECT_NEAR(v.alphaOos, -3.5306, 1e-2);   // golden de mesure
+    EXPECT_NEAR(v.expoOos,  68.9394, 1e-2);
     EXPECT_EQ(v.trades, 17u);                 // garde-fou D34 : non vide
     EXPECT_LT(v.alphaOos, 0.0);               // pas d'edge sur MDY
 }
