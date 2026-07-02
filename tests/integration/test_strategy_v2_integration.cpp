@@ -283,8 +283,9 @@ TEST(StrategyV2Integration, RsiEntryCapOffOosVerdictIsLocked) {
     EXPECT_GT(expoV, expoB);               // exposition ↑
     EXPECT_NEAR(expoV, 22.1106, 1e-2);     // golden de mesure
     EXPECT_GE(espV, 0.0);                  // expectancy nette ≥ 0
-    EXPECT_NEAR(espV, 2.9667, 1e-2);
-    EXPECT_NEAR(alphaV, -14.1234, 1e-2);   // alpha ~inchangé vs base (−14,1015)
+    // Goldens re-figés le 2026-07-02 (B2, exécution à l'open i+1)
+    EXPECT_NEAR(espV, 12.0572, 1e-2);
+    EXPECT_NEAR(alphaV, -13.8959, 1e-2);   // alpha ~inchangé vs base (−14,1015)
 }
 
 // Verdict OOS de l'item 8.4 (vente RSI gatée par le régime, D26/T2).
@@ -326,11 +327,12 @@ TEST(StrategyV2Integration, RsiSellRegimeGateOosVerdictIsLocked) {
     EXPECT_EQ(tb.size(), 5u);
     EXPECT_EQ(tv.size(), 5u);
     EXPECT_GT(gainV, gainB);               // gain moyen des gagnants ↑
-    EXPECT_NEAR(gainV, 4.1858, 1e-2);      // golden de mesure
+    // Goldens re-figés le 2026-07-02 (B2, exécution à l'open i+1)
+    EXPECT_NEAR(gainV, 5.3494, 1e-2);      // golden de mesure
     EXPECT_GE(pfV, pfB);                   // facteur de profit non dégradé
-    EXPECT_NEAR(pfV, 1.8411, 1e-2);
+    EXPECT_NEAR(pfV, 2.2147, 1e-2);
     EXPECT_GE(alphaV, alphaB);             // alpha net OOS ≥ base
-    EXPECT_NEAR(alphaV, -13.1085, 1e-2);
+    EXPECT_NEAR(alphaV, -12.5272, 1e-2);
     EXPECT_LT(alphaV, 0.0);                // ne bat toujours pas le B&H
 }
 
@@ -371,7 +373,8 @@ TEST(StrategyV2Integration, RegimeReentryOosVerdictIsLocked) {
     EXPECT_GT(expoV, expoB);               // % temps investi ↑
     EXPECT_NEAR(expoV, 54.0201, 1e-2);     // golden de mesure
     EXPECT_GT(alphaV, alphaB);             // alpha net ↑
-    EXPECT_NEAR(alphaV, -10.0277, 1e-2);
+    // Golden re-figé le 2026-07-02 (B2, exécution à l'open i+1)
+    EXPECT_NEAR(alphaV, -9.9023, 1e-2);
     EXPECT_LT(alphaV, 0.0);                // ne bat toujours pas le B&H
 }
 
@@ -427,19 +430,21 @@ TEST(StrategyV2Integration, SprintChainVsBaselineOosVerdictIsLocked) {
     for (const auto& x : wc) EXPECT_TRUE(std::isfinite(x.oos.alpha));
 
     // Progression du sprint (chaîne > état 8.1), valeurs figées.
+    // Goldens re-figés le 2026-07-02 (B2, exécution à l'open i+1) : le verdict
+    // qualitatif est INCHANGÉ (chaîne > 8.1, DoD non atteinte).
     EXPECT_GT(alphaC, alphaS);
-    EXPECT_NEAR(alphaC, -10.0277, 1e-2);
+    EXPECT_NEAR(alphaC, -9.9023, 1e-2);
     EXPECT_NEAR(alphaS, -14.1015, 1e-2);
     EXPECT_GT(expoC, expoS);
     EXPECT_NEAR(expoC, 54.0201, 1e-2);
     EXPECT_EQ(tc.size(), 11u);
-    EXPECT_NEAR(gainMoyenGagnants(tc),  4.4644, 1e-2);
-    EXPECT_NEAR(facteurProfit(tc),      3.7088, 1e-2);
-    EXPECT_NEAR(esperanceParTrade(tc), 77.9315, 1e-2);
+    EXPECT_NEAR(gainMoyenGagnants(tc),  5.6792, 1e-2);
+    EXPECT_NEAR(facteurProfit(tc),      3.2203, 1e-2);
+    EXPECT_NEAR(esperanceParTrade(tc), 80.2136, 1e-2);
 
     // Ré-exam 8.2 sur la chaîne finale : TP off ≥ TP 10 % (adoption confirmée).
     EXPECT_GE(alphaC, alphaT);
-    EXPECT_NEAR(alphaT, -10.2012, 1e-2);
+    EXPECT_NEAR(alphaT, -10.1140, 1e-2);
 
     // DoD du Sprint 8 : NON atteinte — alpha OOS négatif et sous-performance
     // > 5 pts vs B&H → pas d'edge démontré, pas de déploiement. Si ce verrou
@@ -514,15 +519,17 @@ TEST(StrategyV2Integration, SprintChainFinePavingOosVerdictIsLocked) {
     for (const auto& x : ws) EXPECT_TRUE(std::isfinite(x.oos.alpha));
 
     // La chaîne bat toujours l'état 8.1 sur le pavage fin (pas d'inversion).
+    // Goldens re-figés le 2026-07-02 (B2, exécution à l'open i+1) : aucune
+    // inversion de verdict là non plus.
     EXPECT_GT(alphaC, alphaS);
-    EXPECT_NEAR(alphaC, -7.1454, 1e-2);    // golden de mesure (4 fenetres)
+    EXPECT_NEAR(alphaC, -6.8794, 1e-2);    // golden de mesure (4 fenetres)
     EXPECT_NEAR(alphaS, -9.0527, 1e-2);
-    EXPECT_NEAR(expoC,  73.7374, 1e-2);
+    EXPECT_NEAR(expoC,  74.7475, 1e-2);
     EXPECT_EQ(tc.size(), 13u);             // garde-fou D34 : échantillon non vide
     EXPECT_EQ(ts.size(),  0u);             // 8.1 : toujours 0 trade OOS (cash drag)
-    EXPECT_NEAR(gainMoyenGagnants(tc),  7.4076, 1e-2);
-    EXPECT_NEAR(facteurProfit(tc),      1.9784, 1e-2);
-    EXPECT_NEAR(esperanceParTrade(tc), 62.5162, 1e-2);
+    EXPECT_NEAR(gainMoyenGagnants(tc),  8.0393, 1e-2);
+    EXPECT_NEAR(facteurProfit(tc),      2.0571, 1e-2);
+    EXPECT_NEAR(esperanceParTrade(tc), 70.6659, 1e-2);
     // DoD toujours NON atteinte sur le pavage fin : alpha négatif, > 5 pts
     // sous le B&H → pas d'edge démontré, pas de déploiement.
     EXPECT_LT(alphaC, -5.0);

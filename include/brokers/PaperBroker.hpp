@@ -49,8 +49,9 @@ public:
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
         if (qty <= 0 || !currentPrice_) return std::nullopt;
 
-        // Fill dégradé : un achat au marché paie slippage + demi-spread (D22)
-        double price = *currentPrice_ * (1.0 + fillPenaltyPct_);
+        // Fill dégradé : un achat au marché paie slippage + demi-spread (D22),
+        // appliqués sur le prix d'EXÉCUTION (open i+1 en backtest — B2)
+        double price = fillPrice_.value_or(*currentPrice_) * (1.0 + fillPenaltyPct_);
         double cost  = price * qty * (1.0 + commissionPct_);
 
         if (cost > cash_) {
@@ -62,7 +63,7 @@ public:
 
         cash_ -= cost;
         position_ = Position{symbol, qty, price, price * qty, 0.0};
-        currentBuyDate_ = currentDate_;
+        currentBuyDate_ = fillDate_.value_or(currentDate_);
 
         Order o;
         o.symbol   = symbol;
@@ -76,15 +77,16 @@ public:
     std::optional<Order> submitSell(const std::string& symbol, int qty) override {
         if (!position_.has_value() || qty <= 0 || !currentPrice_) return std::nullopt;
 
-        // Fill dégradé : une vente au marché concède slippage + demi-spread (D22)
-        double price    = *currentPrice_ * (1.0 - fillPenaltyPct_);
+        // Fill dégradé : une vente au marché concède slippage + demi-spread (D22),
+        // sur le prix d'EXÉCUTION (open i+1 en backtest — B2)
+        double price    = fillPrice_.value_or(*currentPrice_) * (1.0 - fillPenaltyPct_);
         double proceeds = price * qty * (1.0 - commissionPct_);
         cash_ += proceeds;
 
         // Enregistre le trade complété
         TradeRecord trade;
         trade.buyDate    = currentBuyDate_;
-        trade.sellDate   = currentDate_;
+        trade.sellDate   = fillDate_.value_or(currentDate_);
         trade.buyPrice   = position_->avgPrice;
         trade.sellPrice  = price;
         trade.shares     = qty;
@@ -130,6 +132,13 @@ public:
     // À appeler par le Backtester avant chaque runOnce()
     void setCurrentPrice(double price) { currentPrice_ = price; }
     void setCurrentDate (const std::string& date) { currentDate_ = date; }
+    // Prix/date d'EXÉCUTION des ordres (B2 : open de la barre suivante en
+    // backtest — la décision au close i ne peut pas se remplir au close i).
+    // nullopt = repli sur currentPrice_/currentDate_ (valorisation et
+    // clôture de fin de backtest). La valorisation (getPosition/getAccount/
+    // portfolioValue) reste TOUJOURS au close courant.
+    void setNextFillPrice(std::optional<double> p)      { fillPrice_ = p; }
+    void setNextFillDate (std::optional<std::string> d) { fillDate_  = std::move(d); }
     void setLastExitReason(const std::string& r)  { lastExitReason_ = r; }
     void incrementHoldDays() { if (position_.has_value()) holdDays_++; }
 
@@ -170,6 +179,8 @@ private:
     double                   fillPenaltyPct_; // (slippage + demi-spread) en fraction
     std::optional<Position>  position_;
     std::optional<double>    currentPrice_;
+    std::optional<double>    fillPrice_;      // prix d'exécution (B2), sinon close courant
+    std::optional<std::string> fillDate_;     // date d'exécution (B2), sinon date courante
     std::string              currentDate_;
     std::string              currentBuyDate_;
     std::string              lastExitReason_ = "signal";

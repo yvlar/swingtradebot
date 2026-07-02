@@ -174,11 +174,24 @@ public:
             if (i < startIdx + static_cast<size_t>(warmup)) continue;
 
             broker->incrementHoldDays();
+
+            // Correction du look-ahead (B2) : la décision se prend sur le
+            // close de la barre i, mais ce prix n'est plus exécutable — comme
+            // en prod, le premier prix disponible est l'OPEN de la barre i+1.
+            // Dernière barre de la fenêtre : aucune séance suivante → pas de
+            // nouvel ordre (la clôture forcée ci-dessous solde la position).
+            if (i + 1 >= endIdx) continue;
+            broker->setNextFillPrice(allBars[i + 1].open);
+            broker->setNextFillDate (allBars[i + 1].date);
+
             feed->setCursor(i);
             bot.runOnce();
         }
 
-        // Clôture de la position ouverte en fin de backtest
+        // Clôture forcée de la position ouverte en fin de backtest : au
+        // dernier close connu (aucune barre suivante), d'où le repli nullopt
+        broker->setNextFillPrice(std::nullopt);
+        broker->setNextFillDate (std::nullopt);
         broker->closeOpenPosition();
 
         // Métriques calculées sur la sous-série [startIdx, endIdx) : le warmup
