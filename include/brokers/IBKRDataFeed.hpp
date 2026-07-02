@@ -92,6 +92,13 @@ public:
                 bar.volume = static_cast<long>(d.value("v", 0.0));
                 if (bar.close > 0) bars.push_back(bar);
             }
+            // 9.3 (E6/D25) : pendant la séance, le HMDS inclut la barre du
+            // jour EN FORMATION — son close bouge à chaque requête et le
+            // croisement EMA peut osciller intra-journée. On ne livre que
+            // des barres CLÔTURÉES (AlpacaDataFeed borne déjà à end=hier).
+            // Comportement verrouillé par test (le feed n'a pas de logger).
+            if (!bars.empty() && bars.back().date == usEasternDateOfUtc(now_()))
+                bars.pop_back();
             return R::Ok(std::move(bars));
         } catch (const std::exception& e) {
             return R::Err(std::string("IBKR getBars: ") + e.what());
@@ -208,6 +215,10 @@ protected:
                                 const std::string& body) {
         return http_.request(method, url, body);
     }
+
+    // Horloge — virtuelle pour la substitution dans les tests (filtre 9.3
+    // de la barre du jour en formation)
+    virtual std::time_t now_() const { return std::time(nullptr); }
 };
 
 } // namespace trading

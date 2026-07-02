@@ -12,6 +12,7 @@
 //  (tests/unit/test_market_calendar_unit.cpp).
 // ============================================================
 #include <ctime>
+#include <string>
 
 namespace trading {
 
@@ -141,6 +142,41 @@ inline bool isNyseHoliday(int year, int month, int day) {
     // Christmas — 25 décembre
     if (matchesObservedFixedHoliday(year, month, day, 12, 25, true)) return true;
     return false;
+}
+
+// ── Date civile (YYYY-MM-DD) en heure de l'Est pour un instant UTC ──
+// Sert à filtrer la barre journalière du jour EN FORMATION (9.3) : la date
+// de séance est la date de l'Est, pas la date UTC (décalées entre minuit ET
+// et minuit UTC). Précision au jour près hors fenêtre de bascule DST (02h00
+// locale) — largement suffisant pendant les heures de marché.
+inline std::string usEasternDateOfUtc(std::time_t utc) {
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &utc);
+#else
+    gmtime_r(&utc, &tm);
+#endif
+    int off = usEasternUtcOffsetHours(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    std::time_t shifted = utc - static_cast<std::time_t>(off) * 3600;
+#ifdef _WIN32
+    gmtime_s(&tm, &shifted);
+#else
+    gmtime_r(&shifted, &tm);
+#endif
+    // L'offset peut différer une fois la date décalée (autour des bascules) :
+    // recalculer sur la date de l'Est et re-décaler si besoin.
+    int off2 = usEasternUtcOffsetHours(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    if (off2 != off) {
+        shifted = utc - static_cast<std::time_t>(off2) * 3600;
+#ifdef _WIN32
+        gmtime_s(&tm, &shifted);
+#else
+        gmtime_r(&shifted, &tm);
+#endif
+    }
+    char buf[11];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    return buf;
 }
 
 // ── Le marché actions US (NYSE/NASDAQ) est-il ouvert à cet instant UTC ? ──

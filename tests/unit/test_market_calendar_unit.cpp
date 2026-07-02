@@ -191,6 +191,27 @@ TEST(MarketCalendarUnit, JuneteenthNotAHolidayBefore2022) {
     EXPECT_FALSE(openAt15Et(2023, 6, 19));
 }
 
+// ════════════════════════════════════════════════════════════
+//  usEasternDateOfUtc (9.3) — date civile en heure de l'Est,
+//  base du filtrage de la barre du jour EN FORMATION (IBKR).
+// ════════════════════════════════════════════════════════════
+
+TEST(MarketCalendarUnit, EasternDateMatchesUtcDuringMarketHours) {
+    // Hiver (EST) en pleine séance : 14h UTC = 9h ET, même date
+    EXPECT_EQ(usEasternDateOfUtc(utcInstant(2026, 1, 15, 14, 0)), "2026-01-15");
+    // Été (EDT) en pleine séance : 14h UTC = 10h ET
+    EXPECT_EQ(usEasternDateOfUtc(utcInstant(2026, 7, 2, 14, 0)), "2026-07-02");
+}
+
+TEST(MarketCalendarUnit, EasternDateIsPreviousDayBeforeEasternMidnight) {
+    // Hiver : 03h00 UTC = 22h00 ET la VEILLE
+    EXPECT_EQ(usEasternDateOfUtc(utcInstant(2026, 1, 15, 3, 0)), "2026-01-14");
+    // Été : 03h30 UTC = 23h30 ET la veille
+    EXPECT_EQ(usEasternDateOfUtc(utcInstant(2026, 7, 2, 3, 30)), "2026-07-01");
+    // Été, minuit ET tout juste franchi : 04h30 UTC = 00h30 ET → même jour
+    EXPECT_EQ(usEasternDateOfUtc(utcInstant(2026, 7, 2, 4, 30)), "2026-07-02");
+}
+
 // Les jours ouvrés ordinaires restent ouverts (non-régression)
 TEST(MarketCalendarUnit, OrdinaryTradingDaysRemainOpen) {
     EXPECT_TRUE(openAt15Et(2024,  1,  2));    // mardi après New Year

@@ -23,7 +23,8 @@ public:
 
     std::vector<Call> calls;
     std::vector<std::pair<std::string, std::string>> responses;
-    bool failAll = false;   // simule une panne réseau sur tous les appels
+    bool failAll = false;    // simule une panne réseau sur tous les appels
+    std::time_t fakeNow = 0; // horloge substituée (0 = horloge réelle)
 
 protected:
     std::string request(const std::string& method,
@@ -35,7 +36,23 @@ protected:
             if (url.find(pattern) != std::string::npos) return resp;
         return "{}";
     }
+
+    std::time_t now_() const override {
+        return fakeNow != 0 ? fakeNow : IBKRDataFeed::now_();
+    }
 };
+
+// Instant UTC → time_t (même technique que test_market_calendar_unit.cpp)
+std::time_t utcInstant(int y, int mon, int d, int h, int mi) {
+    std::tm tm{};
+    tm.tm_year = y - 1900; tm.tm_mon = mon - 1; tm.tm_mday = d;
+    tm.tm_hour = h; tm.tm_min = mi;
+#ifdef _WIN32
+    return _mkgmtime(&tm);
+#else
+    return timegm(&tm);
+#endif
+}
 
 } // namespace
 
@@ -61,6 +78,54 @@ TEST(IbkrDataFeedUnit, BarsParsedWithMsTimestamps) {
     EXPECT_DOUBLE_EQ(b.close, 402.8);
     EXPECT_EQ(b.volume, 45'123'400L);
     EXPECT_EQ(r.value().back().date, "2024-01-03");
+}
+
+// ════════════════════════════════════════════════════════════
+//  9.3 (E6/D25) — le HMDS inclut la barre du jour EN FORMATION
+//  pendant la séance : le croisement EMA pouvait osciller
+//  intra-journée. Le feed ne doit livrer que des barres CLÔTURÉES.
+// ════════════════════════════════════════════════════════════
+
+// La barre datée d'aujourd'hui (heure de l'Est) est exclue
+TEST(IbkrDataFeedUnit, TodayFormingBarExcluded) {
+    ScriptedIbkrDataFeed f;
+    f.fakeNow = utcInstant(2024, 1, 3, 18, 0);   // 13h ET, en séance (hiver)
+    f.responses = {{"/v1/api/hmds/history", R"({"data":[
+        {"t":1704153600000,"o":403.2,"h":404.1,"l":401.5,"c":402.8,"v":1000.0},
+        {"t":1704240000000,"o":402.9,"h":405.0,"l":402.0,"c":404.6,"v":900.0}
+    ]})"}};                                       // 2024-01-02 et 2024-01-03
+
+    auto r = f.getBars("QQQ", 60);
+    ASSERT_TRUE(r.ok());
+    ASSERT_EQ(r.value().size(), 1u);              // la barre du 03 (en formation) est retirée
+    EXPECT_EQ(r.value().back().date, "2024-01-02");
+}
+
+// Les barres historiques (aucune datée d'aujourd'hui) sont intactes
+TEST(IbkrDataFeedUnit, HistoricalBarsUntouched) {
+    ScriptedIbkrDataFeed f;
+    f.fakeNow = utcInstant(2024, 1, 5, 18, 0);
+    f.responses = {{"/v1/api/hmds/history", R"({"data":[
+        {"t":1704153600000,"o":403.2,"h":404.1,"l":401.5,"c":402.8,"v":1000.0},
+        {"t":1704240000000,"o":402.9,"h":405.0,"l":402.0,"c":404.6,"v":900.0}
+    ]})"}};
+
+    auto r = f.getBars("QQQ", 60);
+    ASSERT_TRUE(r.ok());
+    EXPECT_EQ(r.value().size(), 2u);
+}
+
+// Réponse ne contenant QUE la barre du jour → Ok(vide), cycle sauté proprement
+TEST(IbkrDataFeedUnit, OnlyTodayBarYieldsEmptyOk) {
+    ScriptedIbkrDataFeed f;
+    f.fakeNow = utcInstant(2024, 1, 3, 18, 0);
+    f.responses = {{"/v1/api/hmds/history", R"({"data":[
+        {"t":1704240000000,"o":402.9,"h":405.0,"l":402.0,"c":404.6,"v":900.0}
+    ]})"}};
+
+    auto r = f.getBars("QQQ", 60);
+    ASSERT_TRUE(r.ok());
+    EXPECT_TRUE(r.value().empty());
 }
 
 // Le conid connu de QQQ est résolu localement, sans requête de recherche
