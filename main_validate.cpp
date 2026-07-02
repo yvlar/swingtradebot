@@ -63,6 +63,13 @@ int main() {
     const auto windows = wf.run();
     wf.printReport(windows);
 
+    // 2-bis. Walk-forward FIN (Sprint 8-bis, item 8b.3, D34) ──────────────────
+    // 4 fenêtres OOS au lieu de 2 : OOS=300 (et non 250) pour laisser ~99
+    // barres tradables après le warmup local de ~201 barres (SMA200).
+    titre("2-bis. WALK-FORWARD FIN (IS=500/OOS=300, 4 fenetres — item 8b.3)");
+    WalkForward wfFin(cfg, qqq, /*IS=*/500, /*OOS=*/300, /*pas=*/300);
+    wfFin.printReport(wfFin.run());
+
     // 3. Optimiseur de grille jugé en OOS ─────────────────────────────────────
     titre("3. CARTE DE SENSIBILITE (grille, Sharpe OOS)");
     auto objectifOos = [&](const SwingConfig& c) -> GridScore {

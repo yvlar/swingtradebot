@@ -24,6 +24,19 @@ constexpr size_t kIs   = 700;
 constexpr size_t kOos  = 400;
 constexpr size_t kStep = 400;
 
+// ── Pavage FIN (Sprint 8-bis, item 8b.3, D34) ────────────────────────────────
+// Les verdicts 8.x reposent sur 2 fenêtres OOS — fragile statistiquement (D34 :
+// un verdict OOS sans trades ne juge que le temps en cash). Ce pavage fin donne
+// 4 fenêtres OOS contiguës (s = 0, 300, 600, 900 sur 1790 barres).
+// OOS=300 et non l'exemple littéral de la ROADMAP (250) : chaque fenêtre
+// ré-amorce ses indicateurs avec un warmup local de ~201 barres (SMA200,
+// BackTester.hpp) — avec 250 il ne resterait que ~49 barres tradables par OOS
+// (verdict quasi pur cash drag, le piège D34 justement) ; avec 300 on en a ~99.
+// Décision utilisateur d'ouverture du Sprint 8-bis (2026-07-02).
+constexpr size_t kIsFin   = 500;
+constexpr size_t kOosFin  = 300;
+constexpr size_t kStepFin = 300;
+
 // ── Configs de référence des verdicts (préparation 8.2-8.5) ──────────────────
 // Chaque verrou de verdict construit sa config EXPLICITEMENT, champ par champ :
 // un verdict est une mesure HISTORIQUE, il ne doit pas bouger quand les défauts
@@ -432,5 +445,85 @@ TEST(StrategyV2Integration, SprintChainVsBaselineOosVerdictIsLocked) {
     // > 5 pts vs B&H → pas d'edge démontré, pas de déploiement. Si ce verrou
     // casse « dans le bon sens » un jour, re-dérouler la DoD complète (drawdown
     // −50 %…) avant tout déploiement.
+    EXPECT_LT(alphaC, -5.0);
+}
+
+// ─── Sprint 8-bis, item 8b.3 : pavage walk-forward FIN ───────────────────────
+
+// Structure du pavage fin : au moins 4 fenêtres OOS contiguës de tailles
+// exactes — la condition pour que les verdicts fins soient comparables entre
+// eux et avec le pavage 2-fenêtres.
+TEST(StrategyV2Integration, FinePavingProducesAtLeastFourOosWindows) {
+    SwingConfig chain = cfg84(); chain.regimeReentry = true;   // chaîne v2
+
+    const auto w = WalkForward(chain, SWINGBOT_QQQ_CSV, kIsFin, kOosFin, kStepFin).run();
+
+    ASSERT_GE(w.size(), 4u);
+    for (size_t i = 0; i < w.size(); ++i) {
+        EXPECT_EQ(w[i].isEnd,   w[i].oosStart);                // IS colle a l'OOS
+        EXPECT_EQ(w[i].isEnd  - w[i].isStart,  kIsFin);
+        EXPECT_EQ(w[i].oosEnd - w[i].oosStart, kOosFin);
+        if (i > 0)                                             // OOS contigus
+            EXPECT_EQ(w[i].oosStart, w[i - 1].oosStart + kStepFin);
+    }
+}
+
+// Verdict de CHAÎNE re-verrouillé sur le pavage fin (item 8b.3). Même
+// comparaison que SprintChainVsBaselineOosVerdictIsLocked (chaîne v2 vs état
+// 8.1) mais jugée sur 4 fenêtres OOS au lieu de 2 — toute INVERSION de
+// conclusion vs le pavage 2-fenêtres est précisément ce que ce test doit
+// révéler et figer.
+//
+// VERDICT MESURÉ (figé) : AUCUNE inversion — le pavage fin CONFIRME le
+// pavage 2-fenêtres sur toute la ligne :
+//   - la chaîne bat l'état 8.1 : alpha OOS −7,15 vs −9,05 (delta +1,91,
+//     contre +4,07 sur 2 fenêtres — l'amélioration tient, plus modeste) ;
+//   - l'alpha reste NÉGATIF et sous −5 pts → DoD toujours non atteinte,
+//     pas d'edge, pas de déploiement ;
+//   - l'échantillon D34 est enfin étoffé : 13 trades OOS poolés pour la
+//     chaîne (gagnants +7,41 %, PF 1,98, espérance +62,52 $)… mais l'état
+//     8.1 reste à ZÉRO trade OOS même sur 4 fenêtres — son alpha n'est
+//     toujours que du cash drag, le pavage fin ne l'a pas « réveillé ».
+TEST(StrategyV2Integration, SprintChainFinePavingOosVerdictIsLocked) {
+    SwingConfig chain = cfg84(); chain.regimeReentry = true;   // = cfg85 retenue
+    SwingConfig start = cfg81();
+
+    const auto wc = WalkForward(chain, SWINGBOT_QQQ_CSV, kIsFin, kOosFin, kStepFin).run();
+    const auto ws = WalkForward(start, SWINGBOT_QQQ_CSV, kIsFin, kOosFin, kStepFin).run();
+    ASSERT_GE(wc.size(), 4u);
+    ASSERT_EQ(ws.size(), wc.size());
+
+    const auto tc = tradesOos(wc);
+    const auto ts = tradesOos(ws);
+    const double alphaC = meanOosAlpha(wc), alphaS = meanOosAlpha(ws);
+    const double expoC  = moyenneOos(wc, &BacktestResult::pctTimeInvested);
+    const double expoS  = moyenneOos(ws, &BacktestResult::pctTimeInvested);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  ITEM 8b.3 — PAVAGE FIN (" << wc.size() << " fenetres OOS QQQ, IS="
+              << kIsFin << "/OOS=" << kOosFin << ")\n"
+              << "    alpha OOS moyen : 8.1 " << alphaS << " -> chaine " << alphaC
+              << " (delta " << (alphaC - alphaS) << ")\n"
+              << "    % temps investi : 8.1 " << expoS << " -> chaine " << expoC << "\n"
+              << "    trades OOS      : 8.1 " << ts.size() << " -> chaine " << tc.size()
+              << " (gain moyen gagnants " << gainMoyenGagnants(tc)
+              << " %, PF " << facteurProfit(tc)
+              << ", esperance " << esperanceParTrade(tc) << " $)\n";
+
+    for (const auto& x : wc) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+    for (const auto& x : ws) EXPECT_TRUE(std::isfinite(x.oos.alpha));
+
+    // La chaîne bat toujours l'état 8.1 sur le pavage fin (pas d'inversion).
+    EXPECT_GT(alphaC, alphaS);
+    EXPECT_NEAR(alphaC, -7.1454, 1e-2);    // golden de mesure (4 fenetres)
+    EXPECT_NEAR(alphaS, -9.0527, 1e-2);
+    EXPECT_NEAR(expoC,  73.7374, 1e-2);
+    EXPECT_EQ(tc.size(), 13u);             // garde-fou D34 : échantillon non vide
+    EXPECT_EQ(ts.size(),  0u);             // 8.1 : toujours 0 trade OOS (cash drag)
+    EXPECT_NEAR(gainMoyenGagnants(tc),  7.4076, 1e-2);
+    EXPECT_NEAR(facteurProfit(tc),      1.9784, 1e-2);
+    EXPECT_NEAR(esperanceParTrade(tc), 62.5162, 1e-2);
+    // DoD toujours NON atteinte sur le pavage fin : alpha négatif, > 5 pts
+    // sous le B&H → pas d'edge démontré, pas de déploiement.
     EXPECT_LT(alphaC, -5.0);
 }
