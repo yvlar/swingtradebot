@@ -177,8 +177,12 @@ public:
     // ── Stop résident (item 19) : enregistre les appels pour vérification ──
     struct StopRecord { std::string symbol; int qty; double stopPrice; };
 
+    // Simule un échec de dépôt du stop résident (panne réseau, rejet Gateway)
+    void setStopSubmitFails(bool f) { stopSubmitFails_ = f; }
+
     std::optional<Order> submitStopLoss(const std::string& symbol,
                                         int qty, double stopPrice) override {
+        if (stopSubmitFails_) return std::nullopt;
         stops_.push_back({symbol, qty, stopPrice});
         Order o;
         o.symbol = symbol; o.side = OrderSide::SELL;
@@ -211,6 +215,7 @@ private:
     std::optional<std::string>  positionError_;
     std::vector<StopRecord>     stops_;
     int                         cancelStopCount_ = 0;
+    bool                        stopSubmitFails_ = false;
 };
 
 // ─── MockLogger ───────────────────────────────────────────────────────────────

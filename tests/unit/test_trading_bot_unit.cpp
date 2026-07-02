@@ -601,6 +601,115 @@ TEST(TradingBotUnit, NoResidentStopWhenBuyNotFilled) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  B1 — le stop résident doit s'armer aussi à l'ADOPTION.
+//  BUG : submitStopLoss n'était appelé que dans la branche FILLED
+//  de l'achat. Or IBKR répond typiquement Submitted → PENDING → la
+//  position est adoptée par réconciliation au cycle suivant… sans
+//  stop. La protection « hors-ligne » était inopérante dans le cas
+//  nominal, et après chaque restart.
+// ════════════════════════════════════════════════════════════
+
+// Position broker adoptée après restart → stop résident armé sur le coût moyen
+TEST(TradingBotUnit, AdoptedPositionArmsResidentStop) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+
+    h.bot->runOnce();                            // adoption
+
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    EXPECT_EQ(h.broker->stops()[0].qty, 9);
+    EXPECT_DOUBLE_EQ(h.broker->stops()[0].stopPrice, 400.0 * 0.95);
+}
+
+// Achat PENDING (cas nominal IBKR) : pas de stop à la soumission, mais dès
+// que la position se matérialise chez le broker, le stop s'arme — UNE fois.
+TEST(TradingBotUnit, PendingBuyThenMaterializedPositionArmsStopOnce) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setSubmitResult(OrderStatus::PENDING);
+    h.bot->runOnce();                            // achat PENDING
+    ASSERT_TRUE(h.broker->stops().empty());
+    ASSERT_FALSE(h.bot->state().inPosition);
+
+    // L'ordre s'exécute entre deux cycles : la position apparaît chez le broker
+    h.broker->setPosition(Position{"QQQ", 9, 420.0, 9 * 420.0, 0.0});
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();                            // réconciliation → adoption
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+
+    h.bot->runOnce();                            // cycles suivants : idempotent
+    h.bot->runOnce();
+    EXPECT_EQ(h.broker->stops().size(), 1u);
+}
+
+// Jamais deux stops pour la même position, même après plusieurs cycles
+TEST(TradingBotUnit, ResidentStopNotStackedAcrossCycles) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();                            // entrée FILLED → 1 stop
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+
+    h.strategy->setSignal(SignalType::HOLD);
+    h.setLastBar(425.0, "2024-03-04");
+    h.bot->runOnce();
+    h.setLastBar(428.0, "2024-03-05");
+    h.bot->runOnce();
+
+    EXPECT_EQ(h.broker->stops().size(), 1u);
+}
+
+// État restauré avec stopArmed=true : le stop existe déjà chez le broker,
+// on ne le re-dépose PAS (sinon deux stops actifs → double vente)
+TEST(TradingBotUnit, RestoredStateWithArmedStopDoesNotRearm) {
+    BotHarness h(410.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
+    BotState persisted{true, 400.0, 405.0, 2, "2024-03-07"};
+    persisted.stopArmed = true;                  // stop déjà déposé avant le restart
+    h.store->preload(persisted);
+
+    h.bot->runOnce();
+
+    EXPECT_TRUE(h.broker->stops().empty());
+}
+
+// Échec du dépôt (panne réseau) : pas d'état menteur, nouvel essai au cycle
+// suivant dès que le broker répond
+TEST(TradingBotUnit, FailedStopArmIsRetriedNextCycle) {
+    BotHarness h(420.0, "2024-03-01");
+    h.strategy->setSignal(SignalType::BUY);
+    h.broker->setStopSubmitFails(true);
+    h.bot->runOnce();                            // entrée, dépôt du stop échoue
+    ASSERT_TRUE(h.bot->state().inPosition);
+    ASSERT_TRUE(h.broker->stops().empty());
+    ASSERT_TRUE(h.store->lastSaved().has_value());
+    EXPECT_FALSE(h.store->lastSaved()->stopArmed);
+
+    h.broker->setStopSubmitFails(false);
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();                            // filet : retente et réussit
+    ASSERT_EQ(h.broker->stops().size(), 1u);
+    EXPECT_TRUE(h.store->lastSaved()->stopArmed);
+}
+
+// Position fermée hors bot (ou par le stop résident lui-même) : le stop
+// broker est annulé — pas d'ordre orphelin qui se déclencherait après coup
+TEST(TradingBotUnit, PositionClosedOutsideBotCancelsResidentStop) {
+    BotHarness h(415.0, "2024-03-08");
+    h.strategy->setSignal(SignalType::HOLD);
+    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    persisted.stopArmed = true;
+    h.store->preload(persisted);
+    h.broker->setPosition(std::nullopt);         // plus de position broker
+
+    h.bot->runOnce();                            // réconciliation → reset
+
+    EXPECT_FALSE(h.bot->state().inPosition);
+    EXPECT_EQ(h.broker->cancelStopCount(), 1);
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 5 item 18 — kill-switch : coupe les ENTRÉES, jamais les sorties
 // ════════════════════════════════════════════════════════════
 
