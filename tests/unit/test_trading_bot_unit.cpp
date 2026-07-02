@@ -152,6 +152,52 @@ TEST(TradingBotUnit, BuySignalWithSufficientCashSubmitsOrder) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  A2 (passe 3) — santé du cycle : le watchdog ne doit battre
+//  que si le cycle a RÉELLEMENT fonctionné. BUG : main_ibkr
+//  battait le heartbeat inconditionnellement → le watchdog
+//  restait vert pendant une panne totale (feed/broker/401).
+// ════════════════════════════════════════════════════════════
+
+TEST(TradingBotUnit, FeedDownMarksCycleUnhealthy) {
+    BotHarness h;
+    h.feed->setFeedDown("timeout simulé");
+    h.bot->runOnce();
+    EXPECT_FALSE(h.bot->lastCycleHealthy());
+}
+
+TEST(TradingBotUnit, BrokerDownMarksCycleUnhealthy) {
+    BotHarness h;
+    h.broker->setPositionQueryFails("panne broker simulée");
+    h.bot->runOnce();
+    EXPECT_FALSE(h.bot->lastCycleHealthy());
+}
+
+TEST(TradingBotUnit, InactiveAccountMarksCycleUnhealthy) {
+    BotHarness h;
+    h.broker->setAccount({0.0, 0.0, "INACTIVE"});
+    h.strategy->setSignal(SignalType::BUY);
+    h.bot->runOnce();
+    EXPECT_FALSE(h.bot->lastCycleHealthy());
+}
+
+// Un HOLD ordinaire est un cycle SAIN (le watchdog surveille le silence,
+// pas les décisions de trading)
+TEST(TradingBotUnit, NormalHoldCycleIsHealthy) {
+    BotHarness h;
+    h.strategy->setSignal(SignalType::HOLD);
+    h.bot->runOnce();
+    EXPECT_TRUE(h.bot->lastCycleHealthy());
+}
+
+// Marché fermé = attente normale, pas une panne
+TEST(TradingBotUnit, MarketClosedIsHealthy) {
+    BotHarness h;
+    h.feed->setMarketOpen(false);
+    h.bot->runOnce();
+    EXPECT_TRUE(h.bot->lastCycleHealthy());
+}
+
+// ════════════════════════════════════════════════════════════
 //  Sprint 1 item 2 — le statut d'ordre doit être vérifié
 // ════════════════════════════════════════════════════════════
 

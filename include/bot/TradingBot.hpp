@@ -48,7 +48,20 @@ public:
     }
 
     // ── Cycle unique de trading (testable unitairement) ───────────────────────
-    void runOnce() {
+    // Enveloppe : mémorise la santé du cycle (A2, passe 3) — le composition
+    // root ne bat le heartbeat du watchdog QUE si le cycle a réellement
+    // fonctionné, sinon toute panne resterait invisible (watchdog vert).
+    void runOnce() { lastCycleHealthy_ = runCycle_(); }
+
+    // Santé du DERNIER cycle : false = panne (feed, broker, compte inactif).
+    // Marché fermé, HOLD, kill-switch, cooldown ou ordre rejeté restent des
+    // cycles SAINS : le watchdog surveille le SILENCE, pas les décisions de
+    // trading (les rejets/kill-switch ont leurs propres alertes).
+    bool lastCycleHealthy() const { return lastCycleHealthy_; }
+
+private:
+    // Implémentation du cycle — retourne sa santé (voir lastCycleHealthy)
+    bool runCycle_() {
         // Restauration de l'état persisté au premier cycle (après le setConfig
         // du composition root, pour charger le bon symbole)
         if (!stateLoaded_) {
@@ -66,7 +79,7 @@ public:
 
         if (!dataFeed_->isMarketOpen()) {
             logger_->info("Marché fermé — en attente");
-            return;
+            return true;    // attente normale, pas une panne
         }
 
         // 1. Récupération des données
@@ -76,12 +89,12 @@ public:
         if (!barsRes.ok()) {
             logger_->error("Panne du data feed (" + barsRes.error()
                            + ") — cycle ignoré");
-            return;
+            return false;
         }
         const auto& bars = barsRes.value();
         if (bars.empty()) {
             logger_->warn("Aucune barre reçue");
-            return;
+            return false;   // marché ouvert sans donnée = anormal
         }
         // Feed plus court que demandé (B3.2) : le filtre de régime (SMA200)
         // peut être incalculable → aucune entrée ne partira. Signalé chaque
@@ -118,7 +131,7 @@ public:
         if (!posRes.ok()) {
             logger_->error("Panne broker sur getPosition (" + posRes.error()
                            + ") — cycle ignoré, état conservé");
-            return;
+            return false;
         }
         const auto& pos = posRes.value();
 
@@ -202,7 +215,7 @@ public:
                 && state_.lastExitDate == bars.back().date) {
                 logger_->info("Ré-entrée bloquée (cooldown) : sortie déjà "
                               "exécutée le " + state_.lastExitDate);
-                return;
+                return true;    // décision de trading, pas une panne
             }
 
             auto account = broker_->getAccount();
@@ -213,7 +226,7 @@ public:
             if (account.status != "ACTIVE") {
                 logger_->error("Compte broker non ACTIF (status=" + account.status
                                + ") — entrée bloquée");
-                return;
+                return false;   // panne broker : cycle non sain
             }
 
             // Kill-switch (item 18) : si un garde-fou est franchi, on ne prend
@@ -223,7 +236,7 @@ public:
                     riskCfg_.killSwitch, dayStartEquity_, account.equity,
                     consecutiveLosses_, ordersToday_)) {
                 logger_->warn("🛑 Kill-switch (" + *halt + ") — entrée bloquée");
-                return;
+                return true;    // garde-fou assumé (alerté via haltObserver), pas une panne
             }
 
             int shares = riskManager_->positionSize(
@@ -233,11 +246,11 @@ public:
             );
             if (shares <= 0) {
                 logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
-                return;
+                return true;
             }
             if (!riskManager_->isTradeAllowed(account, pos, price, shares)) {
                 logger_->warn("Trade non autorisé par le risk manager");
-                return;
+                return true;
             }
 
             auto order = broker_->submitBuy(riskCfg_.symbol, shares);
@@ -270,8 +283,10 @@ public:
                 logger_->error("Ordre d'achat non exécuté (" + orderStatusStr(order) + ")");
             }
         }
+        return true;    // cycle complet (HOLD, ordres traités — même rejetés)
     }
 
+public:
     // ── Boucle principale (paper/live trading) ────────────────────────────────
     void run(int intervalSeconds = 86400) {
         running_ = true;
@@ -325,6 +340,7 @@ private:
     RiskConfig  riskCfg_;
     std::atomic<bool> running_{false};
     bool stateLoaded_ = false;
+    bool lastCycleHealthy_ = false;   // pessimiste avant le 1er cycle (A2)
     std::function<void(const std::string&)> exitObserver_;
     std::function<void(const TradeFill&)>   tradeObserver_;
 
