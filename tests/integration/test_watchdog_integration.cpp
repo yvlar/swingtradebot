@@ -154,6 +154,38 @@ TEST_F(WatchdogIntegration, WebhookDeliveredToLocalServer) {
     EXPECT_NE(raw.find("SWING BOT ALERTE"),               std::string::npos);
 }
 
+// Le SMS Twilio est réellement POSTé (curl, form-urlencoded + Basic auth)
+// sur un serveur local — E2E du 2e canal d'alerte. NB : MiniHttpServer ne
+// parle pas SMTP, l'email reste couvert par son chemin d'échec ci-dessous.
+TEST_F(WatchdogIntegration, SmsDeliveredToLocalServer) {
+    MiniHttpServer server(201, "{}");            // Twilio répond 201 Created
+    cfg_.sms_enabled     = true;
+    cfg_.twilio_sid      = "SIDTEST";
+    cfg_.twilio_token    = "tok";
+    cfg_.twilio_from     = "+15550001111";
+    cfg_.twilio_to       = "+15550002222";
+    cfg_.twilio_base_url = server.url("");       // substitue api.twilio.com
+    cfg_.alert_timeout_sec = 3;
+
+    Watchdog wd(cfg_, state_);
+    wd.start();                       // jamais de heartbeat → alerte
+
+    ASSERT_TRUE(server.waitForRequests(1, 10'000));
+    wd.stop();
+
+    const std::string raw = server.requests()[0];
+    EXPECT_NE(raw.find("POST /2010-04-01/Accounts/SIDTEST/Messages.json"),
+              std::string::npos);
+    EXPECT_NE(raw.find("Content-Type: application/x-www-form-urlencoded"),
+              std::string::npos);
+    // Les « + » des numéros sont urlencodés (%2B) dans le corps
+    EXPECT_NE(raw.find("To=%2B15550002222"),   std::string::npos);
+    EXPECT_NE(raw.find("From=%2B15550001111"), std::string::npos);
+    EXPECT_NE(raw.find("Body="),               std::string::npos);
+    // CURLOPT_USERNAME/PASSWORD → Basic préemptif sur http
+    EXPECT_NE(raw.find("Authorization: Basic"), std::string::npos);
+}
+
 // SMTP injoignable (port fermé) : l'envoi échoue proprement,
 // le watchdog survit et le callback d'alerte est quand même appelé
 TEST_F(WatchdogIntegration, EmailFailureDoesNotBlockWatchdog) {

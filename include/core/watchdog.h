@@ -44,6 +44,8 @@ struct AlertConfig {
     std::string twilio_token   = "";
     std::string twilio_from    = "+1XXXXXXXXXX";
     std::string twilio_to      = "+1XXXXXXXXXX";
+    // Base URL substituable en test (MiniHttpServer) — défaut = prod
+    std::string twilio_base_url = "https://api.twilio.com";
 
     // Discord / Slack webhook
     bool        webhook_enabled = false;
@@ -213,7 +215,7 @@ private:
         CURL* curl = curl_easy_init();
         if (!curl) return;
 
-        std::string url = "https://api.twilio.com/2010-04-01/Accounts/"
+        std::string url = cfg_.twilio_base_url + "/2010-04-01/Accounts/"
                          + cfg_.twilio_sid + "/Messages.json";
 
         // Encode le body pour x-www-form-urlencoded
