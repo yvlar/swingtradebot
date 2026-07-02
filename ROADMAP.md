@@ -9,33 +9,37 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 87        | 68                           |
-| Qualité      | 90        | 60                           |
-| FinTech      | 81        | 38                           |
+| Architecture | 88        | 68                           |
+| Qualité      | 91        | 60                           |
+| FinTech      | 83        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-01 (clôture Sprint 8 — 8.2–8.5 livrés, verdict « pas d'edge démontré »)
-- **Sprint courant** : Sprint 8-bis — Chercher l'edge avec le harnais (grille étendue, multi-actifs, pavage fin) — décision utilisateur du 2026-07-01
+- **Dernière mise à jour** : 2026-07-02 (clôture Sprint 8-bis — PREMIER CANDIDAT D'EDGE trouvé par la grille, consigné NON adopté ; gate 8b.4 fermé)
+- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi — décision utilisateur du 2026-07-02
 
-> ### ⚠️ Rentabilité : toujours PAS d'edge démontré — mais le Sprint 8 a produit +4 pts d'alpha OOS
+> ### ⚠️ Rentabilité : premier CANDIDAT d'edge (grille 8b.1) — non adopté, à valider hors-grille
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
-> capacité à gagner de l'argent. Le Sprint 8 (refonte 8.0–8.5) a transformé la
-> stratégie : régime SMA200, take-profit retiré, entrée sur la force, vente RSI
-> gatée par le régime, re-entrée sans croisement. Chaque item validé **en OOS**
-> (walk-forward Sprint 7), chaîne complète verrouillée par test
-> (`SprintChainVsBaselineOosVerdictIsLocked`). Résultat : **alpha OOS moyen
-> −14,10 → −10,03 pts** (+4,07), temps investi OOS 0 → 54 %, in-sample +18,70 %
-> (Sharpe 0,72), Monte-Carlo p50 CAGR +6,76 %. MAIS la **DoD du Sprint 8 n'est
-> PAS atteinte** (< 5 pts d'écart au B&H exigés) : la grille dit toujours
-> « AUCUN edge (alpha ≤ 0 partout) — ne pas deployer ». **Pas de déploiement,
-> la prod reste paper.** Le Sprint 8-bis poursuit la recherche avec le harnais.
+> capacité à gagner de l'argent. Le Sprint 8-bis a jugé la chaîne v2 sur un pavage
+> fin (4 fenêtres OOS, 8b.3 — verdict Sprint 8 CONFIRMÉ, aucune inversion : alpha
+> −7,15 vs −9,05 pour l'état 8.1) et sur 3 actifs supplémentaires (8b.2 — aucun
+> alpha OOS > 0, mais comportement cohérent partout : la chaîne n'est pas un
+> artefact QQQ). La grille ré-axée sur la chaîne v2 (8b.1) a produit le **premier
+> candidat d'edge du projet** : (emaFast=9, smaT=250, trail=0,05) → **alpha OOS
+> +0,10 sur QQQ, +1,26 IWM, +0,81 MDY, −0,53 SPY** (Sharpe OOS 1,22, verdict
+> verrouillé par `V2ChainExtendedGridOosVerdictIsLocked`). Réserves sérieuses :
+> biais de sélection (meilleur de 18 combos jugés sur les MÊMES fenêtres),
+> 4-8 trades OOS par actif, et la grille pleine 81 combos retient un plateau
+> différent sur les axes EMA — seul **smaT=250 est stable**. **Décision
+> utilisateur (2026-07-02) : consigner, ne PAS adopter — le Sprint 8-ter valide
+> le candidat hors-grille avant toute adoption. Pas de déploiement, la prod
+> reste paper.**
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **25**  | Progression réelle et mesurée en OOS (+4,07 pts d'alpha, espérance +77,93 $/trade, PF 3,71 sur 11 trades OOS) — mais l'alpha reste négatif (−10,03) et la grille conclut « ne pas deployer ». La note ne franchira 50 qu'avec un alpha OOS ≥ 0, et 70+ qu'en battant le B&H net de coûts. |
-- **État des tests** : 460/460 verts (397 unitaires + 63 intégration). +20 à la
-  clôture du Sprint 8 (440 → 460), aucune dérive hors cycle (`ctest -N` valait
-  bien 440 à l'ouverture). Détail au changelog Sprint 8 (clôture).
+> | **Rentabilité** | **30**  | Premier réglage à alpha OOS > 0 sur 3 actifs sur 4, trouvé et VERROUILLÉ honnêtement (jamais l'IS, plateau, filtre alpha) — mais non validé hors de la grille qui l'a choisi, et la chaîne par défaut reste négative (−7,15). La note ne franchira 50 qu'avec le candidat CONFIRMÉ hors-grille (Sprint 8-ter), et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
+- **État des tests** : 470/470 verts (401 unitaires + 69 intégration). +10 à la
+  clôture du Sprint 8-bis (460 → 470), aucune dérive hors cycle (`ctest -N`
+  valait bien 460 à l'ouverture). Détail au changelog Sprint 8-bis.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -418,7 +422,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > (`./build/validate`) conclut « AUCUN edge (alpha ≤ 0 partout) — ne pas deployer ».
 > La prod reste en paper. Suite décidée avec l'utilisateur : **Sprint 8-bis** (ci-dessous).
 
-# 🟣 SPRINT 8-BIS — Chercher l'edge avec le harnais — **sprint courant**
+# 🟣 SPRINT 8-BIS — Chercher l'edge avec le harnais ✅ (clos le 2026-07-02, verdict : premier candidat d'edge, non adopté)
 
 > Décision utilisateur (2026-07-01) à la clôture du Sprint 8 : la stratégie progresse
 > (+4,07 pts d'alpha OOS ce sprint) mais ne bat pas le B&H — continuer la recherche
@@ -428,29 +432,76 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > (`tests/integration/test_strategy_v2_integration.cpp`). Discipline inchangée :
 > verdicts OOS verrouillés, configs de verdict EXPLICITES (D33), jamais de jugement
 > sur le plein échantillon.
+> **Ordre exécuté 8b.3 → 8b.1 → 8b.2 → (8b.4)** — décision utilisateur d'ouverture
+> (2026-07-02) : le pavage fin d'abord, pour que la grille et le multi-actifs soient
+> jugés sur ≥ 4 fenêtres OOS (leçon D34) et non 2.
 
-- [ ] **8b.1** **Grille étendue sur la chaîne v2** : la grille actuelle
-  (`main_validate.cpp:68-80`, `GridOptimizerIntegration`) explore encore les axes de
-  l'ANCIENNE stratégie (rsiBuyMax 55/65, TP 0,10/0,15 — des variantes toutes gatées
-  ou mortes depuis 8.2/8.3). La ré-axer sur les paramètres qui PILOTENT la chaîne v2 :
-  `emaFast/emaSlow`, `smaTrendPeriod` (150/200/250), `trailingStopPct` (0,03/0,05/0,08 —
-  21/22 sorties sont des trailing, c'est LE canal de sortie), objectif Sharpe/alpha OOS
-  moyen injecté (jamais l'IS). **Acceptation** : carte de sensibilité ≥ 3 axes sur la
-  chaîne v2, sélection plateau, verdict verrouillé (alpha OOS > 0 exigé pour « retenir »).
-- [ ] **8b.2** **Validation multi-actifs de la chaîne v2** : les CSV total-return
-  SPY/IWM/MDY existent (Sprint 7.4, garde `DataQuality.hpp`) mais la chaîne v2 n'est
-  jugée que sur QQQ. Walk-forward par actif, mêmes fenêtres. **Acceptation** : verdict
-  OOS par actif verrouillé — un edge qui ne tient que sur QQQ est un artefact.
-- [ ] **8b.3** **Pavage walk-forward plus fin** : les verdicts 8.x reposent sur 2 fenêtres
-  OOS (IS=700/OOS=400) — fragile statistiquement. Ajouter un pavage fin (ex. IS=500/OOS=250,
-  ≥ 4 fenêtres, `WalkForward.hpp:44`) et re-mesurer la chaîne. **Acceptation** : verdict
-  chaîne re-verrouillé sur le pavage fin ; toute inversion de conclusion vs le pavage
-  2-fenêtres est documentée (c'est le but du test).
-- [ ] **8b.4** **Trailing adaptatif ATR** (exploratoire, gaté par 8b.1) : l'ATR true-range
-  (item 8.0) est disponible et inutilisé par SwingStrategy ; un trailing en multiples
-  d'ATR remplacerait le −3 % fixe (`RiskManager.hpp:85-92`). Ne s'ouvre que si 8b.1
-  montre que `trailingStopPct` est l'axe le plus sensible. **Acceptation OOS** : alpha
-  net ↑ vs trailing fixe, drawdown non dégradé, verdict verrouillé.
+- [x] **8b.1** **Grille étendue sur la chaîne v2** → `77ff922` + `de7bdcf`
+  `GridOptimizer` étendu ADDITIVEMENT (axes `smaTrendPeriod`/`trailingStopPct`
+  optionnels, vide = singleton depuis la base — appels historiques inchangés) +
+  `axisSensitivities` (écart moyen max−min par axe, le mécanisme du gate 8b.4).
+  Grille du verrou : emaFast {9,13} × smaT {150,200,250} × trail {0,03/0,05/0,08}
+  = 18 combos, base chaîne v2 EXPLICITE (D33), objectif Sharpe/alpha OOS sur le
+  pavage FIN. **Acceptation satisfaite ET premier candidat d'edge** : le filtre
+  alpha > 0 PASSE au plateau (9, 250, 0,05) — Sharpe OOS 1,22, alpha +0,10
+  (`V2ChainExtendedGridOosVerdictIsLocked`). CLI : grille pleine 81 combos +
+  sensibilités. Réserve : biais de sélection — voir D36, adoption refusée.
+- [x] **8b.2** **Validation multi-actifs de la chaîne v2** → `ba22444`
+  Walk-forward par actif (pavage fin, mêmes fenêtres que QQQ), un verrou par actif
+  (`V2ChainOosVerdictLockedOnSpy/Iwm/Mdy`). **Acceptation satisfaite** : aucun
+  alpha OOS > 0 (SPY −5,52 / IWM −3,01 / MDY −3,60 vs QQQ −7,15) mais comportement
+  COHÉRENT partout (10-17 trades OOS, exposition 53-81 %) — la chaîne n'est pas un
+  artefact QQQ. Bonus : le CLI imprime aussi le candidat 8b.1 par actif (alpha > 0
+  sur 3/4 actifs — la donnée qui a motivé le Sprint 8-ter).
+- [x] **8b.3** **Pavage walk-forward plus fin** → `481f713`
+  IS=500/OOS=300/pas=300 → 4 fenêtres OOS (OOS=300 et non l'exemple 250 : warmup
+  local ~201 barres par fenêtre, D35 — décision utilisateur d'ouverture).
+  **Acceptation satisfaite** : verdict chaîne re-verrouillé
+  (`SprintChainFinePavingOosVerdictIsLocked`), AUCUNE inversion vs 2 fenêtres —
+  chaîne −7,15 vs état 8.1 −9,05 (delta +1,91), 13 trades OOS poolés (D34 étoffé),
+  DoD toujours non atteinte. L'état 8.1 reste à 0 trade OOS même sur 4 fenêtres.
+- [x] **8b.4** **Trailing adaptatif ATR** (exploratoire, gaté par 8b.1) → gate FERMÉ, aucun code
+  Le classement de sensibilité (verrouillé dans le verdict 8b.1) place
+  `smaTrendPeriod` premier (0,244 vs trail 0,210 sur 18 combos ; 0,312 vs 0,254 —
+  3e sur 4 — sur la grille pleine 81 combos) : `trailingStopPct` n'est PAS l'axe
+  le plus sensible → l'item ne s'ouvre pas, conformément à sa condition. Reste au
+  backlog, ré-ouvrable si un futur verdict de grille inverse le classement.
+
+# 🟣 SPRINT 8-TER — Valider le candidat d'edge hors-grille — **sprint courant**
+
+> Décision utilisateur (2026-07-02) à la clôture du Sprint 8-bis : la grille a produit
+> le premier candidat d'edge — (emaFast=9, smaTrendPeriod=250, trailingStopPct=0,05),
+> alpha OOS +0,10 QQQ / +1,26 IWM / +0,81 MDY / −0,53 SPY — mais il est entaché d'un
+> biais de sélection (meilleur de 18 combos jugés sur les MÊMES fenêtres OOS que son
+> verdict) et les échantillons sont minces (4-8 trades OOS/actif). **Consigner, ne pas
+> adopter** : ce sprint fait passer au candidat une validation dédiée HORS de la grille
+> qui l'a choisi. Aucune adoption de défaut sans que la DoD ci-dessous passe. Point
+> d'entrée : le verdict 8b.1 (`tests/integration/test_grid_optimizer_integration.cpp`,
+> `V2ChainExtendedGridOosVerdictIsLocked`) et la section 6 du CLI (`main_validate.cpp`).
+
+- [ ] **8t.1** **Verdict du candidat sur des fenêtres qu'il n'a PAS choisies** : re-juger
+  le candidat vs la chaîne v2 sur le pavage canonique 2 fenêtres (IS=700/OOS=400,
+  `test_strategy_v2_integration.cpp:23-25`) ET sur un pavage décalé (ex. IS=500/OOS=300
+  avec offset de départ ≠ 0, `WalkForward.hpp:53-72` — vérifier que le harnais permet
+  l'offset, sinon l'ajouter additivement). **Acceptation** : verdicts verrouillés
+  (config candidat EXPLICITE, D33) ; alpha OOS du candidat > chaîne v2 sur les fenêtres
+  non-choisies, sinon consigner « candidat non confirmé » (résultat valide).
+- [ ] **8t.2** **Monte-Carlo du candidat** : bootstrap des trades OOS poolés du candidat
+  (`MonteCarlo.hpp`, graine fixe) — distribution CAGR/drawdown p5/p50/p95 ; comparer à
+  la chaîne v2. **Acceptation** : verdict verrouillé ; p50 CAGR du candidat ≥ chaîne et
+  p95 drawdown non dégradé, sinon « non confirmé ».
+- [ ] **8t.3** **Grille de CONFIRMATION resserrée autour du candidat** : voisinage fin
+  smaT {225,250,275} × trail {0,04/0,05/0,06} × emaFast {7,9,11}, mêmes objectif/pavage
+  que 8b.1 — un vrai plateau doit rester alpha > 0 quand on resserre les crans (D36 :
+  les axes EMA du plateau bougent entre 18 et 81 combos, seul smaT=250 est stable).
+  **Acceptation** : verdict verrouillé ; le plateau resserré reste alpha > 0 et contient
+  smaT=250, sinon « artefact de grille ».
+- [ ] **8t.4** **Décision d'adoption (Décision requise)** : si 8t.1 ET 8t.2 ET 8t.3
+  confirment, poser à l'utilisateur l'adoption du candidat comme défauts (SwingConfig +
+  ProdConfig) avec goldens re-figés et delta chiffré, et re-dérouler la DoD du Sprint 8
+  (battre le B&H net de coûts en OOS, OU < 5 pts d'écart avec drawdown réduit ≥ 50 %).
+  Sinon : consigner « candidat non confirmé », la prod reste paper, retour à la
+  recherche (8b.4 ré-ouvrable, autres axes).
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
@@ -503,9 +554,70 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D31 | 🟢 | (Sprint 7) **L'ancien QQQ.csv comptait 1858 lignes pour une fenêtre de 1790 jours de bourse** (2019-01-02 → 2026-02-13) : ~68 lignes parasites (doublons/jours non boursiers) jamais détectées. Le ré-export total-return (Yahoo, 7.4) donne le compte correct (1790). Un garde-fou « nombre de barres ≈ jours de bourse attendus » dans `auditTotalReturnCsv` aurait pu l'attraper plus tôt | Documenté (résolu par le ré-export) ; garde-fou « densité de barres » au backlog qualité données |
 | D32 | 🟠 | (Sprint 8) **Le filtre de régime SMA200 (8.1) a besoin de ≥ 200 barres, or la prod câble `getBars(symbol, 60)`** (TradingBot.hpp). Sans correctif, le bot LIVE ne recevrait jamais assez de barres → SMA vide → aucune entrée possible. **Amorce posée au Sprint 8.1** : `RiskConfig::lookback` (défaut 60, aligné sur `smaTrendPeriod+30` par la conversion `SwingConfig→RiskConfig`) ; `TradingBot::runOnce` demande `getBars(symbol, riskCfg_.lookback)`. Côté prod, `main_ibkr` (via `prodSwingConfig`) demandera donc 230 barres — à vérifier sur le CP Gateway IBKR. Le volet COMPLET (lookback unifié prod/backtest, barres clôturées) reste **D19/Sprint 9.2** | Amorce Sprint 8.1 (`1e6f6fd`) ; volet complet Sprint 9.2 |
 | D33 | ✅ | (Sprint 8) **Les verrous de verdict OOS étaient construits sur `prodSwingConfig()` = les DÉFAUTS de SwingConfig** (`test_strategy_v2_integration.cpp`) : le premier item de 8.2–8.5 qui adoptait son réglage comme nouveau défaut aurait déplacé silencieusement la mesure HISTORIQUE du verdict 8.1. Corrigé AVANT tout changement de défaut (`a0ab08d`) : chaque verrou construit sa config champ par champ (`cfg81()`, `cfg82()`…). **Règle de DoD adoptée : tout verrou de verdict construit sa config EXPLICITEMENT, jamais depuis les défauts** | Corrigé (commit prep du sprint) ; règle ajoutée à la DoD des verdicts |
-| D34 | 🟡 | (Sprint 8) **Les 2 fenêtres OOS du pavage IS=700/OOS=400 ne portaient AUCUN trade sous la config 8.1** : l'alpha OOS −14,10 du verdict 8.1 était du pur cash drag (jamais en position). Conséquence : l'acceptation de 8.2 (« gain moyen des gagnants ↑ ») était INDÉCIDABLE à son tour de rôle — adoptée comme retrait de contrainte morte, ré-examinée (et validée : −10,03 vs −10,20) sur la chaîne finale une fois 8.3/8.5 livrés. Leçon : un verdict OOS sans trades ne juge que le temps en cash ; vérifier le nombre de trades poolés AVANT d'interpréter les ratios. Le pavage fin (8b.3) réduit ce risque structurellement | Documenté ; adressé par 8b.3 (pavage fin) et les agrégats poolés (`tradesOos`) |
+| D34 | 🟡 | (Sprint 8) **Les 2 fenêtres OOS du pavage IS=700/OOS=400 ne portaient AUCUN trade sous la config 8.1** : l'alpha OOS −14,10 du verdict 8.1 était du pur cash drag (jamais en position). Conséquence : l'acceptation de 8.2 (« gain moyen des gagnants ↑ ») était INDÉCIDABLE à son tour de rôle — adoptée comme retrait de contrainte morte, ré-examinée (et validée : −10,03 vs −10,20) sur la chaîne finale une fois 8.3/8.5 livrés. Leçon : un verdict OOS sans trades ne juge que le temps en cash ; vérifier le nombre de trades poolés AVANT d'interpréter les ratios. Le pavage fin (8b.3) réduit ce risque structurellement | ✅ Adressé au Sprint 8-bis (8b.3, `481f713`) : 13 trades OOS poolés sur 4 fenêtres, chaque verrou fige désormais son NOMBRE de trades. Résidu : l'état 8.1 reste à 0 trade OOS même sur 4 fenêtres (constat, pas un défaut du pavage) |
+| D35 | 🟡 | (Sprint 8-bis) **Le warmup local de `runRange` (~201 barres, SMA200) consomme le début de CHAQUE fenêtre** (`BackTester.hpp:142-145` : chaque sous-fenêtre ré-amorce ses indicateurs — isolation honnête, mais coût fixe). Une fenêtre OOS de 250 barres n'aurait que ~49 barres tradables → verdict quasi pur cash drag (le piège D34 sous une autre forme). Règle adoptée : **dimensionner toute fenêtre OOS largement au-dessus du warmup** (OOS=300 → ~99 tradables pour le pavage fin ; l'exemple littéral « OOS=250 » de l'item 8b.3 a été ajusté en conséquence, décision utilisateur 2026-07-02). Garde-fou possible (backlog) : `WalkForward` pourrait AVERTIR si `oosBars ≤ warmup + marge` | Documenté (choix consigné dans `test_strategy_v2_integration.cpp`) ; garde-fou au backlog qualité harnais |
+| D36 | 🟠 | (Sprint 8-bis) **Premier candidat d'edge — mais le plateau de grille n'est PAS stable entre les tailles de grille.** La grille 18 combos retient (emaFast=9, smaT=250, trail=0,05) ; la grille pleine 81 combos (axes emaSlow/emaFast élargis) retient (emaFast=5, emaSlow=50, smaT=250, trail=0,03). Seul **smaTrendPeriod=250** est commun aux deux plateaux. S'y ajoutent le biais de sélection (le « meilleur de N combos » est jugé sur les MÊMES fenêtres OOS que son verdict) et des échantillons minces (4-8 trades OOS/actif). Leçon : un gagnant de grille n'est pas un edge — c'est une HYPOTHÈSE à confirmer hors de la grille qui l'a choisie. **Décision utilisateur (2026-07-02) : consigner sans adopter** | **Sprint 8-ter** (validation hors-grille : fenêtres non-choisies, Monte-Carlo, grille resserrée, décision d'adoption gatée) |
 
 ## Changelog
+
+### Sprint 8-bis — Chercher l'edge avec le harnais (2026-07-02)
+
+**Baseline réelle à l'ouverture** : **460/460 verte**, conforme au tableau de bord
+(`ctest -N` = 460, aucune dérive hors cycle).
+
+**Décisions utilisateur d'ouverture** : (1) sprint complet + clôture ; (2) ordre
+**8b.3 → 8b.1 → 8b.2 → (8b.4)** — le pavage fin d'abord pour que grille et
+multi-actifs soient jugés sur 4 fenêtres OOS (leçon D34) ; (3) pavage fin
+IS=500/**OOS=300**/pas=300 et non l'exemple littéral OOS=250 (warmup ~201 barres
+par fenêtre → D35).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `481f713` test(backtest) : pavage walk-forward fin (IS=500/OOS=300, 4 fenêtres OOS) — verdict chaîne re-verrouillé (item 8b.3, D34)
+- `77ff922` feat(backtest) : axes smaTrendPeriod/trailingStopPct + sensibilité par axe dans GridOptimizer (item 8b.1)
+- `de7bdcf` test(backtest) : grille étendue sur la chaîne v2 jugée en OOS fin — premier candidat d'edge verrouillé (item 8b.1)
+- `ba22444` test(backtest) : verdicts OOS de la chaîne v2 par actif SPY/IWM/MDY, mêmes fenêtres (item 8b.2)
+
+**Tests** : 460 → **470** (+10 : 401 unitaires + 69 intégration). Ajouts :
+`GridOptimizerUnit` +4 (énumération étendue, repli singleton rétro-compatible,
+plateau sur les nouveaux axes, classement de sensibilité), `StrategyV2Integration`
++2 (structure du pavage fin, verdict chaîne fin), `GridOptimizerIntegration` +1
+(verdict grille v2), `MultiAssetIntegration` +3 (un verdict par actif). Discipline
+rouge→vert : rouges de compilation (ctor 8 axes inexistant) puis sentinelles de
+mesure figées après la passe rouge. Sprint 100 % MESURE : **aucun changement de
+comportement de la stratégie, goldens INCHANGÉS** (le seul code produit touché est
+`GridOptimizer.hpp`, hors chemin d'exécution du bot ; extension prouvée
+rétro-compatible par les 4 tests unitaires historiques inchangés).
+
+**Verdicts OUT-OF-SAMPLE du sprint** (tous verrouillés par test) :
+- **8b.3 (pavage fin, 4 fenêtres)** : AUCUNE inversion vs 2 fenêtres — chaîne
+  −7,15 vs état 8.1 −9,05 (delta +1,91), 13 trades OOS poolés (gagnants +7,41 %,
+  PF 1,98, espérance +62,52 $), exposition 73,74 %. DoD toujours non atteinte.
+  L'état 8.1 reste à 0 trade OOS même sur 4 fenêtres (cash drag pur).
+- **8b.1 (grille étendue)** : **premier candidat d'edge du projet** — le filtre
+  alpha > 0 PASSE au plateau (emaFast=9, smaT=250, trail=0,05) : Sharpe OOS 1,22,
+  alpha OOS +0,10. Axe le plus sensible : smaTrendPeriod (0,244 vs trail 0,210
+  sur 18 combos ; confirmé 0,312 vs 0,254 sur 81 combos).
+- **8b.2 (multi-actifs, chaîne v2)** : aucun alpha OOS > 0 (SPY −5,52, IWM −3,01,
+  MDY −3,60 vs QQQ −7,15, chacun vs SON B&H) mais comportement cohérent partout
+  (10-17 trades, exposition 53-81 %) — pas un artefact QQQ. Le candidat 8b.1,
+  imprimé par le CLI par actif : +0,10 QQQ / −0,53 SPY / +1,26 IWM / +0,81 MDY
+  → alpha > 0 sur 3/4 actifs (la donnée qui fonde le Sprint 8-ter).
+- **8b.4 (gate)** : FERMÉ — trailingStopPct n'est pas l'axe le plus sensible
+  (3e sur 4 sur la grille pleine). Aucun code, item résolu par sa condition.
+
+**Décision utilisateur de clôture** : le candidat est **consigné, PAS adopté**
+(biais de sélection, échantillons minces, plateau EMA instable entre 18 et 81
+combos — D36). Le **Sprint 8-ter** lui fait passer une validation hors-grille
+(fenêtres non-choisies, Monte-Carlo, grille resserrée) avant toute décision
+d'adoption. Défauts de SwingConfig, ProdConfig et goldens : inchangés.
+
+**Interfaces modifiées** (additives uniquement) :
+- `GridOptimizer` : 2 axes optionnels en fin de ctor (`smaTrendPeriod`,
+  `trailingStopPct` ; vide = singleton depuis la base → appels historiques
+  inchangés), `axisSensitivities()` + `axisName()` (mécanisme du gate 8b.4),
+  carte de sensibilité à 8 colonnes + classement par axe.
+- CLI `validate` : pavage fin (2-bis), grille pleine 81 combos sur les axes v2
+  (3), walk-forward multi-actifs chaîne + candidat (6).
 
 ### Sprint 8 (clôture) — Laisser courir, entrer sur la force, rester investi (2026-07-01)
 
@@ -896,6 +1008,58 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 8-bis — Chercher l'edge avec le harnais (2026-07-02)
+
+**1. Découpage** : bon, et le RÉORDONNANCEMENT décidé à l'ouverture (8b.3 avant
+8b.1/8b.2) était la bonne dépendance : le pavage fin est devenu le juge de la grille
+et du multi-actifs — sans lui, le candidat 8b.1 aurait été sélectionné sur 2 fenêtres
+(exactement le défaut que 8b.3 devait corriger). C'est la 2e fois (après le Sprint 7)
+qu'un ordre de ROADMAP est réordonné pour une dépendance de MESURE : la leçon
+générale est « l'outillage de jugement se livre AVANT ce qu'il doit juger ».
+Le gate data-driven de 8b.4 (classement de sensibilité verrouillé par test) a
+parfaitement fonctionné : l'item s'est fermé tout seul, sans débat — un item
+conditionnel dont la condition est TESTÉE ne coûte rien à trancher.
+
+**2. Suffisance des prompts** : suffisants, aucune improvisation de workflow. Les
+trois décisions produit (périmètre, ordre, fenêtres du pavage fin) posées à
+l'utilisateur À L'OUVERTURE (leçon Sprints 3/5), et la décision conditionnelle
+« candidat d'edge → demander avant de retenir » anticipée au plan et déclenchée
+exactement comme prévu. La discipline « sentinelles → passe rouge → figer » s'est
+appliquée à tous les verrous de mesure (précédent Sprints 4-8, conforme à l'esprit
+« idéalement » du test rouge pour des verrous de comportement).
+**Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt / garde-fous** : (a) **D35** — le warmup ~201 barres par
+fenêtre aurait rendu l'exemple littéral de la ROADMAP (OOS=250) quasi inopérant
+(49 barres tradables) ; attrapé À LA PLANIFICATION par lecture de `runRange`, pas en
+cours de route — mais seulement parce qu'on a relu le code : un garde-fou
+`WalkForward` (« OOS ≤ warmup + marge → avertir ») l'attraperait mécaniquement, au
+backlog. (b) **D36** — l'instabilité du plateau entre 18 et 81 combos n'est visible
+QUE parce que le CLI exécute une grille plus large que le verrou : garder
+systématiquement « verrou petit + CLI exhaustif » comme paire. (c) Le candidat
+d'edge est arrivé avec son biais de sélection DOCUMENTÉ dans le test même — c'est
+la bonne pratique à conserver : un verrou qui dit « je passe » doit aussi dire
+« voici pourquoi se méfier ».
+
+**4. Notes /100** (précédent 87/90/81/72, Rentabilité 25) :
+- **Architecture 88** (+1) : extension de GridOptimizer purement additive
+  (normalisation en singleton, appels historiques bit-identiques), sensibilité par
+  axe = petit mécanisme réutilisable qui transforme un débat (« faut-il explorer
+  l'ATR ? ») en donnée verrouillée. Plafonné par l'externalisation config (9.1) et D27.
+- **Qualité 91** (+1) : +10 tests, chaque verdict avec config explicite (D33) et
+  nombre de trades figé (D34), goldens intouchés sur tout le sprint, rétro-compat
+  prouvée par les tests historiques inchangés. Plafonné tant que les composition
+  roots ne sont couverts que par relecture.
+- **FinTech 83** (+2) : l'intégrité de mesure franchit un palier — verdicts sur 4
+  fenêtres, par actif, sensibilité par axe, et le PREMIER alpha OOS > 0 du projet
+  trouvé par le processus (pas par enthousiasme) puis traité avec la défiance
+  requise (D36). Pour dépasser 85 : un edge CONFIRMÉ hors-grille.
+- **Production 72** (=) : rien de prod ce sprint (voulu) ; D32 et 9.x inchangés.
+- **Rentabilité 30** (+5) : premier réglage à alpha OOS > 0 sur 3/4 actifs,
+  verrouillé honnêtement — mais non validé hors de la grille qui l'a choisi, et la
+  chaîne par défaut reste négative (−7,15). La note ne franchira 50 qu'avec le
+  candidat confirmé (Sprint 8-ter).
 
 ### Sprint 8 (clôture) — Laisser courir, entrer sur la force, rester investi (2026-07-01)
 

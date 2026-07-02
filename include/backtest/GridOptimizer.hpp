@@ -1,5 +1,6 @@
 #pragma once
 #include "strategies/SwingStrategy.hpp"
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <vector>
@@ -12,8 +13,9 @@ namespace trading {
 // ─── GridOptimizer ────────────────────────────────────────────────────────────
 // Optimiseur de grille de paramètres (Sprint 7, item 7.2). Les paramètres de
 // SwingConfig sont des nombres magiques ; cet outil balaie un produit cartésien
-// (emaFast × emaSlow × rsiBuyMax × rsiSellMin × SL × TP) et produit une CARTE
-// DE SENSIBILITÉ.
+// (emaFast × emaSlow × rsiBuyMax × rsiSellMin × SL × TP × smaTrendPeriod ×
+// trailingStopPct — les deux derniers ajoutés au Sprint 8-bis, item 8b.1 : ce
+// sont les axes qui PILOTENT la chaîne v2) et produit une CARTE DE SENSIBILITÉ.
 //
 // PRINCIPE ANTI-SUR-AJUSTEMENT : on ne retient JAMAIS le pic isolé (un réglage
 // qui brille sur une seule cellule est probablement un artefact). On retient un
@@ -44,6 +46,9 @@ struct GridSelection {
 
 class GridOptimizer {
 public:
+    // Les deux derniers axes (Sprint 8-bis, 8b.1) sont optionnels : un vecteur
+    // vide est normalisé en SINGLETON pris sur la config de base → les appels
+    // historiques à 6 axes balaient exactement comme avant.
     GridOptimizer(std::vector<int>    emaFast,
                   std::vector<int>    emaSlow,
                   std::vector<double> rsiBuyMax,
@@ -51,23 +56,27 @@ public:
                   std::vector<double> stopLoss,
                   std::vector<double> takeProfit,
                   ObjectiveFn         objective,
-                  SwingConfig         base = SwingConfig{})
+                  SwingConfig         base = SwingConfig{},
+                  std::vector<int>    smaTrendPeriod  = {},
+                  std::vector<double> trailingStopPct = {})
         : emaFast_(std::move(emaFast))
         , emaSlow_(std::move(emaSlow))
         , rsiBuyMax_(std::move(rsiBuyMax))
         , rsiSellMin_(std::move(rsiSellMin))
         , stopLoss_(std::move(stopLoss))
         , takeProfit_(std::move(takeProfit))
+        , smaTrendPeriod_(std::move(smaTrendPeriod))
+        , trailingStopPct_(std::move(trailingStopPct))
         , objective_(std::move(objective))
-        , base_(base) {}
+        , base_(base) {
+        if (smaTrendPeriod_.empty())  smaTrendPeriod_  = {base_.smaTrendPeriod};
+        if (trailingStopPct_.empty()) trailingStopPct_ = {base_.trailingStopPct};
+    }
 
     // Énumère le produit cartésien complet, évalue chaque combo et calcule la
     // moyenne de voisinage (la carte de sensibilité).
     std::vector<GridPoint> evaluate() const {
-        const std::vector<size_t> dims = {
-            emaFast_.size(), emaSlow_.size(), rsiBuyMax_.size(),
-            rsiSellMin_.size(), stopLoss_.size(), takeProfit_.size()
-        };
+        const std::vector<size_t> dims = dims_();
         size_t total = 1;
         for (size_t d : dims) total *= (d == 0 ? 1 : d);
 
@@ -76,14 +85,16 @@ public:
         for (size_t lin = 0; lin < total; ++lin) {
             const auto idx = toMultiIndex_(lin, dims);
             GridPoint p;
-            p.cfg              = base_;
-            p.cfg.emaFast      = emaFast_[idx[0]];
-            p.cfg.emaSlow      = emaSlow_[idx[1]];
-            p.cfg.rsiBuyMax    = rsiBuyMax_[idx[2]];
-            p.cfg.rsiSellMin   = rsiSellMin_[idx[3]];
-            p.cfg.stopLossPct  = stopLoss_[idx[4]];
-            p.cfg.takeProfitPct= takeProfit_[idx[5]];
-            p.score            = objective_(p.cfg);
+            p.cfg                 = base_;
+            p.cfg.emaFast         = emaFast_[idx[0]];
+            p.cfg.emaSlow         = emaSlow_[idx[1]];
+            p.cfg.rsiBuyMax       = rsiBuyMax_[idx[2]];
+            p.cfg.rsiSellMin      = rsiSellMin_[idx[3]];
+            p.cfg.stopLossPct     = stopLoss_[idx[4]];
+            p.cfg.takeProfitPct   = takeProfit_[idx[5]];
+            p.cfg.smaTrendPeriod  = smaTrendPeriod_[idx[6]];
+            p.cfg.trailingStopPct = trailingStopPct_[idx[7]];
+            p.score               = objective_(p.cfg);
             pts.push_back(std::move(p));
         }
 
@@ -134,19 +145,58 @@ public:
         return sel;
     }
 
+    // ── Sensibilité par axe (Sprint 8-bis, gate de l'item 8b.4) ──────────────
+    // Pour chaque axe : moyenne, sur toutes les « lignes » de la grille (toutes
+    // les coordonnées des AUTRES axes fixées), de l'écart max−min de la métrique
+    // le long de cet axe. Un axe singleton vaut 0 (rien ne varie). L'axe le plus
+    // sensible est celui dont dépend le plus la performance — c'est lui qui
+    // décide si le trailing adaptatif ATR (8b.4) mérite d'être exploré.
+    std::vector<double> axisSensitivities(const std::vector<GridPoint>& pts) const {
+        const std::vector<size_t> dims = dims_();
+        std::vector<double> sens(dims.size(), 0.0);
+        for (size_t ax = 0; ax < dims.size(); ++ax) {
+            if (dims[ax] < 2) continue;                 // singleton → 0
+            double somme = 0.0; size_t lignes = 0;
+            for (size_t lin = 0; lin < pts.size(); ++lin) {
+                auto idx = toMultiIndex_(lin, dims);
+                if (idx[ax] != 0) continue;             // une ligne = idx[ax]==0
+                double lo = pts[lin].score.metric, hi = lo;
+                for (size_t j = 1; j < dims[ax]; ++j) {
+                    idx[ax] = j;
+                    const double m = pts[toLinear_(idx, dims)].score.metric;
+                    lo = std::min(lo, m); hi = std::max(hi, m);
+                }
+                somme += hi - lo; ++lignes;
+            }
+            sens[ax] = lignes ? somme / static_cast<double>(lignes) : 0.0;
+        }
+        return sens;
+    }
+
+    // Nom de chaque axe, dans l'ordre du constructeur (pour les rapports).
+    static const char* axisName(size_t ax) {
+        static const char* noms[] = {
+            "emaFast", "emaSlow", "rsiBuyMax", "rsiSellMin",
+            "stopLossPct", "takeProfitPct", "smaTrendPeriod", "trailingStopPct"
+        };
+        return ax < 8 ? noms[ax] : "?";
+    }
+
     // Carte de sensibilité (français) : chaque combo, sa métrique et sa moyenne
-    // de voisinage, avec le point retenu marqué.
+    // de voisinage, avec le point retenu marqué ; puis le classement de
+    // sensibilité par axe (gate 8b.4).
     void printSensitivityMap(const std::vector<GridPoint>& pts) const {
         const auto sel = selectRobustPlateau(pts);
         std::cout << "\n  CARTE DE SENSIBILITE — " << pts.size() << " combinaisons\n";
-        std::cout << "  " << std::string(72, '-') << "\n";
+        std::cout << "  " << std::string(86, '-') << "\n";
         std::cout << "  " << std::left
                   << std::setw(8) << "emaF" << std::setw(8) << "emaS"
                   << std::setw(9) << "rsiBuy" << std::setw(9) << "rsiSell"
                   << std::setw(7) << "SL" << std::setw(7) << "TP"
+                  << std::setw(7) << "smaT" << std::setw(7) << "trail"
                   << std::right << std::setw(10) << "metric"
                   << std::setw(11) << "voisinage" << "\n";
-        std::cout << "  " << std::string(72, '-') << "\n";
+        std::cout << "  " << std::string(86, '-') << "\n";
         for (const auto& p : pts) {
             const bool chosen = sameCfg_(p.cfg, sel.point.cfg);
             std::cout << "  " << std::left
@@ -156,22 +206,49 @@ public:
                       << std::setw(9) << p.cfg.rsiSellMin
                       << std::setw(7) << p.cfg.stopLossPct
                       << std::setw(7) << p.cfg.takeProfitPct
+                      << std::setw(7) << p.cfg.smaTrendPeriod
+                      << std::setw(7) << p.cfg.trailingStopPct
                       << std::right << std::fixed << std::setprecision(3)
                       << std::setw(10) << p.score.metric
                       << std::setw(11) << p.neighborhoodAvg
                       << (chosen ? "  <= PLATEAU" : "") << "\n";
         }
-        std::cout << "  " << std::string(72, '-') << "\n";
+        std::cout << "  " << std::string(86, '-') << "\n";
         std::cout << "  Retenu : " << (sel.passedAlphaFilter
                   ? "plateau robuste (alpha > 0)"
                   : "AUCUN edge (alpha <= 0 partout) — ne pas deployer") << "\n";
+
+        // Classement de sensibilité par axe (axes balayés uniquement).
+        const auto sens = axisSensitivities(pts);
+        size_t plusSensible = 0;
+        bool   unAxeBalaye  = false;
+        std::cout << "  Sensibilite par axe (ecart moyen max-min de la metrique) :\n";
+        for (size_t ax = 0; ax < sens.size(); ++ax) {
+            if (dims_()[ax] < 2) continue;              // singleton : muet
+            unAxeBalaye = true;
+            std::cout << "    " << std::left << std::setw(16) << axisName(ax)
+                      << std::right << std::fixed << std::setprecision(4)
+                      << sens[ax] << "\n";
+            if (sens[ax] > sens[plusSensible]) plusSensible = ax;
+        }
+        if (unAxeBalaye)
+            std::cout << "  Axe le plus sensible : " << axisName(plusSensible) << "\n";
     }
 
 private:
     std::vector<int>    emaFast_, emaSlow_;
     std::vector<double> rsiBuyMax_, rsiSellMin_, stopLoss_, takeProfit_;
+    std::vector<int>    smaTrendPeriod_;
+    std::vector<double> trailingStopPct_;
     ObjectiveFn         objective_;
     SwingConfig         base_;
+
+    // Tailles des 8 axes, dans l'ordre du constructeur.
+    std::vector<size_t> dims_() const {
+        return { emaFast_.size(), emaSlow_.size(), rsiBuyMax_.size(),
+                 rsiSellMin_.size(), stopLoss_.size(), takeProfit_.size(),
+                 smaTrendPeriod_.size(), trailingStopPct_.size() };
+    }
 
     // Meilleur = plus forte moyenne de voisinage ; départage drawdown plus bas.
     static bool better_(const GridPoint& a, const GridPoint& b) {
@@ -182,7 +259,9 @@ private:
     static bool sameCfg_(const SwingConfig& a, const SwingConfig& b) {
         return a.emaFast == b.emaFast && a.emaSlow == b.emaSlow
             && a.rsiBuyMax == b.rsiBuyMax && a.rsiSellMin == b.rsiSellMin
-            && a.stopLossPct == b.stopLossPct && a.takeProfitPct == b.takeProfitPct;
+            && a.stopLossPct == b.stopLossPct && a.takeProfitPct == b.takeProfitPct
+            && a.smaTrendPeriod == b.smaTrendPeriod
+            && a.trailingStopPct == b.trailingStopPct;
     }
     // Conversions index linéaire <-> multi-index (mixed-radix, row-major).
     static std::vector<size_t> toMultiIndex_(size_t lin, const std::vector<size_t>& dims) {
