@@ -68,6 +68,7 @@ venv/
 # ── Clés API — ne jamais committer ────────────────────────
 .env
 .env.*
+!.env.example
 secrets.yaml
 config.local.*
 *api_key*
