@@ -54,11 +54,17 @@ une discipline de production : le sprint se termine compilable, testé, commité
    trancher seul. Les items marqués « Décision requise » dans ROADMAP.md ne se font pas
    sans réponse.
 5. **Definition of Done du sprint** (toutes obligatoires) :
-   - `cmake --build build` sans erreur ni nouveau warning.
+   - `cmake --build build` sans erreur ni warning (le build est en `-Werror`).
    - `ctest --output-on-failure` : 100 % vert (anciens + nouveaux tests).
    - Chaque bug corrigé a un test qui échouait avant le fix.
    - Aucune régression du backtest golden (dès qu'il existe — item 17).
    - Commentaires/logs en français ; pas de secret committé ; commits atomiques.
+   - **Aucun passage en trading réel** : `liveTradingApproved` reste `false` et
+     le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact tant que
+     le gate pré-live du `RUNBOOK.md` (checklist signée + DoD d'edge) n'a pas
+     été franchi par une décision utilisateur explicite.
+   - Les fichiers de règles (`prompt-*.md`, DoD, `CLAUDE.md` section
+     « Live-safety rules ») ne sont JAMAIS modifiés sans décision utilisateur.
 6. **Clôture** : enchaîner immédiatement avec `prompt-mise-a-jour-roadmap.md` pour
    cocher, re-prioriser, écrire la rétrospective et définir le sprint suivant.
    Le sprint n'est PAS terminé tant que ROADMAP.md n'est pas à jour et committé.

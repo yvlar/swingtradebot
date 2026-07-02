@@ -127,7 +127,9 @@ classDiagram
         +equitySnapshot(value, date)
         +closeOpenPosition()
     }
-    class IBKRDataFeed
+    class IBKRDataFeed {
+        ne livre que des barres CLÔTURÉES (9.3)
+    }
     class AlpacaDataFeed
     class CsvDataFeed {
         +allBars() vector~Bar~
@@ -185,6 +187,25 @@ classDiagram
         migration ALTER TABLE tolérante
     }
     IStateStore <|.. SqliteStateStore
+
+    %% ── Config prod externalisée (9.1/C1) + gate live (A1) ───
+    class ConfigLoader {
+        <<fonctions libres>>
+        +loadSwingConfigJson(path) SwingConfig
+        +loadProdSettingsJson(path) ProdSettings
+        validation STRICTE, échec bruyant
+    }
+    class ProdSettings {
+        +liveTradingApproved bool = false
+    }
+    class LiveGate {
+        <<fonction pure>>
+        +liveGateRefusal(input, confirmation) optional~string~
+        4 couches : config, alerte, TTY, « OUI »
+    }
+    ConfigLoader ..> SwingConfig : config/prod.json
+    ConfigLoader ..> ProdSettings : config/prod.json
+    LiveGate ..> ProdSettings : approvedInConfig
 
     %% ── Backtest & validation (include/backtest/) ────────────
     class Backtester {

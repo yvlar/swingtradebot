@@ -25,9 +25,13 @@
    méta-évaluation :
    1. Le découpage en sprints était-il bon (taille, ordre, dépendances ratées) ?
    2. Les prompts du workflow ont-ils été suffisants ou as-tu dû improviser ?
-      Si oui : **modifier `prompt-executer-sprint.md` / `prompt-mise-a-jour-roadmap.md`
-      dans le même commit** pour que la prochaine itération n'improvise plus
-      (le workflow doit s'auto-corriger).
+      Si oui : **PROPOSER un diff** de `prompt-executer-sprint.md` /
+      `prompt-mise-a-jour-roadmap.md` et le soumettre à une **décision
+      utilisateur explicite** — ne JAMAIS l'appliquer soi-même dans le commit
+      de clôture. Un processus qui trade de l'argent réel ne réécrit pas ses
+      propres garde-fous sans revue humaine (règle miroir dans CLAUDE.md,
+      « Live-safety rules »). Le diff accepté est appliqué dans un commit
+      dédié qui cite la décision.
    3. Qu'est-ce qui aurait dû être détecté plus tôt, et quel garde-fou (test, check CI,
       règle de DoD) l'aurait attrapé automatiquement ? Si le garde-fou est peu coûteux,
       l'ajouter au backlog (ou à la DoD) immédiatement.
@@ -39,5 +43,14 @@
    (re-vérifiée — les lignes bougent), un critère d'acceptation vérifiable, et ses
    dépendances explicites. `prompt-executer-sprint.md` doit pouvoir repartir sans
    aucune ambiguïté.
-7. **Committer** ROADMAP.md (+ les prompts s'ils ont été amendés) avec un message
-   `docs: clôture sprint N — mise à jour roadmap`, puis pousser la branche.
+7. **Committer** ROADMAP.md avec un message `docs: clôture sprint N — mise à
+   jour roadmap`, puis pousser la branche. (Les amendements de prompts suivent
+   la règle du point 5.2 : décision utilisateur d'abord, commit dédié ensuite.)
+
+## Garde-fou live (rappel, ne se négocie pas)
+
+Aucune clôture de sprint ne peut activer le trading réel : `liveTradingApproved`
+reste `false` et le test `LiveTradingStaysDisapprovedUntilEdgeDoD` reste tel
+quel tant que la DoD d'edge n'est pas verrouillée ET que la checklist pré-live
+du `RUNBOOK.md` n'a pas été signée par l'utilisateur (décision consignée au
+changelog).
