@@ -23,10 +23,12 @@
 #include "core/db_logger.h"
 #include "core/watchdog.h"
 #include "core/curl_global.h"
+#include "core/state_store.h"
 
 #include <iostream>
 #include <cstdlib>
 #include <csignal>
+#include <filesystem>
 #include <thread>
 #include <chrono>
 #include <string>
@@ -136,7 +138,14 @@ int main(int argc, char* argv[]) {
     broker->cancelAllOrders();
 
     // ── Bot principal ─────────────────────────────────────
-    trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr, logger);
+    // Persistance de l'état de position (M3) : sans stateStore, holdDays et
+    // peakPrice repartaient de zéro à chaque redémarrage (minHoldDays et
+    // trailing-stop faussés). Même mécanique que main_ibkr.
+    std::filesystem::create_directories("data");
+    auto stateStore = std::make_shared<trading::SqliteStateStore>(
+        "data/swingbot_alpaca_state.db");
+    trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr,
+                            logger, stateStore);
     bot.setConfig(cfg);
 
     std::signal(SIGINT,  on_signal);
