@@ -126,3 +126,75 @@ TEST(MarketCalendarUnit, WeekendIsClosed) {
 TEST(MarketCalendarUnit, PreOpenNineToNineThirtyIsClosed) {
     EXPECT_FALSE(isUsEquityMarketOpenUtc(utcInstant(2024, 1, 2, 14, 15)));
 }
+
+// ════════════════════════════════════════════════════════════
+//  Jours fériés NYSE (B4) — le repli ignorait totalement les
+//  fériés : un jour férié où l'API broker ne répond pas, le bot
+//  se croyait en séance.
+// ════════════════════════════════════════════════════════════
+
+namespace {
+
+// Le marché est-il ouvert à 15h00 heure de l'Est ce jour-là ?
+// (15h ET = plein cœur de séance un jour ouvré normal)
+bool openAt15Et(int y, int m, int d) {
+    int off = usEasternUtcOffsetHours(y, m, d);
+    return isUsEquityMarketOpenUtc(utcInstant(y, m, d, 15 + off, 0));
+}
+
+} // namespace
+
+// Pâques — algorithme de Butcher/Meeus, dates connues
+TEST(MarketCalendarUnit, EasterSundayKnownDates) {
+    int m = 0, d = 0;
+    easterSunday(2024, m, d); EXPECT_EQ(m, 3);  EXPECT_EQ(d, 31);
+    easterSunday(2025, m, d); EXPECT_EQ(m, 4);  EXPECT_EQ(d, 20);
+    easterSunday(2026, m, d); EXPECT_EQ(m, 4);  EXPECT_EQ(d, 5);
+}
+
+// Les 10 fériés NYSE de 2024, tous fermés en pleine séance (15h ET)
+TEST(MarketCalendarUnit, Nyse2024HolidaysAreClosed) {
+    EXPECT_FALSE(openAt15Et(2024,  1,  1));   // New Year (lundi)
+    EXPECT_FALSE(openAt15Et(2024,  1, 15));   // MLK — 3e lundi de janvier
+    EXPECT_FALSE(openAt15Et(2024,  2, 19));   // Presidents Day — 3e lundi de février
+    EXPECT_FALSE(openAt15Et(2024,  3, 29));   // Good Friday (Pâques − 2)
+    EXPECT_FALSE(openAt15Et(2024,  5, 27));   // Memorial Day — dernier lundi de mai
+    EXPECT_FALSE(openAt15Et(2024,  6, 19));   // Juneteenth
+    EXPECT_FALSE(openAt15Et(2024,  7,  4));   // Independence Day
+    EXPECT_FALSE(openAt15Et(2024,  9,  2));   // Labor Day — 1er lundi de septembre
+    EXPECT_FALSE(openAt15Et(2024, 11, 28));   // Thanksgiving — 4e jeudi de novembre
+    EXPECT_FALSE(openAt15Et(2024, 12, 25));   // Christmas
+}
+
+// Observances : férié tombant un samedi → vendredi précédent fermé ;
+// un dimanche → lundi suivant fermé.
+TEST(MarketCalendarUnit, ObservedHolidaysShiftToAdjacentWeekday) {
+    // 2026-07-04 = samedi → vendredi 3 juillet fermé
+    EXPECT_FALSE(openAt15Et(2026, 7, 3));
+    // 2027-07-04 = dimanche → lundi 5 juillet fermé
+    EXPECT_FALSE(openAt15Et(2027, 7, 5));
+    // 2021-12-25 = samedi → vendredi 24 décembre 2021 fermé
+    EXPECT_FALSE(openAt15Et(2021, 12, 24));
+}
+
+// Règle NYSE réelle : New Year tombant un SAMEDI n'est PAS observé —
+// le vendredi 31 décembre 2021 était une séance normale (cas 2022).
+TEST(MarketCalendarUnit, NewYearOnSaturdayIsNotObserved) {
+    EXPECT_TRUE(openAt15Et(2021, 12, 31));
+}
+
+// Juneteenth n'est férié NYSE que depuis 2022
+TEST(MarketCalendarUnit, JuneteenthNotAHolidayBefore2022) {
+    // 2021-06-18 (vendredi) : séance normale malgré le 19 juin (samedi) 2021
+    EXPECT_TRUE(openAt15Et(2021, 6, 18));
+    // 2023-06-19 (lundi) : fermé
+    EXPECT_FALSE(openAt15Et(2023, 6, 19));
+}
+
+// Les jours ouvrés ordinaires restent ouverts (non-régression)
+TEST(MarketCalendarUnit, OrdinaryTradingDaysRemainOpen) {
+    EXPECT_TRUE(openAt15Et(2024,  1,  2));    // mardi après New Year
+    EXPECT_TRUE(openAt15Et(2024,  7,  5));    // vendredi après le 4 juillet
+    EXPECT_TRUE(openAt15Et(2024, 11, 29));    // vendredi après Thanksgiving
+    EXPECT_TRUE(openAt15Et(2024, 12, 24));    // veille de Noël (demi-séance : hors périmètre)
+}
