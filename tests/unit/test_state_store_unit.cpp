@@ -26,7 +26,13 @@ protected:
     }
 
     static BotState sampleState() {
-        return {true, 412.5, 418.0, 3, "2024-03-07"};
+        BotState s;                       // champ par champ : agrégat incomplet
+        s.inPosition  = true;             // = warning -Werror et ordre figé
+        s.buyPrice    = 412.5;
+        s.peakPrice   = 418.0;
+        s.holdDays    = 3;
+        s.lastBarDate = "2024-03-07";
+        return s;
     }
 };
 

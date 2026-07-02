@@ -14,6 +14,20 @@ using namespace trading::mocks;
 
 namespace {
 
+// Construit un BotState de test champ par champ : les agrégats incomplets
+// ({true, 400.0, …}) sont des warnings -Werror et figeaient l'ordre des
+// champs de la struct (fragilité notée dans Models.hpp).
+BotState makeBotState(bool inPos, double buy, double peak, int hold,
+                      const std::string& lastBarDate = "") {
+    BotState s;
+    s.inPosition  = inPos;
+    s.buyPrice    = buy;
+    s.peakPrice   = peak;
+    s.holdDays    = hold;
+    s.lastBarDate = lastBarDate;
+    return s;
+}
+
 // ── Harnais : TradingBot câblé sur mocks, accès direct aux collaborateurs ──
 struct BotHarness {
     std::shared_ptr<MockDataFeed>   feed     = std::make_shared<MockDataFeed>();
@@ -186,7 +200,7 @@ TEST(TradingBotUnit, RejectedSellKeepsPosition) {
     BotHarness h(368.0, "2024-03-05");           // -8 % sous le buyPrice → stop-loss
     h.strategy->setSignal(SignalType::HOLD);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
-    h.bot->setState({true, 400.0, 405.0, 1});
+    h.bot->setState(makeBotState(true, 400.0, 405.0, 1));
     h.broker->setSubmitResult(OrderStatus::REJECTED);
 
     h.bot->runOnce();
@@ -201,7 +215,7 @@ TEST(TradingBotUnit, FailedSellSubmissionKeepsPosition) {
     BotHarness h(368.0, "2024-03-05");
     h.strategy->setSignal(SignalType::HOLD);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
-    h.bot->setState({true, 400.0, 405.0, 1});
+    h.bot->setState(makeBotState(true, 400.0, 405.0, 1));
     h.broker->setSubmitResult(std::nullopt);
 
     h.bot->runOnce();
@@ -254,7 +268,7 @@ TEST(TradingBotUnit, SellSignalWaitsForRealTradingDays) {
     cfg.minHoldDays = 2;
     h.bot->setConfig(cfg);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 402.0, 9 * 2.0});
-    h.bot->setState({true, 400.0, 402.0, 0, "2024-03-05"});
+    h.bot->setState(makeBotState(true, 400.0, 402.0, 0, "2024-03-05"));
     h.strategy->setSignal(SignalType::SELL);
 
     h.bot->runOnce();                            // 3 cycles le même jour
@@ -326,7 +340,7 @@ TEST(TradingBotUnit, AdoptedPositionStopLossFires) {
 TEST(TradingBotUnit, PositionGoneAtBrokerResetsState) {
     BotHarness h(420.0, "2024-03-08");
     h.strategy->setSignal(SignalType::HOLD);
-    h.bot->setState({true, 400.0, 420.0, 3, "2024-03-07"});
+    h.bot->setState(makeBotState(true, 400.0, 420.0, 3, "2024-03-07"));
     h.broker->setPosition(std::nullopt);
 
     h.bot->runOnce();
@@ -338,7 +352,7 @@ TEST(TradingBotUnit, PositionGoneAtBrokerResetsState) {
 // L'état persisté est rechargé au premier cycle (redémarrage avec store)
 TEST(TradingBotUnit, StateRestoredFromStoreOnFirstCycle) {
     BotHarness h(404.0, "2024-03-08");
-    h.store->preload({true, 400.0, 405.0, 2, "2024-03-07"});
+    h.store->preload(makeBotState(true, 400.0, 405.0, 2, "2024-03-07"));
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 404.0, 9 * 4.0});
     h.strategy->setSignal(SignalType::HOLD);
 
@@ -372,7 +386,7 @@ TEST(TradingBotUnit, FilledSellOnStopLossResetsState) {
     BotHarness h(368.0, "2024-03-05");
     h.strategy->setSignal(SignalType::HOLD);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 368.0, 9 * -32.0});
-    h.bot->setState({true, 400.0, 405.0, 1});
+    h.bot->setState(makeBotState(true, 400.0, 405.0, 1));
 
     h.bot->runOnce();
 
@@ -391,7 +405,7 @@ TEST(TradingBotUnit, FilledSellOnStopLossResetsState) {
 TEST(TradingBotUnit, BrokerOutageDoesNotResetPositionState) {
     BotHarness h(420.0, "2024-03-05");
     h.strategy->setSignal(SignalType::HOLD);
-    h.bot->setState({true, 400.0, 405.0, 1, "2024-03-04"});
+    h.bot->setState(makeBotState(true, 400.0, 405.0, 1, "2024-03-04"));
     h.broker->setPositionQueryFails("timeout simulé");
 
     h.bot->runOnce();
@@ -418,7 +432,7 @@ TEST(TradingBotUnit, BrokerOutageDoesNotAdoptNorBuy) {
 TEST(TradingBotUnit, RecoveryAfterBrokerOutageReconcilesNormally) {
     BotHarness h(420.0, "2024-03-05");
     h.strategy->setSignal(SignalType::HOLD);
-    h.bot->setState({true, 400.0, 405.0, 1, "2024-03-04"});
+    h.bot->setState(makeBotState(true, 400.0, 405.0, 1, "2024-03-04"));
     h.broker->setPositionQueryFails("timeout simulé");
     h.bot->runOnce();
     ASSERT_TRUE(h.bot->state().inPosition);
@@ -665,7 +679,7 @@ TEST(TradingBotUnit, RestoredStateWithArmedStopDoesNotRearm) {
     BotHarness h(410.0, "2024-03-08");
     h.strategy->setSignal(SignalType::HOLD);
     h.broker->setPosition(Position{"QQQ", 9, 400.0, 9 * 410.0, 9 * 10.0});
-    BotState persisted{true, 400.0, 405.0, 2, "2024-03-07"};
+    BotState persisted = makeBotState(true, 400.0, 405.0, 2, "2024-03-07");
     persisted.stopArmed = true;                  // stop déjà déposé avant le restart
     h.store->preload(persisted);
 
@@ -698,7 +712,7 @@ TEST(TradingBotUnit, FailedStopArmIsRetriedNextCycle) {
 TEST(TradingBotUnit, PositionClosedOutsideBotCancelsResidentStop) {
     BotHarness h(415.0, "2024-03-08");
     h.strategy->setSignal(SignalType::HOLD);
-    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    BotState persisted = makeBotState(true, 400.0, 415.0, 2, "2024-03-07");
     persisted.stopArmed = true;
     h.store->preload(persisted);
     h.broker->setPosition(std::nullopt);         // plus de position broker
@@ -743,7 +757,7 @@ TEST(TradingBotUnit, SameDayReentryAfterStopExitIsBlocked) {
 // bloquer — la réconciliation pose aussi le cooldown du jour
 TEST(TradingBotUnit, ReentryCooldownAppliesAfterPositionClosedOutsideBot) {
     BotHarness h(415.0, "2024-03-08");
-    BotState persisted{true, 400.0, 415.0, 2, "2024-03-07"};
+    BotState persisted = makeBotState(true, 400.0, 415.0, 2, "2024-03-07");
     h.store->preload(persisted);
     h.broker->setPosition(std::nullopt);         // fermée hors bot
     h.strategy->setSignal(SignalType::BUY);

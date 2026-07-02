@@ -122,7 +122,7 @@ TEST(BacktesterIntegration, FillsAtNextBarOpenNotAtDecisionClose) {
     const double kGapOpen = 130.0;
 
     auto dateFor = [](int i) {
-        char buf[16];
+        char buf[24];   // large : le compilateur borne %d à 10 chiffres (-Wformat-truncation)
         if (i < 31) std::snprintf(buf, sizeof buf, "2024-01-%02d", i + 1);
         else        std::snprintf(buf, sizeof buf, "2024-02-%02d", i - 30);
         return std::string(buf);

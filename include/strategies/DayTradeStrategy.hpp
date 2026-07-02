@@ -122,7 +122,6 @@ public:
         const double rsiLast  = rsiV[n-1];
         const double vwap     = vwapV[n-1];
         const double volR     = volRatio.size() > 1 ? volRatio[n-1] : 1.0;
-        const double atrLast  = atrV.size() > 0 ? atrV[n-1] : 0.0;
 
         // ── Signal d'ACHAT ────────────────────────────────────────────────────
         bool crossUp     = ef > es && ef_prev <= es_prev;

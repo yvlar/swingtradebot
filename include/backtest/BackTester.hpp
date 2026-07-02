@@ -345,9 +345,9 @@ public:
         }
 
         // Sharpe + Volatilité + Sortino (rendements journaliers annualisés)
-        if (equityCurve.size() > warmup + 1) {
+        if (equityCurve.size() > static_cast<size_t>(warmup) + 1) {
             std::vector<double> rets;
-            for (size_t i = warmup + 1; i < equityCurve.size(); ++i)
+            for (size_t i = static_cast<size_t>(warmup) + 1; i < equityCurve.size(); ++i)
                 if (equityCurve[i-1] > 0)
                     rets.push_back((equityCurve[i] - equityCurve[i-1]) / equityCurve[i-1]);
 
