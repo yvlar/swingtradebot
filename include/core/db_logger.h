@@ -17,10 +17,23 @@
 class DbLogger {
 public:
     explicit DbLogger(const std::string& path = "swingbot.db") {
-        if (sqlite3_open(path.c_str(), &db_) != SQLITE_OK)
-            throw std::runtime_error(std::string("SQLite open: ") + sqlite3_errmsg(db_));
-        exec_("PRAGMA journal_mode=WAL;");
-        create_tables_();
+        // Un constructeur qui lève n'a PAS de destructeur appelé : le handle
+        // sqlite (alloué même quand open échoue, doc SQLite) doit être fermé
+        // ici, sinon fuite — trouvée par LeakSanitizer (passe 3, B2).
+        if (sqlite3_open(path.c_str(), &db_) != SQLITE_OK) {
+            std::string msg = sqlite3_errmsg(db_);
+            sqlite3_close(db_);
+            db_ = nullptr;
+            throw std::runtime_error("SQLite open: " + msg);
+        }
+        try {
+            exec_("PRAGMA journal_mode=WAL;");
+            create_tables_();
+        } catch (...) {
+            sqlite3_close(db_);
+            db_ = nullptr;
+            throw;
+        }
     }
 
     ~DbLogger() { if (db_) sqlite3_close(db_); }

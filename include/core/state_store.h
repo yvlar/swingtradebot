@@ -26,25 +26,33 @@ public:
             db_ = nullptr;
             throw std::runtime_error("SqliteStateStore open: " + msg);
         }
-        exec_("PRAGMA journal_mode=WAL;");
-        exec_(R"(
-            CREATE TABLE IF NOT EXISTS bot_state (
-                symbol        TEXT PRIMARY KEY,
-                in_position   INTEGER NOT NULL,
-                buy_price     REAL    NOT NULL,
-                peak_price    REAL    NOT NULL,
-                hold_days     INTEGER NOT NULL,
-                last_bar_date TEXT    NOT NULL,
-                updated_at    TEXT    NOT NULL,
-                stop_armed     INTEGER NOT NULL DEFAULT 0,
-                last_exit_date TEXT    NOT NULL DEFAULT ''
-            );
-        )");
-        // Migration d'un schéma antérieur (base créée avant B1/M2) : les
-        // ALTER échouent avec « duplicate column name » sur une base déjà à
-        // jour — erreur avalée exprès, tout autre échec lèverait au 1er save.
-        execIgnore_("ALTER TABLE bot_state ADD COLUMN stop_armed INTEGER NOT NULL DEFAULT 0;");
-        execIgnore_("ALTER TABLE bot_state ADD COLUMN last_exit_date TEXT NOT NULL DEFAULT '';");
+        // Un constructeur qui lève n'a pas de destructeur appelé : fermer le
+        // handle avant de propager (fuite trouvée par LeakSanitizer, B2).
+        try {
+            exec_("PRAGMA journal_mode=WAL;");
+            exec_(R"(
+                CREATE TABLE IF NOT EXISTS bot_state (
+                    symbol        TEXT PRIMARY KEY,
+                    in_position   INTEGER NOT NULL,
+                    buy_price     REAL    NOT NULL,
+                    peak_price    REAL    NOT NULL,
+                    hold_days     INTEGER NOT NULL,
+                    last_bar_date TEXT    NOT NULL,
+                    updated_at    TEXT    NOT NULL,
+                    stop_armed     INTEGER NOT NULL DEFAULT 0,
+                    last_exit_date TEXT    NOT NULL DEFAULT ''
+                );
+            )");
+            // Migration d'un schéma antérieur (base créée avant B1/M2) : les
+            // ALTER échouent avec « duplicate column name » sur une base déjà
+            // à jour — avalé exprès, tout autre échec lèverait au 1er save.
+            execIgnore_("ALTER TABLE bot_state ADD COLUMN stop_armed INTEGER NOT NULL DEFAULT 0;");
+            execIgnore_("ALTER TABLE bot_state ADD COLUMN last_exit_date TEXT NOT NULL DEFAULT '';");
+        } catch (...) {
+            sqlite3_close(db_);
+            db_ = nullptr;
+            throw;
+        }
     }
 
     ~SqliteStateStore() override { if (db_) sqlite3_close(db_); }
