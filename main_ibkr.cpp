@@ -27,6 +27,7 @@
 
 #include <iostream>
 #include <csignal>
+#include <filesystem>
 #include <thread>
 #include <chrono>
 #include <string>
@@ -132,8 +133,12 @@ int main(int argc, char* argv[]) {
     wsServer.start();
     std::cout << "\n[WsServer] Dashboard sur ws://localhost:9001\n";
 
-    DbLogger db("swingbot_ibkr.db");
-    std::cout << "[DB]       swingbot_ibkr.db ouvert\n";
+    // Les DB vivent dans data/ : c'est le répertoire monté en volume par
+    // docker-compose (./data:/app/data) — écrites dans /app, elles n'étaient
+    // PAS persistées sur l'hôte.
+    std::filesystem::create_directories("data");
+    DbLogger db("data/swingbot_ibkr.db");
+    std::cout << "[DB]       data/swingbot_ibkr.db ouvert\n";
 
     AlertConfig alertCfg;
     alertCfg.heartbeat_interval_sec = 60;
@@ -157,7 +162,7 @@ int main(int argc, char* argv[]) {
     logger->addLogger(std::make_shared<DbLogSink>(db));
     // Persistance de l'état de position : survit aux redémarrages
     // (réconciliée avec la position broker à chaque cycle)
-    auto stateStore = std::make_shared<trading::SqliteStateStore>("swingbot_ibkr_state.db");
+    auto stateStore = std::make_shared<trading::SqliteStateStore>("data/swingbot_ibkr_state.db");
 
     // ── Vérification du solde ─────────────────────────────────
     auto account = broker->getAccount();

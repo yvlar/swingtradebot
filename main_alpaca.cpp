@@ -106,8 +106,10 @@ int main(int argc, char* argv[]) {
     wsServer.start();
     std::cout << "[WsServer] Dashboard sur ws://localhost:9001\n";
 
-    DbLogger  db("swingbot_alpaca.db");
-    std::cout << "[DB] swingbot_alpaca.db ouvert\n";
+    // data/ = répertoire monté en volume par docker-compose (persistance hôte)
+    std::filesystem::create_directories("data");
+    DbLogger  db("data/swingbot_alpaca.db");
+    std::cout << "[DB] data/swingbot_alpaca.db ouvert\n";
 
     AlertConfig alertCfg;
     alertCfg.heartbeat_interval_sec = 60;
@@ -141,7 +143,6 @@ int main(int argc, char* argv[]) {
     // Persistance de l'état de position (M3) : sans stateStore, holdDays et
     // peakPrice repartaient de zéro à chaque redémarrage (minHoldDays et
     // trailing-stop faussés). Même mécanique que main_ibkr.
-    std::filesystem::create_directories("data");
     auto stateStore = std::make_shared<trading::SqliteStateStore>(
         "data/swingbot_alpaca_state.db");
     trading::TradingBot bot(dataFeed, broker, std::move(strategy), riskMgr,

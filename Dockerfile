@@ -45,10 +45,6 @@ RUN /vcpkg/vcpkg install \
 WORKDIR /app
 COPY . .
 
-# ── CMakeLists.txt patché sans CMP0167 ───────────────────
-# (la policy CMP0167 n'existe pas avant CMake 3.30)
-RUN sed -i '/cmake_policy(SET CMP0167/d' CMakeLists.txt
-
 # ── Build ─────────────────────────────────────────────────
 RUN cmake -B build \
     -DCMAKE_BUILD_TYPE=Debug \
