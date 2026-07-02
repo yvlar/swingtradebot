@@ -125,6 +125,37 @@ int main() {
                                            : "ok (total-return)") << "\n";
     }
 
+    // 6. Walk-forward multi-actifs (Sprint 8-bis, item 8b.2) ──────────────────
+    // La chaîne v2 ET le candidat de la grille 8b.1 (smaT=250, trail=0,05),
+    // jugés par actif sur le pavage fin — un edge qui ne tient que sur QQQ
+    // est un artefact.
+    titre("6. WALK-FORWARD MULTI-ACTIFS (chaine v2 et candidat 8b.1, pavage fin)");
+    SwingConfig candidat = cfg;
+    candidat.smaTrendPeriod  = 250;
+    candidat.trailingStopPct = 0.05;
+    const std::vector<std::pair<std::string, SwingConfig>> variantes = {
+        {"chaine v2       ", cfg}, {"candidat 8b.1   ", candidat},
+    };
+    std::cout << "  " << std::left << std::setw(20) << "Config"
+              << std::setw(7) << "Actif"
+              << std::right << std::setw(14) << "alpha OOS moy"
+              << std::setw(12) << "trades OOS" << "\n";
+    for (const auto& v : variantes) {
+        for (const auto& a : actifs) {
+            SwingConfig c = v.second;
+            c.symbol = a.first;
+            const auto ws = WalkForward(c, a.second, 500, 300, 300).run();
+            double alpha = 0; size_t trades = 0;
+            for (const auto& w : ws) { alpha += w.oos.alpha; trades += w.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  " << std::left << std::setw(20) << v.first
+                      << std::setw(7) << a.first
+                      << std::right << std::fixed << std::setprecision(4)
+                      << std::setw(14) << alpha
+                      << std::setw(12) << trades << "\n";
+        }
+    }
+
     std::cout << "\n";
     return 0;
 }
