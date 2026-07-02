@@ -25,6 +25,8 @@
 #include "core/watchdog.h"
 #include "core/curl_global.h"
 
+#include "core/LiveGate.hpp"
+
 #include <iostream>
 #include <csignal>
 #include <filesystem>
@@ -32,6 +34,11 @@
 #include <chrono>
 #include <string>
 #include <stdexcept>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 static volatile std::sig_atomic_t g_running = 1; // type sûr en handler de signal (D8)
 void on_signal(int) { g_running = 0; }
@@ -83,12 +90,58 @@ int main(int argc, char* argv[]) {
 ╚══════════════════════════════════════════════════════════╝
 )" << '\n';
 
-    if (liveMode) {
-        std::cout << "⚠️  MODE LIVE — ORDRES RÉELS AVEC VOTRE ARGENT\n";
-        std::cout << "   Appuyez sur Ctrl+C dans les 5 secondes pour annuler...\n\n";
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-    } else {
-        std::cout << "📄 Mode PAPER TRADING — argent fictif, vrais prix\n\n";
+    // ── Configuration de la stratégie + réglages opérationnels ─
+    // Source unique : config/prod.json chargé et VALIDÉ par ProdConfig.hpp
+    // (item 9.1) — le même fichier est backtesté par le golden « config
+    // prod » (D21). Ne pas redéfinir les paramètres ici.
+    trading::SwingConfig cfg;
+    trading::ProdSettings prodSettings;
+    try {
+        cfg          = trading::prodSwingConfig();
+        prodSettings = trading::loadProdSettingsJson(SWINGBOT_PROD_CONFIG_JSON);
+    } catch (const std::exception& e) {
+        std::cerr << "❌ Config de production invalide : " << e.what() << "\n";
+        return 1;
+    }
+
+    // Canaux d'alerte depuis l'environnement (A4, variables SWINGBOT_*) —
+    // aucun credential en dur, exigé par le gate live ci-dessous.
+    AlertConfig alertCfg = alertConfigFromEnv();
+    alertCfg.heartbeat_interval_sec = 60;
+    // Le heartbeat n'est émis qu'une fois par cycle (60 min) : le seuil de
+    // silence doit couvrir un cycle complet + marge, sinon fausse alerte
+    // « bot silencieux » à chaque cycle (découverte D1)
+    alertCfg.max_silence_sec        = 3900;  // 65 min
+
+    // ── Gate live (A1) : quatre couches, toutes obligatoires ──
+    // (1) liveTradingApproved dans prod.json (verrouillé par test tant que
+    // la DoD d'edge n'est pas atteinte), (2) un canal d'alerte configuré,
+    // (3) stdin est un terminal (restart auto → refus), (4) « OUI » tapé.
+    {
+        trading::LiveGateInput gate;
+        gate.liveFlag          = liveMode;
+        gate.approvedInConfig  = prodSettings.liveTradingApproved;
+        gate.alertChannelReady = anyAlertChannelEnabled(alertCfg);
+#ifdef _WIN32
+        gate.stdinIsTty        = _isatty(_fileno(stdin)) != 0;
+#else
+        gate.stdinIsTty        = isatty(STDIN_FILENO) != 0;
+#endif
+        if (liveMode) {
+            std::cout << "⚠️  MODE LIVE — ORDRES RÉELS AVEC VOTRE ARGENT\n";
+            std::cout << "   Checklist pré-live : voir RUNBOOK.md\n";
+            // L'invite n'a de sens que si les couches non interactives passent
+            if (gate.approvedInConfig && gate.alertChannelReady && gate.stdinIsTty)
+                std::cout << "   Tapez OUI (exactement) pour confirmer : " << std::flush;
+        }
+        if (auto refus = trading::liveGateRefusal(gate, std::cin)) {
+            std::cerr << "\n❌ Démarrage LIVE refusé : " << *refus << "\n";
+            return 1;
+        }
+        if (!liveMode)
+            std::cout << "📄 Mode PAPER TRADING — argent fictif, vrais prix\n\n";
+        else
+            std::cout << "\n✅ Gate live franchi — ordres réels ACTIFS\n\n";
     }
 
     // ── Vérification du CP Gateway ────────────────────────────
@@ -119,18 +172,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // ── Configuration de la stratégie ─────────────────────────
-    // Source unique : config/prod.json chargé et VALIDÉ par ProdConfig.hpp
-    // (item 9.1) — le même fichier est backtesté par le golden « config
-    // prod » (D21). Ne pas redéfinir les paramètres ici.
-    trading::SwingConfig cfg;
-    try {
-        cfg = trading::prodSwingConfig();
-    } catch (const std::exception& e) {
-        std::cerr << "❌ Config de production invalide : " << e.what() << "\n";
-        return 1;
-    }
-
     // ── Infrastructure ────────────────────────────────────────
     BotState botState;
     botState.mode    = liveMode ? "live" : "paper";
@@ -147,14 +188,7 @@ int main(int argc, char* argv[]) {
     DbLogger db("data/swingbot_ibkr.db");
     std::cout << "[DB]       data/swingbot_ibkr.db ouvert\n";
 
-    AlertConfig alertCfg;
-    alertCfg.heartbeat_interval_sec = 60;
-    // Le heartbeat n'est émis qu'une fois par cycle (60 min) : le seuil de
-    // silence doit couvrir un cycle complet + marge, sinon fausse alerte
-    // « bot silencieux » à chaque cycle (découverte D1)
-    alertCfg.max_silence_sec        = 3900;  // 65 min
-    alertCfg.webhook_enabled        = false;
-    // alertCfg.webhook_url = "https://discord.com/api/webhooks/XXX/YYY";
+    // alertCfg construit plus haut (env SWINGBOT_*, gate live)
     Watchdog watchdog(alertCfg, botState);
     watchdog.start();
 
@@ -213,6 +247,14 @@ int main(int argc, char* argv[]) {
         }
     });
 
+    // ── Alerte kill-switch (A6) : l'opérateur DOIT savoir qu'un garde-fou
+    // de risque s'est armé — dédupliqué par raison côté bot.
+    bot.setHaltObserver([&](const std::string& raison) {
+        botState.push_log("ERROR", "KILL-SWITCH : " + raison);
+        watchdog.alertNow("🛑 KILL-SWITCH déclenché : " + raison
+                          + " — entrées bloquées jusqu'à la prochaine séance");
+    });
+
     std::signal(SIGINT,  on_signal);
     std::signal(SIGTERM, on_signal);
 
@@ -222,22 +264,50 @@ int main(int argc, char* argv[]) {
 
     while (g_running) {
         try {
-            bot.runOnce();
-            watchdog.heartbeat();
-
-            // Synchronise BotState avec le compte IBKR
-            auto acc = broker->getAccount();
-            {
-                std::lock_guard<std::mutex> lk(botState.mtx);
-                botState.equity  = acc.equity;
-                botState.pnl     = acc.equity - initialEquity;
-                botState.pnl_pct = initialEquity > 0
-                    ? botState.pnl / initialEquity * 100.0
-                    : 0.0;
-                botState.cycle++;
+            // Supervision de l'auth Gateway (A3) : la session CP expire
+            // (~24 h). Sans ré-auth, chaque appel échouerait en silence —
+            // ici : cycle sauté, heartbeat RETENU → l'alerte watchdog part
+            // après max_silence_sec, avec le diagnostic explicite.
+            if (!dataFeed->isAuthenticated()) {
+                botState.push_log("ERROR",
+                    "CP Gateway non authentifié (session expirée ?) — "
+                    "cycle sauté, ré-authentifier via https://localhost:5000");
+                std::cerr << "[ERROR] Gateway non authentifié — cycle sauté\n";
+            } else {
+                bot.runOnce();
+                // Heartbeat SEULEMENT sur cycle sain (A2) : une panne
+                // feed/broker laisse le watchdog s'affamer → alerte.
+                if (bot.lastCycleHealthy()) {
+                    watchdog.heartbeat();
+                } else {
+                    botState.push_log("ERROR",
+                        "Cycle en échec — heartbeat retenu (le watchdog "
+                        "alertera si la panne persiste)");
+                }
             }
 
-            db.snapshot_equity(acc.equity, botState.pnl, botState.cycle);
+            // Synchronise BotState avec le compte IBKR — SAUTÉE sur panne
+            // (A5) : {0,0,INACTIVE} écrasait equity=0 et diffusait une
+            // perte fictive massive au dashboard et à la courbe d'équité.
+            auto acc = broker->getAccount();
+            if (acc.status == "ACTIVE") {
+                {
+                    std::lock_guard<std::mutex> lk(botState.mtx);
+                    botState.equity  = acc.equity;
+                    botState.pnl     = acc.equity - initialEquity;
+                    botState.pnl_pct = initialEquity > 0
+                        ? botState.pnl / initialEquity * 100.0
+                        : 0.0;
+                }
+                db.snapshot_equity(acc.equity, botState.pnl, botState.cycle + 1);
+            } else {
+                botState.push_log("WARN",
+                    "Compte non ACTIF (" + acc.status + ") — sync equity sautée");
+            }
+            {
+                std::lock_guard<std::mutex> lk(botState.mtx);
+                botState.cycle++;
+            }
             wsServer.broadcast(botState.to_json_str());
 
         } catch (const std::exception& e) {
