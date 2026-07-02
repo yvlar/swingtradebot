@@ -108,14 +108,28 @@ public:
             auto resp = get(gatewayUrl_ + "/v1/api/portfolio/" + accountId_ + "/summary");
             auto j    = json::parse(resp);
 
+            // IBKR retourne les valeurs dans des objets imbriqués. Un résumé
+            // sans les deux montants (schéma Gateway différent) doit être un
+            // échec BRUYANT : marqué ACTIVE avec cash=0, le bot ne tradait
+            // plus jamais sans aucune erreur visible.
+            const bool cashOk = j.contains("availablefunds")
+                             && j["availablefunds"].contains("amount");
+            const bool eqOk   = j.contains("netliquidation")
+                             && j["netliquidation"].contains("amount");
+            if (!cashOk || !eqOk) {
+                lastError_ = "Résumé de compte incomplet : "
+                             "availablefunds/netliquidation absents";
+                return {0.0, 0.0, "INACTIVE"};
+            }
+
             Account a;
-            // IBKR retourne les valeurs dans des objets imbriqués
-            if (j.contains("availablefunds"))
-                a.cash = j["availablefunds"].value("amount", 0.0);
-            if (j.contains("netliquidation"))
-                a.equity = j["netliquidation"].value("amount", 0.0);
+            a.cash   = j["availablefunds"]["amount"].get<double>();
+            a.equity = j["netliquidation"]["amount"].get<double>();
             a.status = "ACTIVE";
             return a;
+        } catch (const std::exception& e) {
+            lastError_ = std::string("IBKR getAccount: ") + e.what();
+            return {0.0, 0.0, "INACTIVE"};
         } catch (...) {
             return {0.0, 0.0, "INACTIVE"};
         }

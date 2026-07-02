@@ -181,6 +181,15 @@ public:
         else if (!state_.inPosition && signal.isBuy()) {
             auto account = broker_->getAccount();
 
+            // Compte non ACTIF (panne, résumé incomplet…) : la cause réelle
+            // doit être visible — sans ce garde, on tombait dans « Cash
+            // insuffisant » (cash=0), diagnostic trompeur en prod.
+            if (account.status != "ACTIVE") {
+                logger_->error("Compte broker non ACTIF (status=" + account.status
+                               + ") — entrée bloquée");
+                return;
+            }
+
             // Kill-switch (item 18) : si un garde-fou est franchi, on ne prend
             // AUCUNE nouvelle position. Les positions déjà ouvertes sont gérées
             // plus haut (branche de sortie) et conservent leurs stops.

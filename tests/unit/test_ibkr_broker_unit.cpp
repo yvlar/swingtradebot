@@ -282,6 +282,28 @@ TEST(IbkrBrokerUnit, AccountFailureReturnsInactive) {
     EXPECT_EQ(a.status, "INACTIVE");
 }
 
+// BUG : un résumé sans champs de solde (schéma Gateway différent) était marqué
+// ACTIVE avec cash=0 → positionSize=0 → le bot ne tradait plus jamais, sans
+// aucune erreur visible. Un schéma incomplet doit être un échec BRUYANT.
+TEST(IbkrBrokerUnit, AccountSummaryWithoutBalancesIsInactive) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/summary", R"({"autrechose": 42})"}};
+
+    auto a = b.getAccount();
+    EXPECT_EQ(a.status, "INACTIVE");
+    EXPECT_FALSE(b.lastError().empty());
+}
+
+// Un seul des deux montants présent → toujours INACTIVE (schéma incomplet)
+TEST(IbkrBrokerUnit, AccountSummaryWithSingleBalanceIsInactive) {
+    ScriptedIbkrBroker b("DU123", "https://gw");
+    b.responses = {{"/summary", R"({"availablefunds": {"amount": 25000.0}})"}};
+
+    auto a = b.getAccount();
+    EXPECT_EQ(a.status, "INACTIVE");
+    EXPECT_FALSE(b.lastError().empty());
+}
+
 // ════════════════════════════════════════════════════════════
 //  Compléments de couverture — confirmations épuisées, exceptions
 // ════════════════════════════════════════════════════════════

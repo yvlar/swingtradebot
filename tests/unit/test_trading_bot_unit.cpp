@@ -85,6 +85,26 @@ TEST(TradingBotUnit, InsufficientCashSubmitsNoOrder) {
     EXPECT_FALSE(h.bot->state().inPosition);
 }
 
+// Compte non ACTIF (ex : résumé IBKR incomplet → INACTIVE) : aucune entrée,
+// et la cause est signalée en ERROR — pas le trompeur « Cash insuffisant »
+TEST(TradingBotUnit, InactiveAccountLogsExplicitErrorAndSubmitsNoOrder) {
+    auto feed     = std::make_shared<MockDataFeed>();
+    auto broker   = std::make_shared<MockBroker>();
+    auto strategy = std::make_shared<MockStrategy>();
+    auto logger   = std::make_shared<MockLogger>();
+    feed->setBars(BotHarness::barsEndingAt(420.0, "2024-03-01"));
+    broker->setAccount({0.0, 0.0, "INACTIVE"});
+    strategy->setSignal(SignalType::BUY);
+    TradingBot bot(feed, broker, strategy,
+                   std::make_shared<RiskManager>(), logger);
+
+    bot.runOnce();
+
+    EXPECT_EQ(broker->buyCount(), 0);
+    EXPECT_TRUE(MockLogger::contains(logger->errors(), "non ACTIF"));
+    EXPECT_FALSE(MockLogger::contains(logger->warns(), "Cash insuffisant"));
+}
+
 // Cas nominal : cash suffisant → l'achat part avec le sizing calculé (9 actions)
 TEST(TradingBotUnit, BuySignalWithSufficientCashSubmitsOrder) {
     BotHarness h(420.0, "2024-03-01");

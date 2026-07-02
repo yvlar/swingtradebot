@@ -213,6 +213,31 @@ private:
     int                         cancelStopCount_ = 0;
 };
 
+// ─── MockLogger ───────────────────────────────────────────────────────────────
+// Enregistre les messages par niveau — vérifie qu'une panne est signalée
+// au BON niveau (une panne masquée en info est invisible en prod)
+class MockLogger final : public ILogger {
+public:
+    void info (const std::string& m) override { infos_.push_back(m);  }
+    void warn (const std::string& m) override { warns_.push_back(m);  }
+    void error(const std::string& m) override { errors_.push_back(m); }
+    void debug(const std::string& m) override { debugs_.push_back(m); }
+
+    const std::vector<std::string>& infos()  const { return infos_;  }
+    const std::vector<std::string>& warns()  const { return warns_;  }
+    const std::vector<std::string>& errors() const { return errors_; }
+    const std::vector<std::string>& debugs() const { return debugs_; }
+
+    static bool contains(const std::vector<std::string>& v, const std::string& frag) {
+        for (const auto& m : v)
+            if (m.find(frag) != std::string::npos) return true;
+        return false;
+    }
+
+private:
+    std::vector<std::string> infos_, warns_, errors_, debugs_;
+};
+
 // ─── MockStateStore ───────────────────────────────────────────────────────────
 // Persistance en mémoire — enregistre chaque save pour vérification
 class MockStateStore final : public IStateStore {
