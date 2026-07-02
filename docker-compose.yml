@@ -3,15 +3,35 @@
 # ============================================================
 services:
 
-  # ── Bot C++ ───────────────────────────────────────────
+  # ── Bot C++ (image runtime Release, testée au build) ──
   swing_bot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.multistage
+      target: runtime
     container_name: swing_bot
-    ports:
-      - "9001:9001"       # WebSocket → dashboard (front à venir)
+    # Le CP Gateway écoute sur https://localhost:5000 de l'HÔTE : sans
+    # network_mode: host, « localhost » dans le conteneur ne l'atteint
+    # jamais. Le port 9001 (WsServer) est exposé directement — pas de
+    # mapping ports: (invalide avec host).
+    network_mode: host
+    # Secrets d'alerte (SWINGBOT_*) — copier .env.example vers .env et
+    # remplir ; .env est ignoré par git, ne JAMAIS committer de valeurs.
+    # required: false → démarre aussi sans .env (canaux d'alerte désactivés,
+    # le gate live refusera alors --live).
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data  # les DB (data/swingbot_ibkr*.db) persistées sur l'hôte
+    # SANS RISQUE pour le mode live : le gate exige un TTY + « OUI » tapé —
+    # un restart automatique ne peut relancer que le mode paper.
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"   # post-mortem possible : logs persistés avec rotation
+        max-file: "5"
 
   # ── Tests (s'arrête après exécution) ──────────────────
   # Le stage `builder` n'existe que dans Dockerfile.multistage — le

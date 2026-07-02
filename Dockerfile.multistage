@@ -26,11 +26,14 @@ FROM base AS builder
 WORKDIR /app
 COPY . .
 
+# Release : le binaire qui trade doit être celui qui est testé (B2/B3) —
+# les tests tournent DANS le build de l'image : un test rouge = pas d'image.
 RUN cmake -B build \
-    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE=/vcpkg/scripts/buildsystems/vcpkg.cmake \
     -G Ninja && \
-    cmake --build build -j$(nproc)
+    cmake --build build -j$(nproc) && \
+    cd build && ctest --output-on-failure -j4
 
 # ── Stage runtime (bot seul, image légère) ────────────────
 FROM ubuntu:24.04 AS runtime
@@ -48,4 +51,12 @@ COPY --from=builder /vcpkg/installed/x64-linux/lib/*.so* /usr/local/lib/
 RUN ldconfig
 
 EXPOSE 9001
+
+# Vivacité : connexion TCP au WsServer (bash intégré, zéro dépendance).
+# Si le process est gelé ou mort, l'acceptor Beast ne répond plus →
+# unhealthy → restart par l'orchestrateur. Limite assumée : ne teste pas
+# la santé des CYCLES (couverte par le watchdog + heartbeat conditionnel).
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/9001' || exit 1
+
 CMD ["./swing_bot"]
