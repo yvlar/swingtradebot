@@ -1,9 +1,10 @@
-// ─── Tests d'intégration : optimiseur de grille en OOS (item 7.2) ────────────
-// Petite grille de SwingConfig évaluée par sa MÉTRIQUE OOS (Sharpe moyen du
-// walk-forward, item 7.1) — jamais l'in-sample. Acceptation : une carte de
-// sensibilité est produite et le point retenu est bien le plateau (moyenne de
-// voisinage maximale). La grille est volontairement MINUSCULE (contrainte de
-// timeout CI) ; un balayage exhaustif est un outil hors-ligne (le CLI).
+// ─── Tests d'intégration : optimiseur de grille en OOS (items 7.2 / 8b.1) ────
+// Grilles de SwingConfig évaluées par leur MÉTRIQUE OOS (Sharpe moyen du
+// walk-forward, item 7.1) — jamais l'in-sample. Depuis le Sprint 8-bis (8b.1),
+// les axes balayés sont ceux qui PILOTENT la chaîne v2 : emaFast/emaSlow,
+// smaTrendPeriod, trailingStopPct (21/22 sorties du golden sont des trailing).
+// Les grilles restent volontairement PETITES (contrainte de timeout CI) ; le
+// balayage exhaustif est un outil hors-ligne (le CLI `validate`).
 #include <gtest/gtest.h>
 #include "backtest/GridOptimizer.hpp"
 #include "backtest/WalkForward.hpp"
@@ -17,10 +18,41 @@ constexpr size_t IS_BARS  = 900;
 constexpr size_t OOS_BARS = 400;
 constexpr size_t STEP     = 400;
 
-// Objectif : Sharpe OOS moyen ; filtre alpha = alpha OOS moyen ; départage sur
-// le drawdown OOS moyen. C'est la dépendance explicite 7.2 → 7.1.
-GridScore objectifOos(const SwingConfig& c) {
-    WalkForward wf(c, SWINGBOT_QQQ_CSV, IS_BARS, OOS_BARS, STEP);
+// Pavage FIN du Sprint 8-bis (item 8b.3, décision d'ordre du sprint : la
+// grille 8b.1 est jugée sur le pavage statistiquement plus solide) : 4
+// fenêtres OOS contiguës, OOS=300 pour rester tradable après le warmup ~201.
+constexpr size_t IS_FIN   = 500;
+constexpr size_t OOS_FIN  = 300;
+constexpr size_t STEP_FIN = 300;
+
+// ── Config de la chaîne v2, EXPLICITE champ par champ (règle D33) ────────────
+// Un verdict est une mesure HISTORIQUE : il ne doit pas bouger quand les
+// défauts de SwingConfig évoluent. Jamais `SwingConfig{}` dans un verrou.
+// (Duplication volontaire avec test_strategy_v2_integration.cpp — chaque
+// fichier de verdict porte son propre snapshot.)
+SwingConfig cfgChaineV2() {
+    SwingConfig c;
+    c.symbol                  = "QQQ";
+    c.emaFast                 = 9;
+    c.emaSlow                 = 21;
+    c.rsiPeriod               = 14;
+    c.rsiBuyMax               = 100.0;   // 8.3 : plafond d'achat désactivé
+    c.rsiSellMin              = 70.0;
+    c.stopLossPct             = 0.05;
+    c.takeProfitPct           = 0.0;     // 8.2 : take-profit désactivé
+    c.trailingStopPct         = 0.03;
+    c.riskPerTradePct         = 0.02;
+    c.minHoldDays             = 3;
+    c.smaTrendPeriod          = 200;     // 8.1 : filtre de régime
+    c.rsiSellOnlyIfRegimeDown = true;    // 8.4 : vente RSI gatée
+    c.regimeReentry           = true;    // 8.5 : re-entrée sur régime
+    return c;
+}
+
+// Objectif générique : Sharpe OOS moyen ; filtre alpha = alpha OOS moyen ;
+// départage sur le drawdown OOS moyen. Dépendance explicite 7.2 → 7.1.
+GridScore objectifOosAvec(const SwingConfig& c, size_t is, size_t oos, size_t step) {
+    WalkForward wf(c, SWINGBOT_QQQ_CSV, is, oos, step);
     const auto windows = wf.run();
     GridScore s;
     if (windows.empty()) return s;
@@ -36,20 +68,32 @@ GridScore objectifOos(const SwingConfig& c) {
     s.drawdown = dd     / k;
     return s;
 }
+
+GridScore objectifOos(const SwingConfig& c) {
+    return objectifOosAvec(c, IS_BARS, OOS_BARS, STEP);
+}
+
+GridScore objectifOosFin(const SwingConfig& c) {
+    return objectifOosAvec(c, IS_FIN, OOS_FIN, STEP_FIN);
+}
 } // namespace
 
+// Mécanisme (item 7.2, ré-axé 8b.1) : une petite grille sur les axes v2
+// produit une carte de sensibilité et le point retenu est bien le plateau.
 TEST(GridOptimizerIntegration, SmallGridProducesSensitivityMapInOos) {
     GridOptimizer opt(
         /*emaFast   */ {9, 13},
         /*emaSlow   */ {21},
-        /*rsiBuyMax */ {55, 65},
+        /*rsiBuyMax */ {100},
         /*rsiSellMin*/ {70},
         /*stopLoss  */ {0.05},
-        /*takeProfit*/ {0.10, 0.15},
-        objectifOos);
+        /*takeProfit*/ {0.0},
+        objectifOos, cfgChaineV2(),
+        /*smaTrend  */ {150, 250},
+        /*trailing  */ {0.03, 0.08});
 
     const auto pts = opt.evaluate();
-    ASSERT_EQ(pts.size(), 8u);   // 2 × 1 × 2 × 1 × 1 × 2
+    ASSERT_EQ(pts.size(), 8u);   // 2 × 1 × 1 × 1 × 1 × 1 × 2 × 2
 
     // Le point retenu est le plateau : sa moyenne de voisinage est maximale.
     const auto sel = GridOptimizer::selectRobustPlateau(pts);
@@ -60,4 +104,71 @@ TEST(GridOptimizerIntegration, SmallGridProducesSensitivityMapInOos) {
     // actuelle (sans edge), le filtre alpha > 0 ne passe probablement pas —
     // c'est un résultat honnête, pas une erreur du test.
     opt.printSensitivityMap(pts);
+}
+
+// ─── Verdict verrouillé du Sprint 8-bis (item 8b.1) ──────────────────────────
+// Grille étendue sur la chaîne v2 (base explicite D33), 3 axes balayés
+// (emaFast × smaTrendPeriod × trailingStopPct = 18 combos), jugée en OOS sur
+// le PAVAGE FIN (4 fenêtres, item 8b.3). Verrous : le verdict d'edge (le
+// filtre alpha > 0 passe-t-il ?), le plateau retenu, et le CLASSEMENT DE
+// SENSIBILITÉ par axe — c'est lui qui ouvre ou ferme l'item 8b.4 (trailing
+// adaptatif ATR : ne s'ouvre que si trailingStopPct est l'axe le plus
+// sensible).
+//
+// VERDICT MESURÉ (figé) — PREMIER CANDIDAT D'EDGE du projet :
+//   - le filtre alpha > 0 PASSE : plateau (emaFast=9, smaT=250, trail=0,05),
+//     Sharpe OOS moyen 1,219, alpha OOS moyen +0,097 pt. C'est MARGINAL
+//     (+0,10 pt vs B&H) et entaché d'un biais de sélection (meilleur de 18
+//     combos jugés sur les MÊMES fenêtres OOS) : la sélection de plateau
+//     l'atténue, ne l'élimine pas. « Retenir » = décision utilisateur +
+//     re-déroulement de la DoD complète — PAS une adoption automatique.
+//   - axe le plus sensible : smaTrendPeriod (0,244) devant trailingStopPct
+//     (0,210) et emaFast (0,072) → le GATE 8b.4 est FERMÉ à la lettre
+//     (trailing n'est pas strictement premier), mais l'écart est modéré
+//     (~16 %) — arbitrage consigné au sprint.
+TEST(GridOptimizerIntegration, V2ChainExtendedGridOosVerdictIsLocked) {
+    GridOptimizer opt(
+        /*emaFast   */ {9, 13},
+        /*emaSlow   */ {21},
+        /*rsiBuyMax */ {100},
+        /*rsiSellMin*/ {70},
+        /*stopLoss  */ {0.05},
+        /*takeProfit*/ {0.0},
+        objectifOosFin, cfgChaineV2(),
+        /*smaTrend  */ {150, 200, 250},
+        /*trailing  */ {0.03, 0.05, 0.08});
+
+    const auto pts = opt.evaluate();
+    ASSERT_EQ(pts.size(), 18u);   // 2 × 3 × 3
+
+    const auto sel  = GridOptimizer::selectRobustPlateau(pts);
+    const auto sens = opt.axisSensitivities(pts);
+    ASSERT_EQ(sens.size(), 8u);
+    size_t plusSensible = 0;
+    for (size_t ax = 1; ax < sens.size(); ++ax)
+        if (sens[ax] > sens[plusSensible]) plusSensible = ax;
+
+    opt.printSensitivityMap(pts);
+    std::cout << std::fixed << std::setprecision(4)
+              << "  VERDICT 8b.1 — plateau : emaFast=" << sel.point.cfg.emaFast
+              << " smaT=" << sel.point.cfg.smaTrendPeriod
+              << " trail=" << sel.point.cfg.trailingStopPct
+              << " (metric=" << sel.point.score.metric
+              << ", alpha=" << sel.point.score.alpha
+              << ", filtre alpha>0 : " << (sel.passedAlphaFilter ? "PASSE" : "ne passe pas")
+              << ")\n  axe le plus sensible : " << GridOptimizer::axisName(plusSensible)
+              << " (emaFast=" << sens[0] << ", smaT=" << sens[6]
+              << ", trail=" << sens[7] << ")\n";
+
+    // Candidat d'edge : le filtre alpha > 0 passe pour la première fois.
+    // Si ce verrou casse un jour (retour à « pas d'edge »), le candidat
+    // n'a pas survécu à un changement de données/moteur — re-juger avant
+    // toute décision.
+    EXPECT_TRUE(sel.passedAlphaFilter);
+    EXPECT_EQ(sel.point.cfg.emaFast, 9);
+    EXPECT_EQ(sel.point.cfg.smaTrendPeriod, 250);
+    EXPECT_NEAR(sel.point.cfg.trailingStopPct, 0.05, 1e-9);
+    EXPECT_NEAR(sel.point.score.metric, 1.2193, 1e-2);   // Sharpe OOS moyen
+    EXPECT_NEAR(sel.point.score.alpha,  0.0971, 1e-2);   // alpha OOS moyen
+    EXPECT_EQ(plusSensible, 6u);   // smaTrendPeriod → gate 8b.4 FERMÉ
 }

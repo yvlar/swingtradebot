@@ -71,9 +71,15 @@ int main() {
     wfFin.printReport(wfFin.run());
 
     // 3. Optimiseur de grille jugé en OOS ─────────────────────────────────────
-    titre("3. CARTE DE SENSIBILITE (grille, Sharpe OOS)");
+    // Grille PLEINE sur les axes qui pilotent la chaîne v2 (Sprint 8-bis,
+    // item 8b.1) : emaFast × emaSlow × smaTrendPeriod × trailingStopPct =
+    // 81 combos, jugés sur le pavage FIN (4 fenêtres OOS, item 8b.3). Les
+    // axes morts de l'ancienne stratégie (rsiBuyMax, TP) restent en singleton
+    // à leur valeur de chaîne. Hors timeout : le verrou CI est la grille
+    // réduite de test_grid_optimizer_integration.cpp.
+    titre("3. CARTE DE SENSIBILITE (grille chaine v2, Sharpe OOS, pavage fin)");
     auto objectifOos = [&](const SwingConfig& c) -> GridScore {
-        WalkForward w(c, qqq, 900, 400, 400);
+        WalkForward w(c, qqq, 500, 300, 300);
         const auto ws = w.run();
         GridScore s;
         if (ws.empty()) return s;
@@ -83,7 +89,10 @@ int main() {
         s.metric = sh / k; s.alpha = al / k; s.drawdown = dd / k;
         return s;
     };
-    GridOptimizer opt({9, 13}, {21}, {55, 65}, {70}, {0.05}, {0.10, 0.15}, objectifOos);
+    GridOptimizer opt({5, 9, 13}, {21, 34, 50}, {100}, {70}, {0.05}, {0.0},
+                      objectifOos, cfg,
+                      /*smaTrend*/ {150, 200, 250},
+                      /*trailing*/ {0.03, 0.05, 0.08});
     opt.printSensitivityMap(opt.evaluate());
 
     // 4. Monte-Carlo des trades ───────────────────────────────────────────────
