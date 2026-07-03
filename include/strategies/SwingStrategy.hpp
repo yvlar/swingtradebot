@@ -49,6 +49,15 @@ namespace trading {
         // tout le reste de la tendance). Faux = comportement historique
         // (entrée uniquement sur croisement).
         bool   regimeReentry           = true;
+        // Item 8s.2 (Sprint 8-quinquies) : > 0 = entrée BREAKOUT — à plat,
+        // régime up et clôture au-dessus du plus haut des M barres
+        // précédentes (barre courante exclue) → BUY sans attendre un
+        // croisement (hypothèse T3 prolongée : entrer sur la force
+        // DÉMONTRÉE, pas le seul état « régime up + prix > EMAs »).
+        // Évaluée APRÈS les ventes ; flag indépendant de regimeReentry.
+        // ≤ 0 = désactivé. Axe de recherche 8s.3 — pas de défaut actif
+        // tant que l'amélioration OOS n'est pas démontrée.
+        int    entryBreakoutM          = 0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
