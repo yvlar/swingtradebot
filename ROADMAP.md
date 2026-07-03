@@ -14,8 +14,8 @@
 | FinTech      | 85        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-03 (Sprint 8-quater — trailing adaptatif ATR jugé sur les trois pavages : « PAS D'AMÉLIORATION ROBUSTE » (+1,82 pt sur le canonique mais −0,24 sur le décalé — l'acceptation exigeait ≥ chaîne sur les DEUX pavages non-choisis) → consigné sans adoption (D40), prod reste paper. Le moteur gagne un trailing adaptatif A/B-able : `trailingAtrMult` (défaut 0 = off), surcharge additive de `checkExitConditions` sur barres)
-- **Sprint courant** : Sprint 8-quinquies — Autres familles de signaux (sorties structurelles + entrées breakout, jugées sur les trois pavages ; l'axe trailing est exploré SANS gagnant robuste : fixe fragile en 8t.3, ATR non robuste en 8q.2) — décision utilisateur du 2026-07-03
+- **Dernière mise à jour** : 2026-07-03 (Sprint 8-quinquies — familles de signaux jugées sur les trois pavages : « AUCUNE AMÉLIORATION » — la sortie structurelle est INERTE (N=20/55 strictement identiques à la chaîne sur les trois pavages, le seul N qui tire dégrade) et l'entrée breakout « remplace » perd −1,85/−1,43 pt sur les pavages non-choisis (biais de sélection pur ; « s'ajoute » partout inerte — D41) → consigné sans adoption, prod reste paper. Le moteur gagne deux mécanismes A/B-ables : `exitOnLowestLowN` et `entryBreakoutM` (défauts 0 = off))
+- **Sprint courant** : Sprint 8-sexies — 3e famille de signaux (entrée pullback en tendance — acheter la faiblesse en régime up, l'inverse du breakout —, filtre de volatilité sur les entrées ; même protocole trois pavages) — décision utilisateur du 2026-07-03
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -33,16 +33,20 @@
 > candidat non confirmé, AUCUNE adoption, la prod reste paper.** Le Sprint
 > 8-quater a ensuite exploré l'axe désigné (trailing) avec un ATR adaptatif :
 > même verdict discipliné — « pas d'amélioration robuste » (D40), l'avantage
-> (+1,82 pt canonique) ne tient pas sur le pavage décalé (−0,24). **Cap sur
-> les familles de signaux : Sprint 8-quinquies.**
+> (+1,82 pt canonique) ne tient pas sur le pavage décalé (−0,24). Le Sprint
+> 8-quinquies a exploré les familles de signaux (sortie structurelle, entrée
+> breakout) : « aucune amélioration » — inertie ou dégradation hors du pavage
+> de choix (D41). **Trois axes sont soldés (paramètres, trailing, signaux
+> structure/breakout) ; cap sur une 3e famille : Sprint 8-sexies.**
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **25**  | Le premier candidat d'edge est réfuté proprement (3 verrous indépendants) : retour à « aucun candidat vivant », d'où −5. La chaîne v2 conserve sa progression (−6,88 sur pavage fin) et le PROCESSUS de validation hors-grille existe désormais (offset de pavage, triple verdict) — c'est lui qui empêchera d'adopter un artefact. Le Sprint 8-quater n'y change rien (=) : le trailing ATR améliore 2 pavages sur 3 mais échoue le critère strict — connaissance négative utile (l'axe trailing est soldé), capacité à gagner inchangée. La note ne franchira 50 qu'avec un candidat CONFIRMÉ hors-grille, et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 559/559 verts (478 unitaires + 81 intégration) — et la
+> | **Rentabilité** | **25**  | Le premier candidat d'edge est réfuté proprement (3 verrous indépendants) : retour à « aucun candidat vivant », d'où −5. La chaîne v2 conserve sa progression (−6,88 sur pavage fin) et le PROCESSUS de validation hors-grille existe désormais (offset de pavage, triple verdict) — c'est lui qui empêchera d'adopter un artefact. Les Sprints 8-quater et 8-quinquies n'y changent rien (=) : trailing ATR non robuste (D40), familles structure/breakout inertes ou dégradantes hors du pavage de choix (D41) — connaissance négative utile (trois axes soldés), capacité à gagner inchangée. La note ne franchira 50 qu'avec un candidat CONFIRMÉ hors-grille, et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
+- **État des tests** : 582/582 verts (495 unitaires + 87 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +14 au Sprint 8-quater (545 → 559), aucune dérive hors
-  cycle (`ctest -N` recalé à l'ouverture : 545 conforme). Détail au changelog.
+  suites concurrentes. +23 au Sprint 8-quinquies (559 → 582), aucune dérive
+  hors cycle (`ctest -N` recalé à l'ouverture : 559 conforme). Détail au
+  changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -714,7 +718,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   futur. Suite décidée avec l'utilisateur : **Sprint 8-quinquies** (autres
   familles de signaux — l'axe trailing est soldé, D40).
 
-# 🟣 SPRINT 8-QUINQUIES — Autres familles de signaux — **sprint courant**
+# 🟣 SPRINT 8-QUINQUIES — Autres familles de signaux ✅ (clos le 2026-07-03, verdict : aucune amélioration)
 
 > Décision utilisateur (2026-07-03) à la clôture du Sprint 8-quater : l'axe
 > trailing est SOLDÉ (fixe fragile — 8t.3 —, adaptatif ATR non robuste — 8q.2,
@@ -726,36 +730,96 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > et tout paramètre choisi par mini-grille est jugé sur les pavages NON-CHOISIS
 > (leçon 8-ter/8-quater — `test_trailing_atr_integration.cpp` est le modèle).
 
-- [ ] **8s.1** **Sortie structurelle « plus bas de N jours »** : flag
-  `SwingConfig::exitOnLowestLowN` (défaut 0 = désactivé) ; en position, clôture
-  sous le plus bas des N barres précédentes (barre courante exclue) → sortie
-  (raison contenant « structure »). Implémentation proposée : dans la variante
-  « barres » de `checkExitConditions` (`include/bot/RiskManager.hpp:120`,
-  disponible depuis 8q.1), APRÈS le stop-loss et avant le trailing — priorité
-  exacte à trancher à l'implémentation. Hypothèse : une sortie sur STRUCTURE de
-  prix (cassure d'un support récent) colle mieux aux retournements qu'une
-  distance depuis le pic. **Acceptation** : tests rouges unitaires
-  (RiskManagerUnit) calculés à la main ; flag off = goldens intacts (vérifié).
-- [ ] **8s.2** **Entrée breakout « plus haut de M jours »** : flag
-  `SwingConfig::entryBreakoutM` (défaut 0 = désactivé) ; à plat, régime up et
-  clôture au-dessus du plus haut des M barres précédentes → BUY sans attendre
-  un croisement (s'ajoute à la re-entrée de régime,
-  `include/strategies/SwingStrategy.hpp:192` ; évaluée APRÈS les ventes comme
-  8.5). Hypothèse T3 prolongée : entrer sur la FORCE démontrée (breakout) plutôt
-  que sur le seul état « régime up + prix > EMAs ». **Acceptation** : tests
-  rouges unitaires (SwingStrategyUnit) ; flag off = goldens intacts.
-- [ ] **8s.3** **Verdicts OOS des deux mécanismes vs chaîne v2** : mini-grilles
-  courtes choisies sur le pavage FIN (proposition à re-dériver à l'exécution :
-  N ∈ {10, 20, 55}, M ∈ {20, 55}), duels verrouillés sur canonique + décalé
-  (modèle `test_trailing_atr_integration.cpp`) — chaque mécanisme jugé SEUL
-  d'abord, la combinaison seulement si chacun est ≥ chaîne. **Acceptation** :
-  verrous D33/D34, les deltas chiffrés figés (leçon 8-quater) ; « pas
+- [x] **8s.1** **Sortie structurelle « plus bas de N jours »** → `f70394c` +
+  `294ed6c` + `c067a33` + `8900bf1`
+  `SwingConfig::exitOnLowestLowN` (défaut 0 = désactivé) : en position, clôture
+  ≤ plus bas des N barres PRÉCÉDENTES (barre courante exclue) → « sortie
+  structurelle ». Décisions utilisateur d'ouverture : gatée par minHoldDays
+  (comme le trailing qu'elle concurrence), priorité SL > TP > structure >
+  trailing. Réalisée par une 3e surcharge ADDITIVE de `checkExitConditions`
+  (défaut rétro-compatible, patron 8q.1) ; plomberie RiskConfig + TradingBot ;
+  câblage ConfigLoader/prod.json DIFFÉRÉ au gate 8s.4 (fichier gouverné
+  intact). **Acceptation satisfaite** : 9 tests RiskManagerUnit calculés à la
+  main (bornes de fenêtre verrouillées des deux côtés, N=0 = identité stricte,
+  gating minHold, priorités % ET ATR) + verrou de conversion ; goldens intacts
+  à chaque commit.
+- [x] **8s.2** **Entrée breakout « plus haut de M jours »** → `d167eea` + `4edd528`
+  `SwingConfig::entryBreakoutM` (défaut 0 = désactivé) : à plat, régime up et
+  clôture STRICTEMENT au-dessus du plus haut des M barres précédentes (barre
+  courante exclue) → BUY sans croisement. Bloc évalué après les VENTES et
+  avant la re-entrée 8.5 ; flag indépendant de `regimeReentry`. **Acceptation
+  satisfaite** : 8 tests SwingStrategyUnit sur indicateurs injectés (borne
+  stricte, exclusion barre courante, gate de régime, priorité des ventes,
+  coexistence re-entrée) ; goldens intacts.
+- [x] **8s.3** **Verdicts OOS des deux mécanismes vs chaîne v2** → `81710f8` + `fe1836e`
+  Nouvelle suite `SignalFamiliesIntegration` (modèle 8-quater) + section 9 du
+  CLI `validate`. Mini-grilles sur le pavage FIN : structure N ∈ {10, 20, 55} ;
+  breakout M ∈ {20, 55} × {remplace, s'ajoute} (décision utilisateur : juger
+  les DEUX hypothèses de cohabitation avec la re-entrée 8.5). **Verdict
+  verrouillé : AUCUNE AMÉLIORATION** — (a) la structure est INERTE : N=20/55
+  rendent des mesures STRICTEMENT identiques à la chaîne sur les trois pavages
+  (la cassure du plus bas n'arrive jamais avant le trailing 3 %), le seul N
+  qui tire (10) dégrade (−7,04 vs −6,88 fin) ; (b) le breakout « s'ajoute »
+  est partout inerte (sous-ensemble de la re-entrée, prédit à l'ouverture) ;
+  (c) le breakout « remplace » (M=20, argmax fin −6,69, +0,19 pt) rend
+  **−11,75 vs −9,90 (−1,85 pt)** sur le canonique et **−14,26 vs −12,83
+  (−1,43 pt)** sur le décalé — biais de sélection pur (D36 à l'œuvre). Gate
+  de la COMBINAISON fermé (le breakout échoue seul, la structure est inerte).
+  Recoupements inter-fichiers de la chaîne intacts sur les trois pavages.
+- [x] **8s.4** **Décision de suite (Décision requise)** → branche « sinon » appliquée (aucun code)
+  La condition « amélioration robuste sur les pavages non-choisis » est FAUSSE
+  (0 mécanisme sur 2) : **« aucune amélioration » consigné, AUCUNE adoption**
+  (SwingConfig, config/prod.json et goldens strictement inchangés), la prod
+  reste paper. Les deux mécanismes restent dans le moteur (flags additifs,
+  défaut 0) pour re-jugement futur. Suite décidée avec l'utilisateur
+  (2026-07-03) : **Sprint 8-sexies** (3e famille de signaux — pullback en
+  tendance, filtre de volatilité).
+
+# 🟣 SPRINT 8-SEXIES — 3e famille de signaux — **sprint courant**
+
+> Décision utilisateur (2026-07-03) à la clôture du Sprint 8-quinquies :
+> continuer la recherche d'edge par une 3e famille de signaux. Les axes soldés
+> ne se re-testent pas (paramètres — 8-ter, trailing — 8-quater, structure/
+> breakout — 8-quinquies) ; la piste inverse du breakout n'a JAMAIS été
+> testée : acheter la FAIBLESSE dans la tendance (pullback), et filtrer les
+> entrées par la VOLATILITÉ. Discipline inchangée : flags additifs A/B-ables
+> (défaut = comportement actuel, goldens intacts), verdicts OOS sur les TROIS
+> pavages, configs explicites (D33), trades poolés figés (D34), deltas figés,
+> mécanismes jugés SEULS d'abord, et — leçon D41 — **vérifier l'ACTIVATION du
+> mécanisme (le chemin change-t-il ?) avant d'interpréter son verdict**.
+
+- [ ] **8y.1** **Entrée pullback en tendance** : flag
+  `SwingConfig::entryPullbackRsiMax` (défaut 0 = désactivé) ; à plat, régime
+  up (prix > SMA200) et RSI ≤ seuil → BUY (acheter le creux DANS la tendance
+  — l'inverse exact du breakout 8s.2). Évaluée APRÈS les ventes (comme
+  8.5/8s.2, `include/strategies/SwingStrategy.hpp:201` — bloc breakout comme
+  modèle d'insertion). Attention D41 : avec `regimeReentry=true` la re-entrée
+  masque probablement le pullback (elle achète déjà tout l'état « régime up +
+  prix > EMAs ») — prévoir d'emblée les variantes « remplace » et « s'ajoute »
+  comme en 8s.3. **Acceptation** : tests rouges unitaires (SwingStrategyUnit,
+  indicateurs injectés) ; flag off = goldens intacts (vérifié).
+- [ ] **8y.2** **Filtre de volatilité sur les entrées** : flag
+  `SwingConfig::entryMaxAtrPct` (défaut 0 = désactivé) ; TOUTE entrée
+  (croisement, re-entrée, breakout, pullback) est bloquée si
+  ATR(14)/clôture > seuil (hypothèse : les whipsaws coûteux arrivent en haute
+  volatilité ; n'entrer que dans un marché calme). ATR vrai true-range via
+  `computeBars` (`include/indicators/DayIndicators.hpp:20,56`), la stratégie
+  reçoit déjà les barres dans `evaluate`. Ce filtre PEUT être inerte si les
+  fenêtres OOS sont calmes (D41) : figer le nombre d'entrées bloquées.
+  **Acceptation** : tests rouges unitaires ; flag off = goldens intacts.
+- [ ] **8y.3** **Verdicts OOS vs chaîne v2** : mini-grilles sur le pavage FIN
+  (proposition à re-dériver à l'exécution : RSI seuil ∈ {30, 40, 50} ×
+  {remplace, s'ajoute} pour 8y.1 ; ATR % ∈ {0,015, 0,025} pour 8y.2, appliqué
+  à la chaîne), duels verrouillés sur canonique + décalé (modèle
+  `test_signal_families_integration.cpp`) — chaque mécanisme jugé SEUL, la
+  combinaison seulement si chacun est ≥ chaîne sur les deux pavages
+  non-choisis. **Acceptation** : verrous D33/D34/D41, deltas figés ; « pas
   d'amélioration » est un résultat valide.
-- [ ] **8s.4** **Décision de suite (Décision requise)** : si 8s.3 confirme une
-  amélioration robuste sur les pavages non-choisis, poser l'adoption (goldens
-  re-figés, delta chiffré, câblage ConfigLoader/prod.json des flags adoptés) ;
-  sinon consigner et statuer avec l'utilisateur (3e famille de signaux vs pause
-  stratégie → Sprint 9.x moteur).
+- [ ] **8y.4** **Décision de suite (Décision requise)** : si amélioration
+  robuste, poser l'adoption (goldens re-figés, câblage ConfigLoader/prod.json) ;
+  sinon consigner et statuer avec l'utilisateur (changement de paradigme —
+  rotation multi-actifs / détention par régime — vs pause stratégie →
+  Sprint 9.x moteur).
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
@@ -819,8 +883,80 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D38 | ✅ | (Sprint Sécurité-Réel) **`IBKRBroker::residentStopOrderId_` n'est pas persisté** : après un restart, `cancelStopLoss` ne retrouve pas l'orderId du stop résident déposé par le process précédent → l'annulation à la sortie est un no-op et le stop IBKR peut rester orphelin chez le broker (se déclencherait après coup). Mitigé par : (a) `stopArmed` persisté empêche d'empiler un 2e stop, (b) le cas « position fermée par le stop résident » est réconcilié proprement (reset + cooldown de ré-entrée) | ✅ Corrigé à la 2e passe (S.10, `75339e2`) : re-découverte broker-locale via GET `/iserver/account/orders` + tag cOID « swingbot-SYM-STOP- » — pas de persistance nécessaire |
 | D39 | 🟡 | (Sprint 8-ter) **Un axe de grille n'est « stable » qu'à la maille où on l'a mesuré.** D36 concluait « seul smaT=250 est stable » entre les grilles 18 et 81 combos (crans 150/200/250) ; la grille de CONFIRMATION resserrée (crans 225/250/275, 8t.3) fait dériver ce même axe vers 275 (et le trailing vers 0,04). Leçon générale : la stabilité d'un plateau doit être testée en RESSERRANT les crans autour du gagnant (le mécanisme 8t.3, désormais réutilisable), pas seulement en élargissant la grille. Garde-fou adopté de fait : toute future validation de candidat inclut une grille resserrée verrouillée | Documenté (mécanisme en place : `CandidateConfirmationTightGridOosVerdictIsLocked` sert de modèle) |
 | D40 | 🟡 | (Sprint 8-quater) **L'axe trailing est exploré SANS gagnant robuste — la fragilité venait de l'axe, pas de sa paramétrisation.** Le trailing ATR(14) (mult=3, choisi sur le pavage fin où la sélection est PLATE : écart max−min 0,47 pt) améliore 2 pavages sur 3 (+0,33 fin, **+1,82 canonique**) mais rend **−0,24 pt sur le décalé** → « pas d'amélioration robuste » au critère strict (≥ chaîne sur les DEUX pavages non-choisis). Nuance consignée dans le verrou : l'écart défavorable est un ordre de grandeur sous l'inversion du candidat 8-ter (−0,24 vs −9,2 pts) — amélioration NON ROBUSTE, pas réfutation brutale. Le mécanisme reste dans le moteur (flag additif `trailingAtrMult`, défaut 0, hors ConfigLoader/prod.json jusqu'à adoption) et pourra être re-jugé si la chaîne change | Consigné (verrous `TrailingAtrIntegration`) ; recherche ré-orientée signaux (Sprint 8-quinquies) |
+| D41 | 🟡 | (Sprint 8-quinquies) **Un mécanisme optionnel peut être structurellement MASQUÉ par un mécanisme existant — vérifier son ACTIVATION avant d'interpréter son verdict OOS.** Deux formes observées le même sprint : (a) le breakout « s'ajoute » est un quasi sous-ensemble de la re-entrée 8.5 → deltas EXACTEMENT nuls partout (prédit à l'ouverture, ce qui a motivé la variante « remplace » — la prédiction a été MESURÉE, pas crue sur parole) ; (b) la sortie structurelle N ≥ 20 ne tire JAMAIS avant le trailing % 0,03 → mesures identiques à la chaîne sur les trois pavages (non prédit, détecté par les verrous D34 : mêmes alphas ET mêmes comptes de trades que la chaîne). Un « ≥ chaîne » par ÉGALITÉ d'inertie ne valide rien — et un argmax de mini-grille peut être un ex æquo dégénéré (verrouillé : premier des ex æquo). Garde-fou adopté : tout verrou de mini-grille COMPARE ses mesures à la chaîne et documente l'inertie éventuelle ; tout nouvel item de mécanisme anticipe ses interactions de masquage dès sa rédaction (fait pour 8y.1/8y.2) | Consigné (verrous `SignalFamiliesIntegration`) ; règle intégrée aux items du Sprint 8-sexies |
 
 ## Changelog
+
+### Sprint 8-quinquies — Autres familles de signaux (2026-07-03)
+
+**Baseline réelle à l'ouverture** : **559/559 verte**, conforme au tableau de bord
+(`ctest -N` = 559, aucune dérive hors cycle). Environnement : Linux, paquets
+système (chemin CI, sans vcpkg).
+
+**Décisions utilisateur d'ouverture** (2026-07-03) : (1) périmètre = sprint
+complet + clôture ; (2) 8s.2 jugé sous les DEUX hypothèses de cohabitation
+avec la re-entrée 8.5 — « remplace » (regimeReentry=false) et « s'ajoute » —
+car « s'ajoute » était suspecté quasi-inerte (sous-ensemble de la re-entrée) ;
+(3) sortie structurelle gatée par minHoldDays, priorité SL > TP > structure >
+trailing ; (4) mini-grilles telles que proposées (N ∈ {10, 20, 55},
+M ∈ {20, 55} — re-dérivation vérifiée : pas de piège D34/D35, N et M ne
+consomment que N+1/M+1 barres de la fenêtre ~230). Décision de gate (8s.4) :
+branche « sinon » mécanique, suite = **Sprint 8-sexies** (3e famille).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `f70394c` test(risk) : sorties structurelles « plus bas de N jours » calculées à la main — rouges (item 8s.1)
+- `294ed6c` feat(risk) : sortie structurelle sous le plus bas des N barres précédentes (item 8s.1)
+- `c067a33` feat(bot) : plomberie exitOnLowestLowN — SwingConfig/RiskConfig et passage au moteur de sortie (item 8s.1)
+- `8900bf1` test(bot) : verrou de conversion SwingConfig→RiskConfig d'exitOnLowestLowN (complément 8s.1)
+- `d167eea` test(strategy) : entrée breakout « plus haut de M jours » — rouges (item 8s.2)
+- `4edd528` feat(strategy) : entrée breakout au-dessus du plus haut des M barres précédentes (item 8s.2)
+- `81710f8` test(validation) : verdicts OOS verrouillés des familles de signaux — mini-grilles fines + duels canonique/décalé (item 8s.3)
+- `fe1836e` feat(validate) : section 9 FAMILLES DE SIGNAUX dans le harnais (item 8s.3)
+
+**Tests** : 559 → **582** (+23 : 495 unitaires + 87 intégration). Ajouts :
+`RiskManagerUnit` +9 (seuil structure aux deux bornes de fenêtre — barre
+ancienne hors fenêtre ET barre courante exclue dans le même cas de test —,
+N=0 = identité stricte, N+1 barres requises, gating minHold, priorités sur le
+trailing % ET le trailing ATR) ; `SwingStrategyUnit` +8 (+1 assertion de
+conversion) sur indicateurs injectés (borne stricte du breakout, gate de
+régime, priorité des ventes, coexistence re-entrée) ; nouvelle suite
+`SignalFamiliesIntegration` +6 (2 mini-grilles avec mesures + argmax figés,
+4 duels sur pavages non-choisis). Discipline rouge→vert sur les tests de
+comportement (5 rouges structure, 2 rouges breakout) ; sentinelles → mesure →
+figer sur les 6 verrous d'intégration.
+
+**Interfaces modifiées** (additives uniquement) : `IRiskManager::checkExitConditions`
+gagne une 3e surcharge « + exitOnLowestLowN » à défaut rétro-compatible
+(patron 8q.1) ; `SwingConfig` gagne `exitOnLowestLowN` et `entryBreakoutM`
+(défauts 0), `RiskConfig` gagne `exitOnLowestLowN`. **Goldens byte-identiques
+sur tout le sprint** (défauts 0 partout) ; recoupements inter-fichiers de la
+chaîne dans le nouveau fichier de verdict : −9,9023/11 (canonique),
+−6,8794/13 (fin), −12,8332/11 (décalé) — tous verts. Fichiers gouvernés
+intacts (config/prod.json, prompt-*.md, verrou live) ; câblage ConfigLoader
+des deux flags DIFFÉRÉ au gate d'adoption (règle 8q.3, documentée dans
+ConfigLoader.hpp).
+
+**Verdicts OUT-OF-SAMPLE du sprint** (tous verrouillés, configs explicites
+D33, trades poolés D34, deltas figés) :
+- **8s.3a (mini-grille structure, pavage fin)** : N=10 −7,0435 (15 trades) ;
+  N=20 **−6,8794 (13)** ; N=55 −6,8794 (13) — N=20/55 INERTES (identiques à
+  la chaîne), argmax dégénéré → N=20 (premier des ex æquo, figé).
+- **8s.3b (mini-grille breakout, pavage fin)** : « s'ajoute » M=20/55
+  −6,8794 (13) — EXACTEMENT inertes ; « remplace » M=20 **−6,6850 (9)**,
+  M=55 −6,7147 (9) → argmax (M=20, remplace), +0,19 pt sur SON pavage.
+- **8s.3c (structure, non-choisis)** : canonique −9,9023 (11) = chaîne ;
+  décalé −12,8332 (11) = chaîne — inertie totale, « ≥ chaîne » par égalité,
+  rien à adopter.
+- **8s.3d (breakout, non-choisis)** : canonique **−11,7526 (9) vs −9,9023
+  (11) → −1,85 pt** ; décalé **−14,2640 (10) vs −12,8332 (11) → −1,43 pt**
+  — l'acceptation échoue sur les DEUX pavages, biais de sélection pur.
+- **8s.4** : condition d'adoption FAUSSE (0/2) → « aucune amélioration »,
+  branche « sinon » : consigner sans adopter, prod paper. Suite décidée avec
+  l'utilisateur : **Sprint 8-sexies** (3e famille de signaux — pullback en
+  tendance, filtre de volatilité).
+
+**Découvertes** : D41 (mécanisme masqué par un mécanisme existant — vérifier
+l'ACTIVATION avant d'interpréter un verdict ; argmax d'ex æquo figé).
 
 ### Sprint 8-quater — Trailing adaptatif ATR (2026-07-03)
 
@@ -1517,6 +1653,64 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 8-quinquies — Autres familles de signaux (2026-07-03)
+
+**1. Découpage** : bon — deux mécanismes indépendants (8s.1/8s.2, chacun
+rouge→vert en 2-4 commits atomiques), une mesure (8s.3), un gate mécanique
+(8s.4) ; aucune dépendance ratée. Le point le plus rentable du sprint s'est
+joué À L'OUVERTURE : l'analyse « le breakout “s'ajoute” est un sous-ensemble
+de la re-entrée 8.5 » a été posée à l'utilisateur AVANT d'écrire une ligne, et
+la décision (juger les deux variantes) a transformé un débat en MESURE — le
+delta exactement nul de « s'ajoute » est la preuve, pas l'opinion. Le
+protocole 3-pavages a tourné une 3e fois sans amendement ; la session a même
+été interrompue entre le gate et la clôture SANS rien perdre : tout l'état
+était dans les commits et les verrous — la discipline « committer l'item
+seul » paie aussi contre les pannes d'environnement.
+
+**2. Suffisance des prompts** : suffisants, aucune improvisation de workflow.
+Quatre décisions produit posées à l'ouverture (périmètre ; variantes A/B du
+breakout ; gating/priorité de la sortie structurelle ; mini-grilles avec
+re-dérivation vérifiée — leçon 8-ter appliquée : les constantes d'un item se
+re-dérivent, ne se copient pas) et la décision de clôture posée avec les
+chiffres. **Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt / garde-fous** : (a) **D41** — l'inertie de la sortie
+structurelle (N ≥ 20 ne tire jamais avant le trailing 3 %) n'a été vue qu'à la
+mesure ; elle était pourtant DÉTECTABLE par raisonnement (sur QQQ haussier, un
+retracement de 20 jours sous le plus bas dépasse presque toujours 3 % depuis
+le pic — le trailing tire d'abord). Garde-fou adopté : anticiper les
+interactions de MASQUAGE d'un nouveau mécanisme dès la rédaction de l'item
+(fait pour 8y.1/8y.2), et comparer chaque ligne de mini-grille à la chaîne
+(mêmes alphas + mêmes trades = inertie, à documenter dans le verrou même).
+(b) Un argmax de mini-grille peut être un EX ÆQUO dégénéré (N=20/55 à
+−6,8794) : figer « premier des ex æquo » explicitement, sinon le verrou est
+fragile à tout re-figeage. (c) Les verrous D34 (comptes de trades) ont encore
+payé : ce sont eux qui distinguent « inerte » (mêmes trades) de « équivalent »
+(trades différents, même alpha) — sans eux, l'inertie serait passée pour une
+égalité de performance.
+
+**4. Notes /100** (précédent 88/93/85/72, Rentabilité 25) :
+- **Architecture 88** (=) : deux extensions strictement additives (3e
+  surcharge à défaut rétro-compatible, flag de stratégie), frontières
+  interfaces-only respectées. La pile de surcharges de `checkExitConditions`
+  (8/10/11 args) commence à compter — un regroupement en struct de paramètres
+  est envisageable mais n'est PAS urgent ; toujours plafonnée par 9.2.
+- **Qualité 93** (=) : +23 tests avec la même discipline (bornes de fenêtre
+  verrouillées des deux côtés dans un même cas, identités de délégation,
+  verrous d'inertie documentés), goldens byte-identiques à chaque commit —
+  mais rien de structurellement NOUVEAU dans l'outillage qualité ce sprint.
+- **FinTech 85** (=) : le protocole de jugement est rodé (3e exécution sans
+  amendement) et la connaissance négative s'accumule proprement (D41), mais
+  la capacité à juger n'a pas gagné de mécanisme nouveau et l'edge n'a pas
+  progressé.
+- **Production 72** (=) : rien de prod ce sprint (voulu) ; prod.json intact
+  par construction (câblage différé au gate).
+- **Rentabilité 25** (=) : troisième axe soldé (signaux structure/breakout
+  après paramètres et trailing) — connaissance négative utile qui RÉTRÉCIT
+  honnêtement l'espace de recherche, mais la capacité démontrée à gagner de
+  l'argent n'a pas bougé. La chaîne v2 reste seule en lice (−6,88/−9,90/
+  −12,83 selon le pavage).
 
 ### Sprint 8-quater — Trailing adaptatif ATR (2026-07-03)
 

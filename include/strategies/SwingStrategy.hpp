@@ -25,6 +25,13 @@ namespace trading {
         // ≤ 0 = désactivé. Axe de recherche 8q.2 — pas de défaut actif tant
         // que l'amélioration OOS n'est pas démontrée.
         double trailingAtrMult    = 0.0;
+        // Item 8s.1 (Sprint 8-quinquies) : > 0 = sortie STRUCTURELLE — en
+        // position, clôture sous le plus bas des N barres précédentes (barre
+        // courante exclue) → sortie (cassure d'un support récent). Gatée par
+        // minHoldDays, priorité SL > TP > structure > trailing. ≤ 0 =
+        // désactivé. Axe de recherche 8s.3 — pas de défaut actif tant que
+        // l'amélioration OOS n'est pas démontrée.
+        int    exitOnLowestLowN   = 0;
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
         int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
@@ -42,6 +49,15 @@ namespace trading {
         // tout le reste de la tendance). Faux = comportement historique
         // (entrée uniquement sur croisement).
         bool   regimeReentry           = true;
+        // Item 8s.2 (Sprint 8-quinquies) : > 0 = entrée BREAKOUT — à plat,
+        // régime up et clôture au-dessus du plus haut des M barres
+        // précédentes (barre courante exclue) → BUY sans attendre un
+        // croisement (hypothèse T3 prolongée : entrer sur la force
+        // DÉMONTRÉE, pas le seul état « régime up + prix > EMAs »).
+        // Évaluée APRÈS les ventes ; flag indépendant de regimeReentry.
+        // ≤ 0 = désactivé. Axe de recherche 8s.3 — pas de défaut actif
+        // tant que l'amélioration OOS n'est pas démontrée.
+        int    entryBreakoutM          = 0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -57,6 +73,7 @@ namespace trading {
             r.takeProfitPct   = takeProfitPct;
             r.trailingStopPct = trailingStopPct;
             r.trailingAtrMult = trailingAtrMult;
+            r.exitOnLowestLowN = exitOnLowestLowN;
             r.riskPerTradePct = riskPerTradePct;
             r.minHoldDays     = minHoldDays;
             // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :
@@ -179,6 +196,31 @@ namespace trading {
                                      ? "Croisement baissier EMA"
                                      : "RSI suracheté (" + std::to_string(static_cast<int>(lastRsi)) + ")";
                 return makeSignal(SignalType::SELL, bars, reason);
+            }
+
+            // ── Entrée breakout « plus haut de M jours » (item 8s.2) ─────────
+            // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
+            // la re-entrée (raison plus spécifique quand les deux sont
+            // qualifiantes). À plat, régime haussier confirmé et clôture
+            // AU-DESSUS (strictement) du plus haut des M barres précédentes
+            // — barre courante exclue — → BUY : la force est DÉMONTRÉE par la
+            // cassure d'une résistance récente (hypothèse T3 prolongée), pas
+            // seulement décrite par l'état « prix > EMAs ». Fenêtre < M+1
+            // barres → pas de jugement de breakout.
+            if (config_.entryBreakoutM > 0
+                && regimeUp
+                && n >= static_cast<size_t>(config_.entryBreakoutM) + 1)
+            {
+                double plusHaut = bars[n-2].high;
+                for (size_t i = n - 1 - config_.entryBreakoutM; i + 1 < n; ++i)
+                    plusHaut = std::max(plusHaut, bars[i].high);
+                if (lastClose > plusHaut)
+                    return makeSignal(SignalType::BUY, bars,
+                                      "Breakout : clôture " +
+                                      std::to_string(static_cast<int>(lastClose)) +
+                                      " > plus haut " +
+                                      std::to_string(config_.entryBreakoutM) +
+                                      " jours | regime up");
             }
 
             // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────

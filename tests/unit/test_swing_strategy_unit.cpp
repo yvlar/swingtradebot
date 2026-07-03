@@ -255,6 +255,7 @@ TEST(SwingStrategyUnit, SwingConfigConvertsToRiskConfig) {
     cfg.trailingStopPct = 0.02;
     cfg.riskPerTradePct = 0.01;
     cfg.minHoldDays     = 5;
+    cfg.exitOnLowestLowN = 20;   // item 8s.1 : la sortie structurelle suit
 
     RiskConfig r = cfg;
     EXPECT_EQ(r.symbol, "SPY");
@@ -263,6 +264,7 @@ TEST(SwingStrategyUnit, SwingConfigConvertsToRiskConfig) {
     EXPECT_DOUBLE_EQ(r.trailingStopPct, 0.02);
     EXPECT_DOUBLE_EQ(r.riskPerTradePct, 0.01);
     EXPECT_EQ(r.minHoldDays, 5);
+    EXPECT_EQ(r.exitOnLowestLowN, 20);
 }
 
 namespace {
@@ -514,6 +516,122 @@ TEST(SwingStrategyUnit, RiskConfigLookbackCoversTrendPeriod) {
     SwingConfig small; small.smaTrendPeriod = 10;
     RiskConfig rs = small;
     EXPECT_EQ(rs.lookback, 60);            // plancher historique
+}
+
+// ════════════════════════════════════════════════════════════
+//  Entrée breakout « plus haut de M jours » (item 8s.2)
+// ════════════════════════════════════════════════════════════
+// Hypothèse T3 prolongée (Sprint 8-quinquies) : entrer sur la FORCE
+// démontrée — clôture au-dessus du plus haut des M barres PRÉCÉDENTES
+// (barre courante exclue) en régime haussier confirmé — plutôt que sur le
+// seul état « régime up + prix > EMAs » (re-entrée 8.5). Évaluée APRÈS le
+// bloc VENTE (les sorties gardent la priorité) ; flag entryBreakoutM
+// INDÉPENDANT de regimeReentry (les deux peuvent coexister — l'A/B des
+// deux hypothèses « remplace / s'ajoute » est jugé en 8s.3, décision
+// utilisateur 2026-07-03). ≤ 0 = désactivé (comportement historique).
+
+namespace {
+
+// Harnais 8s.2 : pas de croisement (EMA rapide au-dessus de la lente),
+// RSI neutre, régime piloté par la SMA injectée. Les 29 premières barres
+// clôturent à 100 (high 100,5) SAUF le plus haut de la fenêtre, injecté sur
+// l'avant-dernière barre ; la barre COURANTE clôture à `lastClose` avec un
+// high paramétrable (pour verrouiller son exclusion du calcul).
+Signal evalBreakoutCase(int m, double smaLast, double priorHigh,
+                        double lastClose, double lastHigh = 0.0,
+                        bool reentryOn = false, bool bearishCross = false) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 105.0);       // au-dessus, sans croisement
+    if (bearishCross) emaFast[n-1] = 95.0;       // passage au-dessus → dessous
+    std::vector<double> rsi(n, 50.0);
+    std::vector<double> sma(n, smaLast);
+
+    std::vector<Bar> bars;
+    for (size_t i = 0; i + 1 < n; ++i)
+        bars.push_back(make_bar((int)i, 100.0)); // high = 100,5
+    bars[n-2].high = priorHigh;                  // le plus haut des M précédentes
+    Bar courante = make_bar((int)n - 1, lastClose);
+    if (lastHigh > 0.0) courante.high = lastHigh;
+    bars.push_back(courante);
+
+    SwingConfig cfg;
+    cfg.entryBreakoutM = m;
+    cfg.regimeReentry  = reentryOn;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// Cas central : régime up (110 > SMA 100), clôture 110 > plus haut des 5
+// précédentes (105), PAS de croisement, re-entrée OFF → BUY sur breakout,
+// avec une raison explicite.
+TEST(SwingStrategyUnit, BreakoutBuysWithoutCrossover) {
+    auto sig = evalBreakoutCase(5, 100.0, 105.0, 110.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("reakout"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// La barre COURANTE est exclue du plus haut : son high (200) dépasse la
+// clôture 110 — si elle comptait, 110 > 200 serait faux et rien ne sortirait.
+// Le plus haut des M précédentes (105) fait foi.
+TEST(SwingStrategyUnit, BreakoutExcludesCurrentBarHigh) {
+    EXPECT_EQ(evalBreakoutCase(5, 100.0, 105.0, 110.0,
+                               /*lastHigh=*/200.0).type,
+              SignalType::BUY);
+}
+
+// Borne stricte : clôture ÉGALE au plus haut des M précédentes (110 = 110)
+// n'est PAS un breakout — il faut clôturer AU-DESSUS.
+TEST(SwingStrategyUnit, NoBreakoutWhenCloseEqualsPriorHigh) {
+    EXPECT_EQ(evalBreakoutCase(5, 100.0, 110.0, 110.0).type,
+              SignalType::HOLD);
+}
+
+// Régime NON haussier (110 < SMA 120) : pas d'entrée breakout — le filtre
+// de régime (8.1) gate toutes les familles d'entrée.
+TEST(SwingStrategyUnit, NoBreakoutWhenRegimeDown) {
+    EXPECT_EQ(evalBreakoutCase(5, 120.0, 105.0, 110.0).type,
+              SignalType::HOLD);
+}
+
+// M=0 → désactivé : comportement historique (HOLD, re-entrée off).
+TEST(SwingStrategyUnit, BreakoutDisabledWhenMZero) {
+    EXPECT_EQ(evalBreakoutCase(0, 100.0, 105.0, 110.0).type,
+              SignalType::HOLD);
+}
+
+// Fenêtre trop courte : M=50 exige M+1 barres, il n'y en a que 30 → pas de
+// jugement de breakout (et pas d'accès hors bornes).
+TEST(SwingStrategyUnit, BreakoutNeedsMPlusOneBars) {
+    EXPECT_EQ(evalBreakoutCase(50, 100.0, 105.0, 110.0).type,
+              SignalType::HOLD);
+}
+
+// Priorité des sorties : croisement baissier + breakout vrai simultanément
+// → SELL, jamais masqué par l'entrée (bloc VENTE évalué avant, comme 8.5).
+TEST(SwingStrategyUnit, BearishCrossOutranksBreakout) {
+    EXPECT_EQ(evalBreakoutCase(5, 100.0, 105.0, 110.0, 0.0,
+                               /*reentryOn=*/false,
+                               /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Coexistence avec la re-entrée (hypothèse « s'ajoute ») : breakout NON
+// déclenché (clôture 110 < plus haut 120) mais régime up et prix > EMAs →
+// la re-entrée 8.5 achète toujours — le flag breakout ne la supprime pas.
+TEST(SwingStrategyUnit, ReentryStillBuysWhenBreakoutNotTriggered) {
+    auto sig = evalBreakoutCase(5, 100.0, 120.0, 110.0, 0.0,
+                                /*reentryOn=*/true);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Re-entr"), std::string::npos)
+        << "raison réelle : " << sig.reason;
 }
 
 // Indicateurs injectés défaillants : HOLD explicite, jamais de crash

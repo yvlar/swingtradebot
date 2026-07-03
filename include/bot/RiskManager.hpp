@@ -57,6 +57,10 @@ public:
         return true;
     }
 
+    // Les surcharges déclarées ici masqueraient sinon les variantes héritées
+    // de checkExitConditions (name hiding) — on ré-expose tout le jeu.
+    using IRiskManager::checkExitConditions;
+
     // Surcharge historique (8 arguments) : trailing % pur — délègue à la
     // variante « barres » avec l'ATR désactivé (comportement inchangé).
     std::optional<std::string> checkExitConditions(
@@ -75,10 +79,36 @@ public:
                                    /*trailingAtrMult=*/0.0);
     }
 
+    // Surcharge « barres » (10 arguments, item 8q.1) : délègue à la variante
+    // complète avec la sortie structurelle désactivée (comportement inchangé).
+    std::optional<std::string> checkExitConditions(
+        double currentPrice,
+        double buyPrice,
+        int    holdDays,
+        double peakPrice,
+        double stopLossPct,
+        double takeProfitPct,
+        double trailingStopPct,
+        int    minHoldDays,
+        const std::vector<Bar>& bars,
+        double trailingAtrMult
+    ) const override {
+        return checkExitConditions(currentPrice, buyPrice, holdDays, peakPrice,
+                                   stopLossPct, takeProfitPct, trailingStopPct,
+                                   minHoldDays, bars, trailingAtrMult,
+                                   /*exitOnLowestLowN=*/0);
+    }
+
     // Vérifie les conditions de sortie dans cet ordre de priorité:
     // 1. Stop-loss strict
     // 2. Take-profit
-    // 3. Trailing stop (seulement après minHoldDays) — deux modes (item 8q.1) :
+    // 3. Sortie STRUCTURELLE (item 8s.1) : exitOnLowestLowN > 0 et clôture
+    //    sous le plus bas des N barres PRÉCÉDENTES (barre courante exclue)
+    //    → cassure d'un support récent. Gatée par minHoldDays comme le
+    //    trailing qu'elle concurrence, et priorité structure > trailing
+    //    (décisions utilisateur 2026-07-03). Fenêtre < N+1 barres → pas de
+    //    jugement de structure (le stop-loss et le trailing restent le filet).
+    // 4. Trailing stop (seulement après minHoldDays) — deux modes (item 8q.1) :
     //    • trailingAtrMult > 0 : seuil peak − mult × ATR(14) (vrai true-range
     //      sur les barres de la fenêtre courante). Il REMPLACE le trailing %
     //      (décision utilisateur 2026-07-03 : pas de cumul — A/B propre).
@@ -100,7 +130,8 @@ public:
         double trailingStopPct,
         int    minHoldDays,
         const std::vector<Bar>& bars,
-        double trailingAtrMult
+        double trailingAtrMult,
+        int    exitOnLowestLowN
     ) const override {
         if (buyPrice <= 0) return std::nullopt;
 
@@ -117,7 +148,21 @@ public:
         if (takeProfitPct > 0 && pnlPct >= takeProfitPct)
             return "take-profit (" + formatPct(pnlPct) + ")";
 
-        // 3. Trailing stop (seulement après minHoldDays)
+        // 3. Sortie structurelle (item 8s.1) : plus bas des N barres
+        // précédentes — bars.back() est la barre COURANTE, exclue du calcul.
+        if (exitOnLowestLowN > 0 && holdDays >= minHoldDays
+            && bars.size() >= static_cast<size_t>(exitOnLowestLowN) + 1) {
+            double plusBas = bars[bars.size() - 2].low;
+            for (size_t i = bars.size() - 1 - exitOnLowestLowN;
+                 i < bars.size() - 1; ++i)
+                plusBas = std::min(plusBas, bars[i].low);
+            if (currentPrice <= plusBas)
+                return "sortie structurelle (clôture " + formatPrix(currentPrice)
+                     + " ≤ plus bas " + std::to_string(exitOnLowestLowN)
+                     + " jours " + formatPrix(plusBas) + ")";
+        }
+
+        // 4. Trailing stop (seulement après minHoldDays)
         if (holdDays >= minHoldDays && peakPrice > 0) {
             bool atrActif = false;
             if (trailingAtrMult > 0) {

@@ -190,6 +190,32 @@ public:
                                    minHoldDays);
     }
 
+    // Variante « sortie structurelle » (item 8s.1) : quand exitOnLowestLowN > 0,
+    // l'implémentation PEUT sortir sur cassure de STRUCTURE — clôture sous le
+    // plus bas des N barres PRÉCÉDENTES (barre courante exclue). Hypothèse
+    // 8-quinquies : une cassure de support récent colle mieux aux retournements
+    // qu'une distance depuis le pic. Implémentation par défaut RÉTRO-COMPATIBLE
+    // (même patron que la variante ATR ci-dessus) : ignore N et délègue — un
+    // IRiskManager qui ne connaît pas la structure garde son comportement.
+    virtual std::optional<std::string> checkExitConditions(
+        double currentPrice,
+        double buyPrice,
+        int    holdDays,
+        double peakPrice,
+        double stopLossPct,
+        double takeProfitPct,
+        double trailingStopPct,
+        int    minHoldDays,
+        const std::vector<Bar>& bars,   // fenêtre courante (peut être vide)
+        double trailingAtrMult,         // ≤ 0 = désactivé (trailing % historique)
+        int    exitOnLowestLowN         // ≤ 0 = désactivé (pas de sortie structure)
+    ) const {
+        (void)exitOnLowestLowN;
+        return checkExitConditions(currentPrice, buyPrice, holdDays, peakPrice,
+                                   stopLossPct, takeProfitPct, trailingStopPct,
+                                   minHoldDays, bars, trailingAtrMult);
+    }
+
     // Kill-switch (item 18) : retourne la raison de coupure si un garde-fou
     // est franchi (→ aucune nouvelle ENTRÉE), nullopt si les entrées sont
     // permises. Ne concerne JAMAIS une position déjà ouverte.
