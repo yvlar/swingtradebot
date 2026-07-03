@@ -10,6 +10,10 @@
 //  le champ. Aucun défaut silencieux : les 14 champs de
 //  SwingConfig sont tous requis (tenir cette liste synchronisée
 //  avec SwingStrategy.hpp si un champ est ajouté).
+//  EXCEPTION assumée : trailingAtrMult (item 8q.1) reste HORS du
+//  loader — axe de recherche jugé en 8q.2, câblage différé au
+//  gate d'adoption 8q.3 (décision utilisateur 2026-07-03) pour ne
+//  pas toucher config/prod.json (gouverné) avant un verdict.
 // ============================================================
 #include "strategies/SwingStrategy.hpp"
 #include <nlohmann/json.hpp>

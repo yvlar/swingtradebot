@@ -158,10 +158,14 @@ private:
             if (price > state_.peakPrice) { state_.peakPrice = price; dirty = true; }
             if (dirty) saveState_();
 
+            // Variante « barres » (item 8q.1) : la fenêtre courante permet au
+            // risk manager de calculer un trailing ATR quand trailingAtrMult
+            // est configuré (mult ≤ 0 → strictement le comportement historique).
             auto exitReason = riskManager_->checkExitConditions(
                 price, state_.buyPrice, state_.holdDays, state_.peakPrice,
                 riskCfg_.stopLossPct, riskCfg_.takeProfitPct,
-                riskCfg_.trailingStopPct, riskCfg_.minHoldDays
+                riskCfg_.trailingStopPct, riskCfg_.minHoldDays,
+                bars, riskCfg_.trailingAtrMult
             );
 
             bool shouldSell = exitReason.has_value()

@@ -234,6 +234,40 @@ int main() {
                            /*trailing*/ {0.02, 0.03, 0.04});
     optSerre.printSensitivityMap(optSerre.evaluate());
 
+    // 8. Trailing ATR (Sprint 8-quater, item 8q.2) ────────────────────────────
+    // La chaîne v2 (trailing % fixe 0,03) contre chaîne + trailing ATR(14)
+    // mult ∈ {2, 3, 4}, sur les TROIS pavages (leçon 8-ter : fenêtres variées
+    // d'emblée, le mult est choisi sur le FIN, jugé sur les deux autres).
+    // Les verrous CI sont dans test_trailing_atr_integration.cpp.
+    titre("8. TRAILING ATR (chaine v2 vs mult 2/3/4, trois pavages — 8q.2)");
+    std::vector<std::pair<std::string, SwingConfig>> duelAtr = {
+        {"chaine v2 (3%)", cfg},
+    };
+    for (double mult : {2.0, 3.0, 4.0}) {
+        SwingConfig c = cfg;
+        c.trailingAtrMult = mult;
+        duelAtr.push_back({"ATR mult=" + std::to_string(static_cast<int>(mult)), c});
+    }
+    const struct { const char* nom; size_t is, oos, pas, dec; } pavagesAtr[] = {
+        {"fin (IS=500/OOS=300, CHOIX du mult)",  500, 300, 300,  0},
+        {"canonique (IS=700/OOS=400)",           700, 400, 400,  0},
+        {"decale (IS=500/OOS=400, offset=90)",   500, 400, 400, 90},
+    };
+    for (const auto& p : pavagesAtr) {
+        std::cout << "\n  Pavage " << p.nom << " :\n";
+        for (const auto& v : duelAtr) {
+            const auto ws = WalkForward(v.second, qqq, p.is, p.oos, p.pas, p.dec).run();
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << std::left << std::setw(16) << v.first
+                      << std::right << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles ("
+                      << ws.size() << " fenetres)\n";
+        }
+    }
+
     std::cout << "\n";
     return 0;
 }

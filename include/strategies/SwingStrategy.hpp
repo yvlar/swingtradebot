@@ -19,6 +19,12 @@ namespace trading {
         double stopLossPct        = 0.05;  // -5%
         double takeProfitPct      = 0.0;   // ≤ 0 = désactivé (item 8.2, D26 : laisser courir les gagnants, sortie au trailing)
         double trailingStopPct    = 0.03;  // -3% depuis le pic
+        // Item 8q.1 (ré-ouverture 8b.4) : > 0 = trailing en multiples d'ATR(14)
+        // qui REMPLACE le trailing % (la « bonne » distance dépend de la
+        // volatilité — trailingStopPct est l'axe le plus fragile depuis B2) ;
+        // ≤ 0 = désactivé. Axe de recherche 8q.2 — pas de défaut actif tant
+        // que l'amélioration OOS n'est pas démontrée.
+        double trailingAtrMult    = 0.0;
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
         int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
@@ -50,6 +56,7 @@ namespace trading {
             r.stopLossPct     = stopLossPct;
             r.takeProfitPct   = takeProfitPct;
             r.trailingStopPct = trailingStopPct;
+            r.trailingAtrMult = trailingAtrMult;
             r.riskPerTradePct = riskPerTradePct;
             r.minHoldDays     = minHoldDays;
             // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :
