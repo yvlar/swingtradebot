@@ -174,3 +174,59 @@ TEST(GridOptimizerIntegration, V2ChainExtendedGridOosVerdictIsLocked) {
     EXPECT_NEAR(sel.point.score.alpha,  0.2312, 1e-2);   // alpha OOS moyen
     EXPECT_EQ(plusSensible, 7u);   // trailingStopPct → gate 8b.4 OUVERT (B2)
 }
+
+// ─── Verdict verrouillé du Sprint 8-ter (item 8t.3) ──────────────────────────
+// Grille de CONFIRMATION resserrée AUTOUR du candidat post-B2 (9/250/0,03) :
+// emaFast {7,9,11} × smaT {225,250,275} × trail {0,02/0,03/0,04} = 27 combos,
+// candidat au CENTRE exact du cube (voisinage ±1 complet sur les 3 axes).
+// Mêmes objectif et pavage que le verrou 8b.1 (Sharpe OOS moyen du pavage fin,
+// base chaîne v2 explicite D33). Le principe (D36) : un VRAI plateau doit
+// rester alpha > 0 quand on resserre les crans autour de lui — l'ancienne
+// grille {0,04/0,05/0,08} n'offrait même pas trail=0,03 à la sélection.
+// Acceptation ROADMAP 8t.3 : plateau resserré alpha > 0 ET contenant smaT=250,
+// sinon « artefact de grille ».
+// VERDICT MESURÉ (figé le 2026-07-03) : ARTEFACT DE GRILLE — le filtre
+// alpha > 0 passe, mais le plateau resserré est (emaFast=9, smaT=275,
+// trail=0,04) : il NE CONTIENT PAS smaT=250. À crans resserrés, même l'axe
+// réputé stable (smaT, D36) dérive de 250 → 275 et le trailing de 0,03 → 0,04.
+// Le « meilleur » se déplace avec la grille qui le mesure : c'est la signature
+// d'un artefact de sélection, pas d'un plateau d'edge. Cohérent avec 8t.1
+// (le candidat s'effondre sur les fenêtres canoniques) et 8t.2 (CAGR médian
+// inférieur à la chaîne).
+TEST(GridOptimizerIntegration, CandidateConfirmationTightGridOosVerdictIsLocked) {
+    GridOptimizer opt(
+        /*emaFast   */ {7, 9, 11},
+        /*emaSlow   */ {21},
+        /*rsiBuyMax */ {100},
+        /*rsiSellMin*/ {70},
+        /*stopLoss  */ {0.05},
+        /*takeProfit*/ {0.0},
+        objectifOosFin, cfgChaineV2(),
+        /*smaTrend  */ {225, 250, 275},
+        /*trailing  */ {0.02, 0.03, 0.04});
+
+    const auto pts = opt.evaluate();
+    ASSERT_EQ(pts.size(), 27u);   // 3 × 3 × 3
+
+    const auto sel = GridOptimizer::selectRobustPlateau(pts);
+    opt.printSensitivityMap(pts);
+    std::cout << std::fixed << std::setprecision(4)
+              << "  VERDICT 8t.3 — plateau resserre : emaFast=" << sel.point.cfg.emaFast
+              << " smaT=" << sel.point.cfg.smaTrendPeriod
+              << " trail=" << sel.point.cfg.trailingStopPct
+              << " (metric=" << sel.point.score.metric
+              << ", alpha=" << sel.point.score.alpha
+              << ", filtre alpha>0 : " << (sel.passedAlphaFilter ? "PASSE" : "ne passe pas")
+              << ")\n";
+
+    // Verdict figé : alpha > 0 quelque part dans le voisinage… mais PAS au
+    // point candidat — le plateau a dérivé (250 → 275, 0,03 → 0,04).
+    // L'acceptation « contient smaT=250 » est NON satisfaite : artefact.
+    EXPECT_TRUE(sel.passedAlphaFilter);
+    EXPECT_EQ(sel.point.cfg.emaFast, 9);
+    EXPECT_EQ(sel.point.cfg.smaTrendPeriod, 275);
+    EXPECT_NE(sel.point.cfg.smaTrendPeriod, 250);   // ← le cœur du verdict 8t.3
+    EXPECT_NEAR(sel.point.cfg.trailingStopPct, 0.04, 1e-9);
+    EXPECT_NEAR(sel.point.score.metric, 1.7851, 1e-2);  // Sharpe OOS moyen
+    EXPECT_NEAR(sel.point.score.alpha,  0.5141, 1e-2);  // alpha OOS moyen
+}

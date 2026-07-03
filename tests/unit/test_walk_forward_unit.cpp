@@ -84,6 +84,50 @@ TEST_F(WalkForwardUnit, EmptyWhenSeriesTooShortForOneWindow) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Décalage de départ du pavage (Sprint 8-ter, 8t.1) : offset ≠ 0
+//  déplace TOUTES les fenêtres — l'outil pour juger un réglage sur
+//  des fenêtres qu'il n'a PAS choisies.
+// ════════════════════════════════════════════════════════════
+TEST_F(WalkForwardUnit, OffsetShiftsTheTiling) {
+    writeSeries(200);
+    WalkForward wf(SwingConfig{}, path_, /*isBars=*/80, /*oosBars=*/40,
+                   /*step=*/40, /*offset=*/20);
+    const auto w = wf.run();
+
+    // s = 20 puis 60 ; s = 100 → 100 + 120 = 220 > 200, stop.
+    ASSERT_EQ(w.size(), 2u);
+    EXPECT_EQ(w[0].isStart,  20u);  EXPECT_EQ(w[0].isEnd,  100u);
+    EXPECT_EQ(w[0].oosStart, 100u); EXPECT_EQ(w[0].oosEnd, 140u);
+    EXPECT_EQ(w[1].isStart,  60u);  EXPECT_EQ(w[1].isEnd,  140u);
+    EXPECT_EQ(w[1].oosStart, 140u); EXPECT_EQ(w[1].oosEnd, 180u);
+}
+
+TEST_F(WalkForwardUnit, OffsetZeroMatchesLegacyCtor) {
+    writeSeries(200);
+    WalkForward legacy(SwingConfig{}, path_, /*isBars=*/80, /*oosBars=*/40, /*step=*/40);
+    WalkForward explicite(SwingConfig{}, path_, /*isBars=*/80, /*oosBars=*/40,
+                          /*step=*/40, /*offset=*/0);
+    const auto a = legacy.run();
+    const auto b = explicite.run();
+
+    // Rétro-compatibilité bit-identique : mêmes fenêtres, mêmes résultats.
+    ASSERT_EQ(a.size(), b.size());
+    for (size_t i = 0; i < a.size(); ++i) {
+        EXPECT_EQ(a[i].isStart,  b[i].isStart);
+        EXPECT_EQ(a[i].oosStart, b[i].oosStart);
+        EXPECT_EQ(a[i].oosEnd,   b[i].oosEnd);
+        EXPECT_DOUBLE_EQ(a[i].oos.finalValue, b[i].oos.finalValue);
+    }
+}
+
+TEST_F(WalkForwardUnit, EmptyWhenOffsetLeavesNoWindow) {
+    writeSeries(130);
+    WalkForward wf(SwingConfig{}, path_, /*isBars=*/80, /*oosBars=*/40,
+                   /*step=*/40, /*offset=*/20);
+    EXPECT_TRUE(wf.run().empty());  // 20 + 120 = 140 > 130
+}
+
+// ════════════════════════════════════════════════════════════
 //  Verrou de sûreté golden : runRange sur toute la série == run()
 // ════════════════════════════════════════════════════════════
 TEST_F(WalkForwardUnit, RunRangeEqualsFullRunOnFullWindow) {

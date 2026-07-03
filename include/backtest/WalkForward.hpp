@@ -39,14 +39,20 @@ class WalkForward {
 public:
     // isBars / oosBars : tailles des fenêtres IS et OOS (en barres) ; step : pas
     // de glissement entre deux fenêtres (par défaut = oosBars → OOS contiguës,
-    // sans recouvrement). Capital/coûts : défauts du Backtester (cohérent golden).
+    // sans recouvrement). offset (Sprint 8-ter, 8t.1) : index de départ du
+    // pavage — décaler les fenêtres permet de juger un réglage sur des fenêtres
+    // qu'il n'a PAS choisies (anti biais de sélection de grille, D36) ; défaut
+    // 0 = pavage historique inchangé. Capital/coûts : défauts du Backtester
+    // (cohérent golden).
     WalkForward(SwingConfig cfg, std::string csvPath,
-                size_t isBars, size_t oosBars, size_t step = 0)
+                size_t isBars, size_t oosBars, size_t step = 0,
+                size_t offset = 0)
         : cfg_(std::move(cfg))
         , csvPath_(std::move(csvPath))
         , isBars_(isBars)
         , oosBars_(oosBars)
-        , step_(step == 0 ? oosBars : step) {}
+        , step_(step == 0 ? oosBars : step)
+        , offset_(offset) {}
 
     // Construit et exécute les fenêtres glissantes. Vecteur vide si la série est
     // trop courte pour une seule fenêtre (isBars + oosBars > N).
@@ -58,7 +64,7 @@ public:
         if (span == 0 || n < span) return out;
 
         Backtester bt(cfg_, csvPath_);  // capital/coûts par défaut
-        for (size_t s = 0; s + span <= n; s += step_) {
+        for (size_t s = offset_; s + span <= n; s += step_) {
             WfWindow w;
             w.isStart  = s;
             w.isEnd    = s + isBars_;
@@ -86,7 +92,9 @@ public:
     void printReport(const std::vector<WfWindow>& windows) const {
         std::cout << "\n  WALK-FORWARD — " << cfg_.symbol
                   << "  (IS=" << isBars_ << " / OOS=" << oosBars_
-                  << " barres, pas=" << step_ << ")\n";
+                  << " barres, pas=" << step_;
+        if (offset_ != 0) std::cout << ", decalage=" << offset_;
+        std::cout << ")\n";
         std::cout << "  " << std::string(74, '-') << "\n";
         std::cout << "  " << std::left << std::setw(8) << "Fenetre"
                   << std::right
@@ -119,6 +127,7 @@ private:
     size_t      isBars_;
     size_t      oosBars_;
     size_t      step_;
+    size_t      offset_;
 };
 
 } // namespace trading

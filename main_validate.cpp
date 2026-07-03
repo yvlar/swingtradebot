@@ -133,13 +133,15 @@ int main() {
     }
 
     // 6. Walk-forward multi-actifs (Sprint 8-bis, item 8b.2) ──────────────────
-    // La chaîne v2 ET le candidat de la grille 8b.1 (smaT=250, trail=0,05),
-    // jugés par actif sur le pavage fin — un edge qui ne tient que sur QQQ
-    // est un artefact.
+    // La chaîne v2 ET le candidat de la grille 8b.1, jugés par actif sur le
+    // pavage fin — un edge qui ne tient que sur QQQ est un artefact.
+    // Candidat RE-CALÉ post-B2 (D37, Sprint 8-ter) : (emaFast=9, smaT=250,
+    // trail=0,03) — emaFast et trail sont déjà les valeurs de la chaîne, seul
+    // smaTrendPeriod diffère (l'ancien trail=0,05 était le plateau pré-B2).
     titre("6. WALK-FORWARD MULTI-ACTIFS (chaine v2 et candidat 8b.1, pavage fin)");
     SwingConfig candidat = cfg;
     candidat.smaTrendPeriod  = 250;
-    candidat.trailingStopPct = 0.05;
+    candidat.trailingStopPct = 0.03;
     const std::vector<std::pair<std::string, SwingConfig>> variantes = {
         {"chaine v2       ", cfg}, {"candidat 8b.1   ", candidat},
     };
@@ -162,6 +164,75 @@ int main() {
                       << std::setw(12) << trades << "\n";
         }
     }
+
+    // 7. Validation HORS-GRILLE du candidat (Sprint 8-ter, item 8t.1) ─────────
+    // Le candidat vs la chaîne v2 sur des fenêtres que la grille 8b.1 n'a PAS
+    // choisies : pavage canonique (700/400) et pavage DÉCALÉ (500/400,
+    // offset=90 — aucune borne commune avec les pavages historiques, les 90
+    // dernières barres jugées en OOS pour la première fois). Les verrous CI
+    // sont dans test_candidate_validation_integration.cpp.
+    titre("7. VALIDATION HORS-GRILLE DU CANDIDAT (Sprint 8-ter, 8t.1)");
+    const std::vector<std::pair<std::string, SwingConfig>> duel = {
+        {"chaine v2", cfg}, {"candidat 8b.1", candidat},
+    };
+    const struct { const char* nom; size_t is, oos, pas, dec; } pavages[] = {
+        {"canonique (IS=700/OOS=400)",        700, 400, 400,  0},
+        {"decale (IS=500/OOS=400, offset=90)", 500, 400, 400, 90},
+    };
+    for (const auto& p : pavages) {
+        std::cout << "\n  Pavage " << p.nom << " :\n";
+        for (const auto& v : duel) {
+            WalkForward w(v.second, qqq, p.is, p.oos, p.pas, p.dec);
+            const auto ws = w.run();
+            w.printReport(ws);
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << v.first << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles\n";
+        }
+    }
+
+    // 7-bis. Monte-Carlo du candidat (Sprint 8-ter, item 8t.2) ────────────────
+    // Bootstrap des trades OOS poolés du pavage DÉCALÉ (fenêtres disjointes et
+    // non-choisies), même dénominateur d'années pour les deux configs.
+    titre("7-bis. MONTE-CARLO DU CANDIDAT (trades OOS pooles, 8t.2)");
+    for (const auto& v : duel) {
+        const auto ws = WalkForward(v.second, qqq, 500, 400, 400, 90).run();
+        std::vector<TradeRecord> pool;
+        for (const auto& x : ws)
+            pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end());
+        double ans = 0.0;
+        if (!ws.empty() && !ws.front().oos.equityDates.empty() &&
+            !ws.back().oos.equityDates.empty())
+            ans = (daysFromCivil(ws.back().oos.equityDates.back()) -
+                   daysFromCivil(ws.front().oos.equityDates.front())) / 365.25;
+        if (pool.empty() || ans <= 0.0) {
+            std::cout << "  " << v.first
+                      << " : aucun trade OOS (verdict cash drag, D34)\n";
+            continue;
+        }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, ans);
+        std::cout << std::fixed << std::setprecision(2)
+                  << "  " << v.first << " (" << pool.size() << " trades, "
+                  << ans << " ans)\n"
+                  << "    CAGR     p5=" << r.cagrP5 << "%  p50=" << r.cagrP50
+                  << "%  p95=" << r.cagrP95 << "%\n"
+                  << "    Drawdown p5=" << r.ddP5 << "%  p50=" << r.ddP50
+                  << "%  p95=" << r.ddP95 << "%\n";
+    }
+
+    // 7-ter. Grille de confirmation resserrée (Sprint 8-ter, item 8t.3) ───────
+    // Voisinage fin CENTRÉ sur le candidat (27 combos, mêmes objectif/pavage
+    // que la grille 8b.1) : un vrai plateau doit rester alpha > 0 ET retenir
+    // smaT=250 quand on resserre les crans (D36).
+    titre("7-ter. GRILLE DE CONFIRMATION RESSERREE AUTOUR DU CANDIDAT (8t.3)");
+    GridOptimizer optSerre({7, 9, 11}, {21}, {100}, {70}, {0.05}, {0.0},
+                           objectifOos, cfg,
+                           /*smaTrend*/ {225, 250, 275},
+                           /*trailing*/ {0.02, 0.03, 0.04});
+    optSerre.printSensitivityMap(optSerre.evaluate());
 
     std::cout << "\n";
     return 0;
