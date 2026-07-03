@@ -1,6 +1,7 @@
 #pragma once
 #include "core/Interfaces.hpp"
 #include "indicators/Indicators.hpp"
+#include "indicators/DayIndicators.hpp"
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -58,6 +59,26 @@ namespace trading {
         // ≤ 0 = désactivé. Axe de recherche 8s.3 — pas de défaut actif
         // tant que l'amélioration OOS n'est pas démontrée.
         int    entryBreakoutM          = 0;
+        // Item 8y.1 (Sprint 8-sexies) : > 0 = entrée PULLBACK — à plat,
+        // régime up et RSI ≤ seuil → BUY : acheter la FAIBLESSE dans la
+        // tendance (le creux), l'inverse exact du breakout 8s.2. Évaluée
+        // APRÈS les ventes ; flag indépendant de regimeReentry (masquage
+        // partiel anticipé, D41 : la re-entrée couvre « prix > EMAs », le
+        // pullback peut tirer SOUS les EMAs — les deux hypothèses
+        // « remplace / s'ajoute » sont jugées en 8y.3). ≤ 0 = désactivé.
+        // Axe de recherche 8y.3 — pas de défaut actif tant que
+        // l'amélioration OOS n'est pas démontrée.
+        double entryPullbackRsiMax     = 0.0;
+        // Item 8y.2 (Sprint 8-sexies) : > 0 = filtre de VOLATILITÉ sur les
+        // entrées — TOUTE entrée (croisement, breakout, pullback,
+        // re-entrée) est bloquée si ATR(14)/clôture > seuil, strictement
+        // (hypothèse : les whipsaws coûteux arrivent en haute volatilité ;
+        // n'entrer que dans un marché calme). Les VENTES ne sont jamais
+        // bloquées. ATR incalculable → filtre INOPÉRANT (fail-open,
+        // décision utilisateur 2026-07-03). ≤ 0 = désactivé. Axe de
+        // recherche 8y.3 — pas de défaut actif tant que l'amélioration
+        // OOS n'est pas démontrée.
+        double entryMaxAtrPct          = 0.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -88,19 +109,26 @@ namespace trading {
 // Implémente IStrategy — dépend uniquement des abstractions IIndicator
     class SwingStrategy final : public IStrategy {
     public:
+        // Le 5e indicateur (ATR, item 8y.2) a un défaut pour préserver tous
+        // les sites d'appel historiques : nullptr → ATR(14) vrai true-range
+        // (même période que le trailing ATR 8q.1).
         explicit SwingStrategy(
                 SwingConfig                       config,
                 std::unique_ptr<IIndicator<double>> emaFast,
                 std::unique_ptr<IIndicator<double>> emaSlow,
                 std::unique_ptr<IIndicator<double>> rsi,
-                std::unique_ptr<IIndicator<double>> smaTrend
+                std::unique_ptr<IIndicator<double>> smaTrend,
+                std::unique_ptr<IIndicator<double>> atr = nullptr
         )
                 : config_(std::move(config))
                 , emaFast_(std::move(emaFast))
                 , emaSlow_(std::move(emaSlow))
                 , rsi_(std::move(rsi))
                 , smaTrend_(std::move(smaTrend))
-        {}
+                , atr_(std::move(atr))
+        {
+            if (!atr_) atr_ = std::make_unique<ATR>(14);
+        }
 
         // Factory method pour créer une instance avec les paramètres par défaut
         static std::unique_ptr<SwingStrategy> create(SwingConfig cfg = {}) {
@@ -159,6 +187,22 @@ namespace trading {
             auto cross = CrossoverDetector::detect(emaFastVals, emaSlowVals,
                                                    static_cast<size_t>(config_.emaSlow));
 
+            // Filtre de volatilité sur les entrées (item 8y.2) : calculé UNE
+            // fois, consommé par les QUATRE familles d'entrée (croisement,
+            // breakout, pullback, re-entrée). ATR(14) vrai true-range
+            // (computeBars) rapporté à la clôture. ATR incalculable (série
+            // vide ou nulle) → filtre INOPÉRANT (fail-open, décision
+            // utilisateur 2026-07-03) : le comportement chaîne est préservé.
+            double atrPct = 0.0;
+            bool entreeBloqueeVol = false;
+            if (config_.entryMaxAtrPct > 0.0 && lastClose > 0.0) {
+                auto atrVals = atr_->computeBars(bars);
+                if (!atrVals.empty() && atrVals[n-1] > 0.0) {
+                    atrPct = atrVals[n-1] / lastClose;
+                    entreeBloqueeVol = atrPct > config_.entryMaxAtrPct;
+                }
+            }
+
             // ── Signal d'ACHAT ────────────────────────────────────────────────
             // Conditions: régime de fond haussier (prix > SMA200) + croisement
             // haussier + prix > EMAs. Le filtre de régime (8.1) coupe les
@@ -169,7 +213,8 @@ namespace trading {
             // breakouts forts. On entre sur la force ; convention ≥ 100 car
             // RSI == 100.0 est atteignable (série de gains purs).
             const bool rsiGateOff = config_.rsiBuyMax >= 100.0;
-            if (regimeUp
+            if (!entreeBloqueeVol
+                && regimeUp
                 && cross == CrossoverDetector::Cross::BULLISH
                 && (rsiGateOff || lastRsi < config_.rsiBuyMax)
                 && lastClose   > lastEmaFast
@@ -198,6 +243,20 @@ namespace trading {
                 return makeSignal(SignalType::SELL, bars, reason);
             }
 
+            // ── Filtre de volatilité : blocage des entrées (item 8y.2) ──────
+            // APRÈS le bloc VENTE (les sorties ne sont JAMAIS bloquées — on
+            // peut toujours se mettre à l'abri) et AVANT toutes les entrées
+            // restantes (breakout, pullback, re-entrée) ; le croisement
+            // d'achat, évalué plus haut, porte sa propre garde. HOLD à
+            // raison explicite : l'activation du filtre doit se VOIR (D41).
+            if (entreeBloqueeVol)
+                return makeSignal(SignalType::HOLD, bars,
+                                  "Entrée bloquée : volatilité ATR " +
+                                  std::to_string(atrPct * 100.0) +
+                                  " % > seuil " +
+                                  std::to_string(config_.entryMaxAtrPct * 100.0) +
+                                  " %");
+
             // ── Entrée breakout « plus haut de M jours » (item 8s.2) ─────────
             // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
             // la re-entrée (raison plus spécifique quand les deux sont
@@ -221,6 +280,26 @@ namespace trading {
                                       " > plus haut " +
                                       std::to_string(config_.entryBreakoutM) +
                                       " jours | regime up");
+            }
+
+            // ── Entrée pullback en tendance (item 8y.1) ──────────────────────
+            // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
+            // la re-entrée (raison plus spécifique quand les deux sont
+            // qualifiantes). À plat, régime haussier confirmé et RSI ≤ seuil
+            // → BUY : acheter la FAIBLESSE dans la tendance (le creux),
+            // l'inverse exact du breakout 8s.2. Aucune condition sur les EMA :
+            // le creux passe typiquement SOUS elles — c'est précisément l'état
+            // que la re-entrée 8.5 ne couvre pas (masquage partiel D41).
+            if (config_.entryPullbackRsiMax > 0.0
+                && regimeUp
+                && lastRsi <= config_.entryPullbackRsiMax)
+            {
+                return makeSignal(SignalType::BUY, bars,
+                                  "Pullback : RSI " +
+                                  std::to_string(static_cast<int>(lastRsi)) +
+                                  " <= " +
+                                  std::to_string(static_cast<int>(config_.entryPullbackRsiMax)) +
+                                  " | regime up");
             }
 
             // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────
@@ -274,6 +353,7 @@ namespace trading {
         std::unique_ptr<IIndicator<double>> emaSlow_;
         std::unique_ptr<IIndicator<double>> rsi_;
         std::unique_ptr<IIndicator<double>> smaTrend_;
+        std::unique_ptr<IIndicator<double>> atr_;   // filtre de volatilité (item 8y.2)
     };
 
 } // namespace trading

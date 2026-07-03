@@ -634,6 +634,252 @@ TEST(SwingStrategyUnit, ReentryStillBuysWhenBreakoutNotTriggered) {
         << "raison réelle : " << sig.reason;
 }
 
+// ════════════════════════════════════════════════════════════
+//  Entrée pullback en tendance (item 8y.1)
+// ════════════════════════════════════════════════════════════
+// 3e famille de signaux (Sprint 8-sexies) : acheter la FAIBLESSE dans la
+// tendance — l'inverse exact du breakout 8s.2. À plat, régime haussier
+// confirmé (prix > SMA de fond) et RSI ≤ entryPullbackRsiMax → BUY (le
+// creux DANS la tendance). Évaluée APRÈS le bloc VENTE (les sorties
+// gardent la priorité) ; flag INDÉPENDANT de regimeReentry — masquage
+// partiel anticipé (D41) : la re-entrée achète déjà l'état « régime up +
+// prix > EMAs », mais le pullback peut tirer quand le prix est SOUS les
+// EMAs (le creux), d'où les deux hypothèses « remplace / s'ajoute »
+// jugées en 8y.3. ≤ 0 = désactivé (comportement historique).
+
+namespace {
+
+// Harnais 8y.1 : pas de croisement (EMA rapide au-dessus de la lente par
+// défaut), prix 110, régime piloté par la SMA injectée, RSI paramétrable.
+// Les EMAs sont paramétrables pour placer le prix SOUS elles (le creux) et
+// isoler le pullback de la re-entrée quand les deux flags sont actifs.
+Signal evalPullbackCase(double pullbackRsiMax, double rsiLast, double smaLast,
+                        bool reentryOn = false, bool bearishCross = false,
+                        double emaFastVal = 105.0, double emaSlowVal = 100.0) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, emaSlowVal);
+    std::vector<double> emaFast(n, emaFastVal);
+    if (bearishCross) emaFast[n-1] = emaSlowVal - 5.0;  // au-dessus → dessous
+    std::vector<double> rsi(n, rsiLast);
+    std::vector<double> sma(n, smaLast);
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg;
+    cfg.entryPullbackRsiMax = pullbackRsiMax;
+    cfg.regimeReentry       = reentryOn;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// Cas central : régime up (110 > SMA 100), RSI 30 ≤ seuil 40, PAS de
+// croisement, re-entrée OFF → BUY sur pullback, avec une raison explicite.
+TEST(SwingStrategyUnit, PullbackBuysOnWeakRsiInUpRegime) {
+    auto sig = evalPullbackCase(40.0, 30.0, 100.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Borne INCLUSIVE : RSI exactement ÉGAL au seuil (40 = 40) achète —
+// convention ≤ (« RSI ≤ seuil »), verrouillée ici.
+TEST(SwingStrategyUnit, PullbackBuysAtExactRsiThreshold) {
+    auto sig = evalPullbackCase(40.0, 40.0, 100.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// RSI au-dessus du seuil (41 > 40) : pas de creux, pas d'entrée pullback
+// (re-entrée off → HOLD).
+TEST(SwingStrategyUnit, NoPullbackWhenRsiAboveThreshold) {
+    EXPECT_EQ(evalPullbackCase(40.0, 41.0, 100.0).type, SignalType::HOLD);
+}
+
+// Régime NON haussier (110 < SMA 120) : pas d'entrée pullback — acheter la
+// faiblesse SANS tendance de fond serait rattraper un couteau qui tombe.
+TEST(SwingStrategyUnit, NoPullbackWhenRegimeDown) {
+    EXPECT_EQ(evalPullbackCase(40.0, 30.0, 120.0).type, SignalType::HOLD);
+}
+
+// Seuil 0 → désactivé : comportement historique (HOLD, re-entrée off).
+TEST(SwingStrategyUnit, PullbackDisabledWhenThresholdZero) {
+    EXPECT_EQ(evalPullbackCase(0.0, 30.0, 100.0).type, SignalType::HOLD);
+}
+
+// Priorité des sorties : croisement baissier + pullback vrai simultanément
+// → SELL, jamais masqué par l'entrée (bloc VENTE évalué avant, comme 8.5).
+TEST(SwingStrategyUnit, BearishCrossOutranksPullback) {
+    EXPECT_EQ(evalPullbackCase(40.0, 30.0, 100.0, /*reentryOn=*/false,
+                               /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Le pullback tire là où la re-entrée NE PEUT PAS (masquage partiel D41,
+// pas sous-ensemble) : prix 110 SOUS les EMAs (115/112) — le creux — avec
+// re-entrée ACTIVE → c'est bien le pullback qui achète.
+TEST(SwingStrategyUnit, PullbackFiresBelowEmasWhereReentryCannot) {
+    auto sig = evalPullbackCase(40.0, 30.0, 100.0, /*reentryOn=*/true,
+                                /*bearishCross=*/false,
+                                /*emaFastVal=*/115.0, /*emaSlowVal=*/112.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Coexistence avec la re-entrée (hypothèse « s'ajoute ») : pullback NON
+// déclenché (RSI 50 > seuil 40) mais régime up et prix > EMAs → la
+// re-entrée 8.5 achète toujours — le flag pullback ne la supprime pas.
+TEST(SwingStrategyUnit, ReentryStillBuysWhenPullbackNotTriggered) {
+    auto sig = evalPullbackCase(40.0, 50.0, 100.0, /*reentryOn=*/true);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Re-entr"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// ════════════════════════════════════════════════════════════
+//  Filtre de volatilité sur les entrées (item 8y.2)
+// ════════════════════════════════════════════════════════════
+// Hypothèse (Sprint 8-sexies) : les whipsaws coûteux arrivent en haute
+// volatilité — n'entrer que dans un marché calme. entryMaxAtrPct > 0 :
+// TOUTE entrée (croisement, breakout, pullback, re-entrée) est bloquée si
+// ATR(14)/clôture > seuil (strictement), avec un HOLD à raison explicite
+// (observabilité D41 : l'activation du filtre doit se VOIR). Les VENTES ne
+// sont JAMAIS bloquées. ATR incalculable (série vide) → filtre INOPÉRANT
+// (fail-open, décision utilisateur 2026-07-03 : le comportement chaîne est
+// préservé). ≤ 0 = désactivé.
+
+namespace {
+
+// Harnais 8y.2 : chaque « famille » d'entrée est armée pour tirer (régime
+// up, prix 110 > SMA 100), l'ATR est injecté en 5e indicateur (série
+// constante, ou vide pour le cas fail-open). Seul le filtre varie.
+enum class EntreeVoulue { CROISEMENT, REENTREE, BREAKOUT, PULLBACK };
+
+Signal evalAtrFilterCase(EntreeVoulue entree, double maxAtrPct,
+                         double atrLast, bool atrVide = false,
+                         bool bearishCross = false) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 105.0);       // au-dessus, sans croisement
+    std::vector<double> rsi(n, 50.0);
+    std::vector<double> sma(n, 100.0);
+
+    SwingConfig cfg;
+    cfg.entryMaxAtrPct = maxAtrPct;
+    cfg.regimeReentry  = false;
+    double lastCloseVoulu = 110.0;
+    switch (entree) {
+        case EntreeVoulue::CROISEMENT:
+            std::fill(emaFast.begin(), emaFast.end() - 1, 99.0); // dessous → dessus
+            break;
+        case EntreeVoulue::REENTREE:
+            cfg.regimeReentry = true;
+            break;
+        case EntreeVoulue::BREAKOUT:
+            cfg.entryBreakoutM = 5;
+            lastCloseVoulu = 111.0;              // > highs 110,5 des précédentes
+            break;
+        case EntreeVoulue::PULLBACK:
+            cfg.entryPullbackRsiMax = 60.0;      // RSI 50 ≤ 60 → creux qualifiant
+            break;
+    }
+    if (bearishCross) emaFast[n-1] = 95.0;       // passage au-dessus → dessous
+
+    std::vector<Bar> bars;
+    for (size_t i = 0; i + 1 < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+    bars.push_back(make_bar((int)n - 1, lastCloseVoulu));
+
+    std::unique_ptr<IIndicator<double>> atr;
+    if (atrVide) atr = std::make_unique<EmptyIndicator>();
+    else atr = std::make_unique<ValueIndicator>(std::vector<double>(n, atrLast));
+
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma),
+        std::move(atr));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// ATR 5/clôture 110 ≈ 4,5 % > seuil 2 % : l'entrée sur CROISEMENT est
+// bloquée — HOLD avec raison explicite (l'activation du filtre se voit).
+TEST(SwingStrategyUnit, AtrFilterBlocksCrossoverEntry) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : la RE-ENTRÉE 8.5 est bloquée aussi.
+TEST(SwingStrategyUnit, AtrFilterBlocksReentry) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::REENTREE, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : l'entrée BREAKOUT 8s.2 est bloquée aussi.
+TEST(SwingStrategyUnit, AtrFilterBlocksBreakout) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::BREAKOUT, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : l'entrée PULLBACK 8y.1 est bloquée aussi — le filtre couvre
+// les QUATRE familles d'entrée.
+TEST(SwingStrategyUnit, AtrFilterBlocksPullback) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::PULLBACK, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Marché calme (ATR 1/110 ≈ 0,9 % < 2 %) : l'entrée passe normalement.
+TEST(SwingStrategyUnit, AtrFilterAllowsEntryBelowThreshold) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 1.0).type,
+              SignalType::BUY);
+}
+
+// Borne STRICTE : ATR/clôture exactement ÉGAL au seuil (5,5/110 = 5 %)
+// n'est PAS bloqué — il faut dépasser (>).
+TEST(SwingStrategyUnit, NoAtrBlockWhenRatioEqualsThreshold) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.05, 5.5).type,
+              SignalType::BUY);
+}
+
+// Seuil 0 → désactivé : même un ATR énorme ne bloque rien.
+TEST(SwingStrategyUnit, AtrFilterDisabledWhenThresholdZero) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.0, 50.0).type,
+              SignalType::BUY);
+}
+
+// Les VENTES ne sont JAMAIS bloquées : croisement baissier + volatilité
+// au-dessus du seuil → SELL quand même (on peut toujours sortir).
+TEST(SwingStrategyUnit, SellNeverBlockedByVolatility) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::REENTREE, 0.02, 5.0,
+                                /*atrVide=*/false, /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Fail-open : ATR incalculable (série vide) → filtre INOPÉRANT, l'entrée
+// passe — le comportement chaîne est préservé (décision 2026-07-03).
+TEST(SwingStrategyUnit, AtrFilterFailOpenWhenAtrUnavailable) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 0.0,
+                                /*atrVide=*/true).type,
+              SignalType::BUY);
+}
+
 // Indicateurs injectés défaillants : HOLD explicite, jamais de crash
 TEST(SwingStrategyUnit, FailedIndicatorComputationReturnsHold) {
     SwingStrategy strat(SwingConfig{},
