@@ -255,6 +255,7 @@ TEST(SwingStrategyUnit, SwingConfigConvertsToRiskConfig) {
     cfg.trailingStopPct = 0.02;
     cfg.riskPerTradePct = 0.01;
     cfg.minHoldDays     = 5;
+    cfg.exitOnLowestLowN = 20;   // item 8s.1 : la sortie structurelle suit
 
     RiskConfig r = cfg;
     EXPECT_EQ(r.symbol, "SPY");
@@ -263,6 +264,7 @@ TEST(SwingStrategyUnit, SwingConfigConvertsToRiskConfig) {
     EXPECT_DOUBLE_EQ(r.trailingStopPct, 0.02);
     EXPECT_DOUBLE_EQ(r.riskPerTradePct, 0.01);
     EXPECT_EQ(r.minHoldDays, 5);
+    EXPECT_EQ(r.exitOnLowestLowN, 20);
 }
 
 namespace {
