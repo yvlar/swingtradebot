@@ -233,6 +233,26 @@ namespace trading {
                                       " jours | regime up");
             }
 
+            // ── Entrée pullback en tendance (item 8y.1) ──────────────────────
+            // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
+            // la re-entrée (raison plus spécifique quand les deux sont
+            // qualifiantes). À plat, régime haussier confirmé et RSI ≤ seuil
+            // → BUY : acheter la FAIBLESSE dans la tendance (le creux),
+            // l'inverse exact du breakout 8s.2. Aucune condition sur les EMA :
+            // le creux passe typiquement SOUS elles — c'est précisément l'état
+            // que la re-entrée 8.5 ne couvre pas (masquage partiel D41).
+            if (config_.entryPullbackRsiMax > 0.0
+                && regimeUp
+                && lastRsi <= config_.entryPullbackRsiMax)
+            {
+                return makeSignal(SignalType::BUY, bars,
+                                  "Pullback : RSI " +
+                                  std::to_string(static_cast<int>(lastRsi)) +
+                                  " <= " +
+                                  std::to_string(static_cast<int>(config_.entryPullbackRsiMax)) +
+                                  " | regime up");
+            }
+
             // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────
             // APRÈS le bloc VENTE : les signaux de sortie gardent la priorité
             // (un croisement baissier ou une vente RSI active ne sont jamais
