@@ -84,6 +84,10 @@ struct RiskConfig {
     double stopLossPct     = 0.05;  // -5%
     double takeProfitPct   = 0.0;   // ≤ 0 = désactivé (item 8.2 : ne pas plafonner les gagnants)
     double trailingStopPct = 0.03;  // -3% depuis le pic
+    // Item 8q.1 : > 0 = trailing en multiples d'ATR(14) (seuil peak − mult×ATR,
+    // vrai true-range) — il REMPLACE le trailing % (repli sur le % si l'ATR est
+    // incalculable) ; ≤ 0 = désactivé (trailing % historique).
+    double trailingAtrMult = 0.0;
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;
     // Nombre de barres demandées au data feed à chaque cycle (item 8.1) : doit
