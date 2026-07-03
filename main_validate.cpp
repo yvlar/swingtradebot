@@ -194,6 +194,35 @@ int main() {
         }
     }
 
+    // 7-bis. Monte-Carlo du candidat (Sprint 8-ter, item 8t.2) ────────────────
+    // Bootstrap des trades OOS poolés du pavage DÉCALÉ (fenêtres disjointes et
+    // non-choisies), même dénominateur d'années pour les deux configs.
+    titre("7-bis. MONTE-CARLO DU CANDIDAT (trades OOS pooles, 8t.2)");
+    for (const auto& v : duel) {
+        const auto ws = WalkForward(v.second, qqq, 500, 400, 400, 90).run();
+        std::vector<TradeRecord> pool;
+        for (const auto& x : ws)
+            pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end());
+        double ans = 0.0;
+        if (!ws.empty() && !ws.front().oos.equityDates.empty() &&
+            !ws.back().oos.equityDates.empty())
+            ans = (daysFromCivil(ws.back().oos.equityDates.back()) -
+                   daysFromCivil(ws.front().oos.equityDates.front())) / 365.25;
+        if (pool.empty() || ans <= 0.0) {
+            std::cout << "  " << v.first
+                      << " : aucun trade OOS (verdict cash drag, D34)\n";
+            continue;
+        }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, ans);
+        std::cout << std::fixed << std::setprecision(2)
+                  << "  " << v.first << " (" << pool.size() << " trades, "
+                  << ans << " ans)\n"
+                  << "    CAGR     p5=" << r.cagrP5 << "%  p50=" << r.cagrP50
+                  << "%  p95=" << r.cagrP95 << "%\n"
+                  << "    Drawdown p5=" << r.ddP5 << "%  p50=" << r.ddP50
+                  << "%  p95=" << r.ddP95 << "%\n";
+    }
+
     std::cout << "\n";
     return 0;
 }

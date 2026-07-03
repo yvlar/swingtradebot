@@ -12,10 +12,13 @@
 // ces verrous n'autorise à lui seul une adoption (gate 8t.4 = décision user).
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <string>
 #include <vector>
 #include "backtest/WalkForward.hpp"
+#include "backtest/MonteCarlo.hpp"
 
 using namespace trading;
 
@@ -88,6 +91,30 @@ std::vector<TradeRecord> tradesOos(const std::vector<WfWindow>& w) {
     for (const auto& x : w)
         out.insert(out.end(), x.oos.trades.begin(), x.oos.trades.end());
     return out;
+}
+
+// Jours depuis l'époque civile (algorithme days_from_civil) — durée observée
+// des fenêtres OOS à partir des dates d'équité (convention Monte-Carlo 7.3).
+long daysFromCivil(const std::string& date) {
+    int y = 0, m = 0, d = 0;
+    if (std::sscanf(date.c_str(), "%d-%d-%d", &y, &m, &d) != 3) return 0;
+    y -= m <= 2;
+    const long     era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153u * (m + (m > 2 ? -3 : 9)) + 2u) / 5u + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<long>(doe) - 719468;
+}
+
+// Durée observée (années) du pavage : de la 1re date d'équité OOS de la
+// première fenêtre à la dernière de la dernière — MÊME dénominateur pour les
+// deux configs, sinon les CAGR ne sont pas comparables.
+double anneesOos(const std::vector<WfWindow>& w) {
+    if (w.empty() || w.front().oos.equityDates.empty() ||
+        w.back().oos.equityDates.empty())
+        return 0.0;
+    return (daysFromCivil(w.back().oos.equityDates.back()) -
+            daysFromCivil(w.front().oos.equityDates.front())) / 365.25;
 }
 
 // Impression compacte d'un côté de comparaison (nom, alpha OOS moyen, trades).
@@ -193,4 +220,71 @@ TEST(CandidateValidationIntegration, CandidateShiftedPavingOosVerdictIsLocked) {
     EXPECT_EQ(tCandidat.size(),  9u);
     EXPECT_GT(alphaCandidat, alphaChaine);   // mieux ICI (+7,45 pts)…
     EXPECT_LT(alphaCandidat, 0.0);           // …mais toujours aucun edge absolu
+}
+
+// ─── 8t.2 — Monte-Carlo des trades OOS poolés : candidat vs chaîne ───────────
+// Bootstrap (graine fixe 42, 2000 chemins) des trades OOS poolés du pavage
+// DÉCALÉ (fenêtres non-choisies ET disjointes — pooler des pavages qui se
+// recouvrent compterait des trades en double), même dénominateur d'années
+// pour les deux configs. Acceptation ROADMAP 8t.2 : p50 CAGR du candidat ≥
+// chaîne et p95 drawdown non dégradé, sinon « non confirmé ».
+// VERDICT MESURÉ (figé le 2026-07-03) : NON CONFIRMÉ — CAGR médian du candidat
+// 4,41 % contre 6,60 % pour la chaîne (le critère « p50 candidat ≥ chaîne »
+// échoue), MÊME sur le pavage décalé qui lui est favorable en alpha (8t.1b).
+// Sa seule qualité est un risque plus faible (DD p95 11,71 % vs 16,48 %,
+// DD p50 5,32 % vs 7,93 %) — mais l'acceptation exigeait les DEUX critères.
+TEST(CandidateValidationIntegration, CandidateMonteCarloOosVerdictIsLocked) {
+    const auto wChaine   = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_CSV,
+                                       kIsDec, kOosDec, kStepDec, kOffsetDec).run();
+    const auto wCandidat = WalkForward(cfgCandidat(), SWINGBOT_QQQ_CSV,
+                                       kIsDec, kOosDec, kStepDec, kOffsetDec).run();
+    ASSERT_EQ(wChaine.size(),   3u);
+    ASSERT_EQ(wCandidat.size(), 3u);
+
+    const auto tChaine   = tradesOos(wChaine);
+    const auto tCandidat = tradesOos(wCandidat);
+    // Un pool vide rendrait un résultat nul SILENCIEUX (MonteCarlo.hpp) : le
+    // verdict serait du pur cash drag (D34) — on l'interdit explicitement.
+    ASSERT_FALSE(tChaine.empty());
+    ASSERT_FALSE(tCandidat.empty());
+
+    const double annees = anneesOos(wChaine);
+    ASSERT_GT(annees, 0.0);
+    EXPECT_NEAR(anneesOos(wCandidat), annees, 0.02);  // mêmes fenêtres
+
+    MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+    const auto rChaine   = mc.run(tChaine,   annees);
+    const auto rCandidat = mc.run(tCandidat, annees);
+
+    // Percentiles finis et ordonnés (convention 7.3).
+    for (double v : {rChaine.cagrP5,   rChaine.cagrP50,   rChaine.cagrP95,
+                     rChaine.ddP5,     rChaine.ddP50,     rChaine.ddP95,
+                     rCandidat.cagrP5, rCandidat.cagrP50, rCandidat.cagrP95,
+                     rCandidat.ddP5,   rCandidat.ddP50,   rCandidat.ddP95})
+        EXPECT_TRUE(std::isfinite(v));
+    EXPECT_LE(rChaine.cagrP5,    rChaine.cagrP50);
+    EXPECT_LE(rChaine.cagrP50,   rChaine.cagrP95);
+    EXPECT_LE(rCandidat.cagrP5,  rCandidat.cagrP50);
+    EXPECT_LE(rCandidat.cagrP50, rCandidat.cagrP95);
+    EXPECT_LE(rCandidat.ddP5,    rCandidat.ddP50);
+    EXPECT_LE(rCandidat.ddP50,   rCandidat.ddP95);
+
+    std::cout << std::fixed << std::setprecision(4)
+              << "  8t.2 — Monte-Carlo (graine 42, 2000 chemins, "
+              << annees << " ans OOS)\n"
+              << "  chaine v2 (" << tChaine.size() << " trades) : CAGR p50 "
+              << rChaine.cagrP50 << " %, DD p50 " << rChaine.ddP50
+              << " %, DD p95 " << rChaine.ddP95 << " %\n"
+              << "  candidat  (" << tCandidat.size() << " trades) : CAGR p50 "
+              << rCandidat.cagrP50 << " %, DD p50 " << rCandidat.ddP50
+              << " %, DD p95 " << rCandidat.ddP95 << " %\n";
+
+    // Verdict figé : le candidat réduit le risque mais PAS au niveau de
+    // rendement exigé — acceptation 8t.2 NON satisfaite (p50 CAGR < chaîne).
+    EXPECT_NEAR(rChaine.cagrP50,   6.5959, 1e-3);
+    EXPECT_NEAR(rChaine.ddP50,     7.9267, 1e-3);
+    EXPECT_NEAR(rCandidat.cagrP50, 4.4140, 1e-3);
+    EXPECT_NEAR(rCandidat.ddP50,   5.3181, 1e-3);
+    EXPECT_LT(rCandidat.cagrP50, rChaine.cagrP50);  // NON CONFIRMÉ (4,41 < 6,60)
+    EXPECT_LE(rCandidat.ddP95,   rChaine.ddP95);    // seul acquis : moins de risque
 }
