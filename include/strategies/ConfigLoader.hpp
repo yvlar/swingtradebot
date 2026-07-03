@@ -64,7 +64,38 @@ inline void borne(bool ok, const std::string& message) {
     if (!ok) throw std::runtime_error("Config : " + message);
 }
 
+// Ouvre et parse un fichier JSON — erreurs bruyantes (fichier/syntaxe)
+inline nlohmann::json parseJsonFile(const std::string& path) {
+    std::ifstream f(path);
+    if (!f.is_open())
+        throw std::runtime_error("Config prod introuvable : " + path);
+    try {
+        return nlohmann::json::parse(f);
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Config prod malformée (" + path + ") : "
+                                 + e.what());
+    }
+}
+
 } // namespace configdetail
+
+// ─── ProdSettings — réglages OPÉRATIONNELS (hors stratégie) ──────────────────
+// Vivent dans le même config/prod.json mais ne traversent PAS le backtest :
+// un flag d'autorisation de live n'a aucun sens dans SwingConfig.
+struct ProdSettings {
+    // Gate mécanique du mode --live (A1) : tant que la DoD d'edge n'est pas
+    // atteinte (checklist pré-live du RUNBOOK), ce champ RESTE false — et un
+    // test d'intégration le verrouille. JAMAIS true par défaut.
+    bool liveTradingApproved = false;
+};
+
+inline ProdSettings loadProdSettingsJson(const std::string& path) {
+    using namespace configdetail;
+    auto j = parseJsonFile(path);
+    ProdSettings s;
+    s.liveTradingApproved = requireBool(j, "liveTradingApproved");
+    return s;
+}
 
 // Charge et VALIDE une SwingConfig depuis un fichier JSON.
 // Lève std::runtime_error (message français explicite) sur toute anomalie.
@@ -73,17 +104,7 @@ inline void borne(bool ok, const std::string& message) {
 inline SwingConfig loadSwingConfigJson(const std::string& path) {
     using namespace configdetail;
 
-    std::ifstream f(path);
-    if (!f.is_open())
-        throw std::runtime_error("Config prod introuvable : " + path);
-
-    nlohmann::json j;
-    try {
-        j = nlohmann::json::parse(f);
-    } catch (const std::exception& e) {
-        throw std::runtime_error("Config prod malformée (" + path + ") : "
-                                 + e.what());
-    }
+    auto j = parseJsonFile(path);
 
     SwingConfig cfg;
     cfg.symbol                  = requireString(j, "symbol");
@@ -100,6 +121,18 @@ inline SwingConfig loadSwingConfigJson(const std::string& path) {
     cfg.smaTrendPeriod          = requireInt   (j, "smaTrendPeriod");
     cfg.rsiSellOnlyIfRegimeDown = requireBool  (j, "rsiSellOnlyIfRegimeDown");
     cfg.regimeReentry           = requireBool  (j, "regimeReentry");
+
+    // Garde-fous de coupure (C1) : objet REQUIS — le risque fait partie de la
+    // config validée, pas des défauts silencieux du binaire.
+    // Copie volontaire (objet minuscule) : gcc 13 émet un faux positif
+    // -Wdangling-reference sur une référence retournée par requireField.
+    const nlohmann::json ks = requireField(j, "killSwitch");
+    if (!ks.is_object())
+        throw std::runtime_error("Config : type invalide pour « killSwitch » "
+                                 "(objet attendu)");
+    cfg.killSwitch.maxDailyDrawdownPct  = requireDouble(ks, "maxDailyDrawdownPct");
+    cfg.killSwitch.maxConsecutiveLosses = requireInt   (ks, "maxConsecutiveLosses");
+    cfg.killSwitch.maxOrdersPerDay      = requireInt   (ks, "maxOrdersPerDay");
 
     borne(!cfg.symbol.empty(),          "« symbol » ne doit pas être vide");
     borne(cfg.emaFast   >= 1,           "« emaFast » doit être ≥ 1");
@@ -119,6 +152,10 @@ inline SwingConfig loadSwingConfigJson(const std::string& path) {
           "« riskPerTradePct » doit être dans (0, 1)");
     borne(cfg.minHoldDays    >= 0,      "« minHoldDays » doit être ≥ 0");
     borne(cfg.smaTrendPeriod >= 0,      "« smaTrendPeriod » doit être ≥ 0");
+    // Kill-switch : ≤ 0 = garde-fou désactivé (légitime, cf. Models.hpp),
+    // mais un drawdown ≥ 100 % est forcément une faute de saisie.
+    borne(cfg.killSwitch.maxDailyDrawdownPct < 1.0,
+          "« killSwitch.maxDailyDrawdownPct » doit être < 1");
 
     return cfg;
 }

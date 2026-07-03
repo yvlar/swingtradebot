@@ -468,8 +468,9 @@ TEST(StrategyV2Integration, FinePavingProducesAtLeastFourOosWindows) {
         EXPECT_EQ(w[i].isEnd,   w[i].oosStart);                // IS colle a l'OOS
         EXPECT_EQ(w[i].isEnd  - w[i].isStart,  kIsFin);
         EXPECT_EQ(w[i].oosEnd - w[i].oosStart, kOosFin);
-        if (i > 0)                                             // OOS contigus
+        if (i > 0) {                                           // OOS contigus
             EXPECT_EQ(w[i].oosStart, w[i - 1].oosStart + kStepFin);
+        }
     }
 }
 

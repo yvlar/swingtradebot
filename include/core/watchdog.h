@@ -12,6 +12,7 @@
 // ============================================================
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <thread>
@@ -30,20 +31,21 @@ struct AlertConfig {
     int  alert_timeout_sec      = 10;   // timeout curl des envois d'alerte (le
                                         // watchdog ne doit jamais se geler lui-même)
 
-    // Email (SMTP via libcurl)
+    // Email (SMTP via libcurl) — AUCUN credential en dur : tout vient de
+    // l'environnement via alertConfigFromEnv (A4, variables SWINGBOT_*)
     bool        email_enabled  = false;
-    std::string smtp_url       = "smtps://smtp.gmail.com:465";
-    std::string smtp_user      = "ton_bot@gmail.com";
-    std::string smtp_pass      = "";   // mot de passe app Google
-    std::string email_to       = "toi@gmail.com";
-    std::string email_from     = "ton_bot@gmail.com";
+    std::string smtp_url       = "";
+    std::string smtp_user      = "";
+    std::string smtp_pass      = "";
+    std::string email_to       = "";
+    std::string email_from     = "";
 
-    // Twilio SMS
+    // Twilio SMS — credentials via l'environnement (alertConfigFromEnv)
     bool        sms_enabled    = false;
     std::string twilio_sid     = "";
     std::string twilio_token   = "";
-    std::string twilio_from    = "+1XXXXXXXXXX";
-    std::string twilio_to      = "+1XXXXXXXXXX";
+    std::string twilio_from    = "";
+    std::string twilio_to      = "";
     // Base URL substituable en test (MiniHttpServer) — défaut = prod
     std::string twilio_base_url = "https://api.twilio.com";
 
@@ -51,6 +53,48 @@ struct AlertConfig {
     bool        webhook_enabled = false;
     std::string webhook_url     = "";   // Discord ou Slack webhook URL
 };
+
+// ─── Secrets par ENVIRONNEMENT (A4, passe 3) ──────────────
+// Construit AlertConfig depuis les variables SWINGBOT_* — un canal n'est
+// activé que si TOUTES ses variables sont présentes et non vides. Aucun
+// secret en dur, aucun secret commité (.env est ignoré par git).
+// Le lecteur d'environnement est injectable pour les tests.
+using EnvReader = std::function<const char*(const char*)>;
+
+inline AlertConfig alertConfigFromEnv(
+        const EnvReader& env = [](const char* k) { return std::getenv(k); }) {
+    auto lire = [&](const char* k) {
+        const char* v = env(k);
+        return v ? std::string(v) : std::string();
+    };
+    AlertConfig c;   // les timings restent au composition root (D1)
+
+    c.smtp_url   = lire("SWINGBOT_SMTP_URL");
+    c.smtp_user  = lire("SWINGBOT_SMTP_USER");
+    c.smtp_pass  = lire("SWINGBOT_SMTP_PASS");
+    c.email_to   = lire("SWINGBOT_EMAIL_TO");
+    c.email_from = lire("SWINGBOT_EMAIL_FROM");
+    c.email_enabled = !c.smtp_url.empty() && !c.smtp_user.empty()
+                   && !c.smtp_pass.empty() && !c.email_to.empty()
+                   && !c.email_from.empty();
+
+    c.twilio_sid   = lire("SWINGBOT_TWILIO_SID");
+    c.twilio_token = lire("SWINGBOT_TWILIO_TOKEN");
+    c.twilio_from  = lire("SWINGBOT_TWILIO_FROM");
+    c.twilio_to    = lire("SWINGBOT_TWILIO_TO");
+    c.sms_enabled  = !c.twilio_sid.empty() && !c.twilio_token.empty()
+                  && !c.twilio_from.empty() && !c.twilio_to.empty();
+
+    c.webhook_url     = lire("SWINGBOT_WEBHOOK_URL");
+    c.webhook_enabled = !c.webhook_url.empty();
+
+    return c;
+}
+
+// Au moins un canal opérationnel ? (exigé par le gate live, A1)
+inline bool anyAlertChannelEnabled(const AlertConfig& c) {
+    return c.email_enabled || c.sms_enabled || c.webhook_enabled;
+}
 
 // ─── Watchdog ─────────────────────────────────────────────
 
@@ -90,6 +134,14 @@ public:
     // Callback optionnel — appelé avant l'envoi d'alerte
     void on_alert(std::function<void(const std::string&)> cb) {
         alert_cb_ = std::move(cb);
+    }
+
+    // Envoi IMMÉDIAT d'une alerte, hors détection de silence (A6 : kill-switch
+    // déclenché, événement critique). Thread-safe : dispatch_alerts_ ne lit
+    // que cfg_ (const après construction) et alert_cb_ est posé avant start().
+    void alertNow(const std::string& msg) {
+        if (alert_cb_) alert_cb_(msg);
+        dispatch_alerts_(msg);
     }
 
 private:

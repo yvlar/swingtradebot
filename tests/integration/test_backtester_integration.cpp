@@ -122,7 +122,7 @@ TEST(BacktesterIntegration, FillsAtNextBarOpenNotAtDecisionClose) {
     const double kGapOpen = 130.0;
 
     auto dateFor = [](int i) {
-        char buf[16];
+        char buf[24];   // large : le compilateur borne %d à 10 chiffres (-Wformat-truncation)
         if (i < 31) std::snprintf(buf, sizeof buf, "2024-01-%02d", i + 1);
         else        std::snprintf(buf, sizeof buf, "2024-02-%02d", i - 30);
         return std::string(buf);
@@ -189,6 +189,19 @@ TEST(BacktesterIntegration, GoldenProdConfigTradeBreakdownOnQqqCsv) {
     EXPECT_EQ(r.trades.back().sellDate, "2022-02-14");
 
     EXPECT_EQ(r.equityCurve.size(), 1790u);
+}
+
+// ─── Verrou du gate live (A1, passe 3) ───────────────────────────────────────
+// « La prod reste paper tant que pas d'edge » n'est plus du texte : ce test
+// charge le VRAI config/prod.json et exige liveTradingApproved == false.
+// Il ne doit passer à true qu'avec la DoD d'edge atteinte (Sprint 8-ter) et
+// la checklist pré-live du RUNBOOK — en re-figeant ce verrou dans le même
+// commit, décision utilisateur consignée au changelog.
+TEST(BacktesterIntegration, LiveTradingStaysDisapprovedUntilEdgeDoD) {
+    const auto settings = trading::loadProdSettingsJson(SWINGBOT_PROD_CONFIG_JSON);
+    EXPECT_FALSE(settings.liveTradingApproved)
+        << "liveTradingApproved=true sans DoD d'edge verrouillée : interdit — "
+           "voir RUNBOOK.md (checklist pré-live) et ROADMAP (Sprint 8-ter)";
 }
 
 // ─── Côte à côte : la config prod est désormais le défaut validé ─────────────

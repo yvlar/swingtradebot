@@ -36,6 +36,10 @@ namespace trading {
         // tout le reste de la tendance). Faux = comportement historique
         // (entrée uniquement sur croisement).
         bool   regimeReentry           = true;
+        // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
+        // seuils du kill-switch font partie de la config VALIDÉE par le golden
+        // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
+        KillSwitchConfig killSwitch;
 
         // Conversion vers la config de risque du bot (item 12) : les composition
         // roots passent une SwingConfig à TradingBot::setConfig sans que le bot
@@ -51,6 +55,7 @@ namespace trading {
             // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :
             // sinon le bot ne reçoit pas assez de barres pour la calculer.
             r.lookback        = std::max(60, smaTrendPeriod + 30);
+            r.killSwitch      = killSwitch;
             return r;
         }
     };

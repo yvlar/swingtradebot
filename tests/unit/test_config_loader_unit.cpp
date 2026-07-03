@@ -40,7 +40,13 @@ protected:
             "rsiBuyMax": 100.0, "rsiSellMin": 70.0,
             "stopLossPct": 0.05, "takeProfitPct": 0.0, "trailingStopPct": 0.03,
             "riskPerTradePct": 0.02, "minHoldDays": 3, "smaTrendPeriod": 200,
-            "rsiSellOnlyIfRegimeDown": true, "regimeReentry": true
+            "rsiSellOnlyIfRegimeDown": true, "regimeReentry": true,
+            "killSwitch": {
+                "maxDailyDrawdownPct": 0.05,
+                "maxConsecutiveLosses": 4,
+                "maxOrdersPerDay": 10
+            },
+            "liveTradingApproved": false
         })";
     }
 
@@ -115,6 +121,65 @@ TEST_F(ConfigLoaderUnit, BoundViolationThrows) {
     j2.replace(j2.find("\"stopLossPct\": 0.05"), 19, "\"stopLossPct\": 1.5");
     write(j2);
     expectThrowContaining("stopLossPct");
+}
+
+// ── Kill-switch externalisé (C1) — le risque fait partie de la config ──
+
+TEST_F(ConfigLoaderUnit, KillSwitchValuesAreLoaded) {
+    write(validJson());
+    SwingConfig c = loadSwingConfigJson(path_);
+    EXPECT_DOUBLE_EQ(c.killSwitch.maxDailyDrawdownPct, 0.05);
+    EXPECT_EQ(c.killSwitch.maxConsecutiveLosses, 4);
+    EXPECT_EQ(c.killSwitch.maxOrdersPerDay, 10);
+}
+
+TEST_F(ConfigLoaderUnit, KillSwitchMissingObjectThrows) {
+    write(R"({
+        "symbol": "QQQ", "emaFast": 9, "emaSlow": 21, "rsiPeriod": 14,
+        "rsiBuyMax": 100.0, "rsiSellMin": 70.0,
+        "stopLossPct": 0.05, "takeProfitPct": 0.0, "trailingStopPct": 0.03,
+        "riskPerTradePct": 0.02, "minHoldDays": 3, "smaTrendPeriod": 200,
+        "rsiSellOnlyIfRegimeDown": true, "regimeReentry": true
+    })");                                            // killSwitch absent
+    expectThrowContaining("killSwitch");
+}
+
+TEST_F(ConfigLoaderUnit, KillSwitchMissingFieldThrowsNamingIt) {
+    std::string j = validJson();
+    j.replace(j.find("\"maxOrdersPerDay\": 10"), 21, "\"autreChose\": 10");
+    write(j);
+    expectThrowContaining("maxOrdersPerDay");
+}
+
+TEST_F(ConfigLoaderUnit, KillSwitchBoundViolationThrows) {
+    std::string j = validJson();
+    j.replace(j.find("\"maxDailyDrawdownPct\": 0.05"), 27,
+              "\"maxDailyDrawdownPct\": 1.5");
+    write(j);
+    expectThrowContaining("maxDailyDrawdownPct");
+}
+
+// ── ProdSettings (A1) — réglages opérationnels, hors stratégie ──
+
+TEST_F(ConfigLoaderUnit, ProdSettingsLoadsFalse) {
+    write(validJson());                              // contient false
+    EXPECT_FALSE(loadProdSettingsJson(path_).liveTradingApproved);
+}
+
+TEST_F(ConfigLoaderUnit, ProdSettingsMissingFieldThrows) {
+    write(R"({"symbol": "QQQ"})");                   // liveTradingApproved absent
+    try {
+        loadProdSettingsJson(path_);
+        FAIL() << "aucune exception levée";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("liveTradingApproved"),
+                  std::string::npos);
+    }
+}
+
+TEST_F(ConfigLoaderUnit, ProdSettingsWrongTypeThrows) {
+    write(R"({"liveTradingApproved": "false"})");    // chaîne, pas booléen
+    EXPECT_THROW(loadProdSettingsJson(path_), std::runtime_error);
 }
 
 TEST_F(ConfigLoaderUnit, MalformedJsonThrows) {

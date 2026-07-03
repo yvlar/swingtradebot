@@ -12,5 +12,11 @@
   "minHoldDays": 3,
   "smaTrendPeriod": 200,
   "rsiSellOnlyIfRegimeDown": true,
-  "regimeReentry": true
+  "regimeReentry": true,
+  "killSwitch": {
+    "maxDailyDrawdownPct": 0.05,
+    "maxConsecutiveLosses": 4,
+    "maxOrdersPerDay": 10
+  },
+  "liveTradingApproved": false
 }

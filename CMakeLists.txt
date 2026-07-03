@@ -4,6 +4,12 @@ project(SwingBot VERSION 2.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Durcissement (Sprint Sécurité-Réel, passe 3) : zéro warning toléré —
+# l'argent réel ne se code pas avec des avertissements ignorés.
+if(NOT MSVC)
+    add_compile_options(-Wall -Wextra -Werror)
+endif()
+
 # ── Dépendances vcpkg ─────────────────────────────────────
 find_package(Boost         REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
@@ -120,6 +126,7 @@ add_executable(unit_tests
         tests/unit/test_grid_optimizer_unit.cpp
         tests/unit/test_monte_carlo_unit.cpp
         tests/unit/test_config_loader_unit.cpp
+        tests/unit/test_live_gate_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})

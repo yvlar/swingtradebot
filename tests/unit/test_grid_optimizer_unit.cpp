@@ -210,8 +210,9 @@ TEST(GridOptimizerUnit, AxisSensitivityRanksMostSensitiveAxis) {
     for (size_t ax : {1u, 2u, 3u, 4u, 5u, 6u}) EXPECT_DOUBLE_EQ(sens[ax], 0.0);
 
     // trailing est STRICTEMENT l'axe le plus sensible (le gate 8b.4).
-    for (size_t ax = 0; ax < sens.size(); ++ax)
-        if (ax != 7) EXPECT_LT(sens[ax], sens[7]);
+    for (size_t ax = 0; ax < sens.size(); ++ax) {
+        if (ax != 7) { EXPECT_LT(sens[ax], sens[7]); }
+    }
 
     // Les noms d'axes suivent le même ordre (pour les rapports).
     EXPECT_STREQ(GridOptimizer::axisName(7), "trailingStopPct");

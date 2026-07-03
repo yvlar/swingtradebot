@@ -4,6 +4,8 @@
 // ============================================================
 #include <gtest/gtest.h>
 #include <chrono>
+#include <map>
+#include <string>
 #include <thread>
 #include "core/watchdog.h"
 #include "core/bot_state.h"
@@ -37,6 +39,73 @@ TEST_F(WatchdogUnit, DefaultTimingsCoherent) {
     AlertConfig c;
     EXPECT_GT(c.heartbeat_interval_sec, 0);
     EXPECT_GT(c.max_silence_sec, c.heartbeat_interval_sec);
+}
+
+// ── alertConfigFromEnv (A4) — secrets par environnement ──
+namespace {
+// Lecteur d'environnement simulé : map figée, injectée dans le loader
+EnvReader fakeEnv(std::map<std::string, std::string> vars) {
+    static std::map<std::string, std::string> store;
+    store = std::move(vars);
+    return [](const char* k) -> const char* {
+        auto it = store.find(k);
+        return it == store.end() ? nullptr : it->second.c_str();
+    };
+}
+} // namespace
+
+TEST_F(WatchdogUnit, EmptyEnvDisablesAllChannels) {
+    auto c = alertConfigFromEnv(fakeEnv({}));
+    EXPECT_FALSE(c.email_enabled);
+    EXPECT_FALSE(c.sms_enabled);
+    EXPECT_FALSE(c.webhook_enabled);
+    EXPECT_FALSE(anyAlertChannelEnabled(c));
+}
+
+TEST_F(WatchdogUnit, CompleteTwilioSetEnablesSmsOnly) {
+    auto c = alertConfigFromEnv(fakeEnv({
+        {"SWINGBOT_TWILIO_SID",   "SIDTEST"},
+        {"SWINGBOT_TWILIO_TOKEN", "tok"},
+        {"SWINGBOT_TWILIO_FROM",  "+15550001111"},
+        {"SWINGBOT_TWILIO_TO",    "+15550002222"},
+    }));
+    EXPECT_TRUE(c.sms_enabled);
+    EXPECT_EQ(c.twilio_sid, "SIDTEST");
+    EXPECT_FALSE(c.email_enabled);
+    EXPECT_FALSE(c.webhook_enabled);
+    EXPECT_TRUE(anyAlertChannelEnabled(c));
+}
+
+// Jeu SMTP incomplet (PASS manquant) : le canal reste DÉSACTIVÉ — un canal
+// à moitié configuré enverrait silencieusement dans le vide
+TEST_F(WatchdogUnit, IncompleteSmtpSetKeepsEmailDisabled) {
+    auto c = alertConfigFromEnv(fakeEnv({
+        {"SWINGBOT_SMTP_URL",   "smtps://smtp.example.com:465"},
+        {"SWINGBOT_SMTP_USER",  "bot@example.com"},
+        {"SWINGBOT_EMAIL_TO",   "ops@example.com"},
+        {"SWINGBOT_EMAIL_FROM", "bot@example.com"},
+    }));
+    EXPECT_FALSE(c.email_enabled);
+    EXPECT_FALSE(anyAlertChannelEnabled(c));
+}
+
+TEST_F(WatchdogUnit, WebhookUrlAloneEnablesWebhook) {
+    auto c = alertConfigFromEnv(fakeEnv({
+        {"SWINGBOT_WEBHOOK_URL", "https://discord.example/webhook"},
+    }));
+    EXPECT_TRUE(c.webhook_enabled);
+    EXPECT_TRUE(anyAlertChannelEnabled(c));
+}
+
+// ── alertNow (A6) — envoi immédiat hors détection de silence ──
+TEST_F(WatchdogUnit, AlertNowTriggersCallbackWithoutStart) {
+    Watchdog wd(cfg_, state_);
+    std::string received;
+    wd.on_alert([&](const std::string& m) { received = m; });
+
+    wd.alertNow("KILL-SWITCH : drawdown journalier");
+
+    EXPECT_EQ(received, "KILL-SWITCH : drawdown journalier");
 }
 
 // ── Heartbeat ─────────────────────────────────────────────

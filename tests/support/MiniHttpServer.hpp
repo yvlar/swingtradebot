@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -53,10 +54,12 @@ public:
     }
 
     void stop() {
-        if (fd_ >= 0) {
-            ::shutdown(fd_, SHUT_RDWR);
-            ::close(fd_);
-            fd_ = -1;
+        // fd_ est atomique : stop() (thread du test) et loop_() (thread du
+        // serveur) y accèdent concurremment — data race trouvée par TSan.
+        int fd = fd_.exchange(-1);
+        if (fd >= 0) {
+            ::shutdown(fd, SHUT_RDWR);
+            ::close(fd);
         }
         if (thread_.joinable()) thread_.join();
     }
@@ -82,7 +85,7 @@ public:
     }
 
 private:
-    int                      fd_   = -1;
+    std::atomic<int>         fd_{-1};
     int                      port_ = 0;
     int                      status_;
     std::string              body_;
@@ -92,7 +95,9 @@ private:
 
     void loop_() {
         while (true) {
-            int client = ::accept(fd_, nullptr, nullptr);
+            int fd = fd_.load();
+            if (fd < 0) break;                        // stop() a fermé la socket
+            int client = ::accept(fd, nullptr, nullptr);
             if (client < 0) break;                    // socket fermée → stop()
 
             std::string raw = readRequest_(client);

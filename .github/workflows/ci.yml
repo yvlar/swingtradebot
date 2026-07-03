@@ -43,3 +43,100 @@ jobs:
         working-directory: build
         # --output-on-failure : la sortie du test rouge apparaît dans les logs CI
         run: ctest --output-on-failure -j4
+
+  # ── Release : le binaire de PROD est un build Release — il doit être testé
+  # sous la forme sous laquelle il tournera (optimisations, assert() coupés).
+  release:
+    name: Build Release + ctest
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances (identiques à la baseline)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            libgtest-dev googletest cmake ninja-build
+
+      - name: Configurer (Release)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -G Ninja
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Tester
+        working-directory: build
+        run: ctest --output-on-failure -j4
+
+  # ── Sanitizers : projet fortement concurrent (WsServer, Watchdog, atomics) —
+  # une fuite ou un UB ne doit jamais atteindre un binaire qui trade.
+  # (A déjà attrapé : fuites sqlite3 dans les constructeurs qui lèvent.)
+  sanitizers:
+    name: ASan + UBSan (Debug)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            libgtest-dev googletest cmake ninja-build
+
+      - name: Configurer (ASan + UBSan)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Tester sous sanitizers
+        working-directory: build
+        env:
+          ASAN_OPTIONS: "halt_on_error=1"
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+        # -j2 : ASan ralentit ~2× — limite la contention pour tenir les timeouts
+        run: ctest --output-on-failure -j2
+
+  # ── TSan ciblé sur les suites concurrentes. NON bloquant pour l'instant :
+  # Boost.Asio produit des faux positifs connus selon le timing (le -Wno-tsan
+  # est requis à la compilation : atomic_thread_fence non supporté par TSan).
+  # A déjà attrapé : data race MiniHttpServer::stop()/loop_().
+  tsan:
+    name: TSan ciblé (WsServer/Watchdog/BotState)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            libgtest-dev googletest cmake ninja-build
+
+      - name: Configurer (TSan)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -Wno-tsan"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Tester les suites concurrentes sous TSan
+        working-directory: build
+        env:
+          TSAN_OPTIONS: "halt_on_error=1"
+        run: ctest --output-on-failure -R 'WsServer|Watchdog|BotState' -j2
