@@ -268,6 +268,45 @@ int main() {
         }
     }
 
+    // 9. Familles de signaux (Sprint 8-quinquies, item 8s.3) ──────────────────
+    // La chaîne v2 contre : sortie STRUCTURELLE « plus bas de N jours »
+    // (exitOnLowestLowN, 8s.1) et entrée BREAKOUT « plus haut de M jours »
+    // (entryBreakoutM, 8s.2 — variantes « s'ajoute » et « remplace » vis-à-vis
+    // de la re-entrée 8.5, décision utilisateur 2026-07-03), sur les TROIS
+    // pavages (le réglage est choisi sur le FIN, jugé sur les deux autres).
+    // Les verrous CI sont dans test_signal_families_integration.cpp.
+    titre("9. FAMILLES DE SIGNAUX (chaine v2 vs structure/breakout, trois pavages — 8s.3)");
+    std::vector<std::pair<std::string, SwingConfig>> duelSignaux = {
+        {"chaine v2", cfg},
+    };
+    for (int nStruct : {10, 20, 55}) {
+        SwingConfig c = cfg;
+        c.exitOnLowestLowN = nStruct;
+        duelSignaux.push_back({"structure N=" + std::to_string(nStruct), c});
+    }
+    for (int mBreak : {20, 55}) {
+        SwingConfig cAjout = cfg;
+        cAjout.entryBreakoutM = mBreak;
+        duelSignaux.push_back({"breakout M=" + std::to_string(mBreak) + " +", cAjout});
+        SwingConfig cRemplace = cAjout;
+        cRemplace.regimeReentry = false;
+        duelSignaux.push_back({"breakout M=" + std::to_string(mBreak) + " rempl.", cRemplace});
+    }
+    for (const auto& p : pavagesAtr) {
+        std::cout << "\n  Pavage " << p.nom << " :\n";
+        for (const auto& v : duelSignaux) {
+            const auto ws = WalkForward(v.second, qqq, p.is, p.oos, p.pas, p.dec).run();
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << std::left << std::setw(21) << v.first
+                      << std::right << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles ("
+                      << ws.size() << " fenetres)\n";
+        }
+    }
+
     std::cout << "\n";
     return 0;
 }
