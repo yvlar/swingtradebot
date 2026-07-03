@@ -133,13 +133,15 @@ int main() {
     }
 
     // 6. Walk-forward multi-actifs (Sprint 8-bis, item 8b.2) ──────────────────
-    // La chaîne v2 ET le candidat de la grille 8b.1 (smaT=250, trail=0,05),
-    // jugés par actif sur le pavage fin — un edge qui ne tient que sur QQQ
-    // est un artefact.
+    // La chaîne v2 ET le candidat de la grille 8b.1, jugés par actif sur le
+    // pavage fin — un edge qui ne tient que sur QQQ est un artefact.
+    // Candidat RE-CALÉ post-B2 (D37, Sprint 8-ter) : (emaFast=9, smaT=250,
+    // trail=0,03) — emaFast et trail sont déjà les valeurs de la chaîne, seul
+    // smaTrendPeriod diffère (l'ancien trail=0,05 était le plateau pré-B2).
     titre("6. WALK-FORWARD MULTI-ACTIFS (chaine v2 et candidat 8b.1, pavage fin)");
     SwingConfig candidat = cfg;
     candidat.smaTrendPeriod  = 250;
-    candidat.trailingStopPct = 0.05;
+    candidat.trailingStopPct = 0.03;
     const std::vector<std::pair<std::string, SwingConfig>> variantes = {
         {"chaine v2       ", cfg}, {"candidat 8b.1   ", candidat},
     };
@@ -160,6 +162,35 @@ int main() {
                       << std::right << std::fixed << std::setprecision(4)
                       << std::setw(14) << alpha
                       << std::setw(12) << trades << "\n";
+        }
+    }
+
+    // 7. Validation HORS-GRILLE du candidat (Sprint 8-ter, item 8t.1) ─────────
+    // Le candidat vs la chaîne v2 sur des fenêtres que la grille 8b.1 n'a PAS
+    // choisies : pavage canonique (700/400) et pavage DÉCALÉ (500/400,
+    // offset=90 — aucune borne commune avec les pavages historiques, les 90
+    // dernières barres jugées en OOS pour la première fois). Les verrous CI
+    // sont dans test_candidate_validation_integration.cpp.
+    titre("7. VALIDATION HORS-GRILLE DU CANDIDAT (Sprint 8-ter, 8t.1)");
+    const std::vector<std::pair<std::string, SwingConfig>> duel = {
+        {"chaine v2", cfg}, {"candidat 8b.1", candidat},
+    };
+    const struct { const char* nom; size_t is, oos, pas, dec; } pavages[] = {
+        {"canonique (IS=700/OOS=400)",        700, 400, 400,  0},
+        {"decale (IS=500/OOS=400, offset=90)", 500, 400, 400, 90},
+    };
+    for (const auto& p : pavages) {
+        std::cout << "\n  Pavage " << p.nom << " :\n";
+        for (const auto& v : duel) {
+            WalkForward w(v.second, qqq, p.is, p.oos, p.pas, p.dec);
+            const auto ws = w.run();
+            w.printReport(ws);
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << v.first << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles\n";
         }
     }
 
