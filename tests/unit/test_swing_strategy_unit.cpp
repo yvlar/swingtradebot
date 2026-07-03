@@ -634,6 +634,115 @@ TEST(SwingStrategyUnit, ReentryStillBuysWhenBreakoutNotTriggered) {
         << "raison réelle : " << sig.reason;
 }
 
+// ════════════════════════════════════════════════════════════
+//  Entrée pullback en tendance (item 8y.1)
+// ════════════════════════════════════════════════════════════
+// 3e famille de signaux (Sprint 8-sexies) : acheter la FAIBLESSE dans la
+// tendance — l'inverse exact du breakout 8s.2. À plat, régime haussier
+// confirmé (prix > SMA de fond) et RSI ≤ entryPullbackRsiMax → BUY (le
+// creux DANS la tendance). Évaluée APRÈS le bloc VENTE (les sorties
+// gardent la priorité) ; flag INDÉPENDANT de regimeReentry — masquage
+// partiel anticipé (D41) : la re-entrée achète déjà l'état « régime up +
+// prix > EMAs », mais le pullback peut tirer quand le prix est SOUS les
+// EMAs (le creux), d'où les deux hypothèses « remplace / s'ajoute »
+// jugées en 8y.3. ≤ 0 = désactivé (comportement historique).
+
+namespace {
+
+// Harnais 8y.1 : pas de croisement (EMA rapide au-dessus de la lente par
+// défaut), prix 110, régime piloté par la SMA injectée, RSI paramétrable.
+// Les EMAs sont paramétrables pour placer le prix SOUS elles (le creux) et
+// isoler le pullback de la re-entrée quand les deux flags sont actifs.
+Signal evalPullbackCase(double pullbackRsiMax, double rsiLast, double smaLast,
+                        bool reentryOn = false, bool bearishCross = false,
+                        double emaFastVal = 105.0, double emaSlowVal = 100.0) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, emaSlowVal);
+    std::vector<double> emaFast(n, emaFastVal);
+    if (bearishCross) emaFast[n-1] = emaSlowVal - 5.0;  // au-dessus → dessous
+    std::vector<double> rsi(n, rsiLast);
+    std::vector<double> sma(n, smaLast);
+    std::vector<Bar> bars;
+    for (size_t i = 0; i < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+
+    SwingConfig cfg;
+    cfg.entryPullbackRsiMax = pullbackRsiMax;
+    cfg.regimeReentry       = reentryOn;
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// Cas central : régime up (110 > SMA 100), RSI 30 ≤ seuil 40, PAS de
+// croisement, re-entrée OFF → BUY sur pullback, avec une raison explicite.
+TEST(SwingStrategyUnit, PullbackBuysOnWeakRsiInUpRegime) {
+    auto sig = evalPullbackCase(40.0, 30.0, 100.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Borne INCLUSIVE : RSI exactement ÉGAL au seuil (40 = 40) achète —
+// convention ≤ (« RSI ≤ seuil »), verrouillée ici.
+TEST(SwingStrategyUnit, PullbackBuysAtExactRsiThreshold) {
+    auto sig = evalPullbackCase(40.0, 40.0, 100.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// RSI au-dessus du seuil (41 > 40) : pas de creux, pas d'entrée pullback
+// (re-entrée off → HOLD).
+TEST(SwingStrategyUnit, NoPullbackWhenRsiAboveThreshold) {
+    EXPECT_EQ(evalPullbackCase(40.0, 41.0, 100.0).type, SignalType::HOLD);
+}
+
+// Régime NON haussier (110 < SMA 120) : pas d'entrée pullback — acheter la
+// faiblesse SANS tendance de fond serait rattraper un couteau qui tombe.
+TEST(SwingStrategyUnit, NoPullbackWhenRegimeDown) {
+    EXPECT_EQ(evalPullbackCase(40.0, 30.0, 120.0).type, SignalType::HOLD);
+}
+
+// Seuil 0 → désactivé : comportement historique (HOLD, re-entrée off).
+TEST(SwingStrategyUnit, PullbackDisabledWhenThresholdZero) {
+    EXPECT_EQ(evalPullbackCase(0.0, 30.0, 100.0).type, SignalType::HOLD);
+}
+
+// Priorité des sorties : croisement baissier + pullback vrai simultanément
+// → SELL, jamais masqué par l'entrée (bloc VENTE évalué avant, comme 8.5).
+TEST(SwingStrategyUnit, BearishCrossOutranksPullback) {
+    EXPECT_EQ(evalPullbackCase(40.0, 30.0, 100.0, /*reentryOn=*/false,
+                               /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Le pullback tire là où la re-entrée NE PEUT PAS (masquage partiel D41,
+// pas sous-ensemble) : prix 110 SOUS les EMAs (115/112) — le creux — avec
+// re-entrée ACTIVE → c'est bien le pullback qui achète.
+TEST(SwingStrategyUnit, PullbackFiresBelowEmasWhereReentryCannot) {
+    auto sig = evalPullbackCase(40.0, 30.0, 100.0, /*reentryOn=*/true,
+                                /*bearishCross=*/false,
+                                /*emaFastVal=*/115.0, /*emaSlowVal=*/112.0);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Pullback"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Coexistence avec la re-entrée (hypothèse « s'ajoute ») : pullback NON
+// déclenché (RSI 50 > seuil 40) mais régime up et prix > EMAs → la
+// re-entrée 8.5 achète toujours — le flag pullback ne la supprime pas.
+TEST(SwingStrategyUnit, ReentryStillBuysWhenPullbackNotTriggered) {
+    auto sig = evalPullbackCase(40.0, 50.0, 100.0, /*reentryOn=*/true);
+    EXPECT_EQ(sig.type, SignalType::BUY);
+    EXPECT_NE(sig.reason.find("Re-entr"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
 // Indicateurs injectés défaillants : HOLD explicite, jamais de crash
 TEST(SwingStrategyUnit, FailedIndicatorComputationReturnsHold) {
     SwingStrategy strat(SwingConfig{},

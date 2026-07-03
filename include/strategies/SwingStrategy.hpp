@@ -58,6 +58,16 @@ namespace trading {
         // ≤ 0 = désactivé. Axe de recherche 8s.3 — pas de défaut actif
         // tant que l'amélioration OOS n'est pas démontrée.
         int    entryBreakoutM          = 0;
+        // Item 8y.1 (Sprint 8-sexies) : > 0 = entrée PULLBACK — à plat,
+        // régime up et RSI ≤ seuil → BUY : acheter la FAIBLESSE dans la
+        // tendance (le creux), l'inverse exact du breakout 8s.2. Évaluée
+        // APRÈS les ventes ; flag indépendant de regimeReentry (masquage
+        // partiel anticipé, D41 : la re-entrée couvre « prix > EMAs », le
+        // pullback peut tirer SOUS les EMAs — les deux hypothèses
+        // « remplace / s'ajoute » sont jugées en 8y.3). ≤ 0 = désactivé.
+        // Axe de recherche 8y.3 — pas de défaut actif tant que
+        // l'amélioration OOS n'est pas démontrée.
+        double entryPullbackRsiMax     = 0.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
