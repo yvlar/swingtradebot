@@ -25,6 +25,13 @@ namespace trading {
         // ≤ 0 = désactivé. Axe de recherche 8q.2 — pas de défaut actif tant
         // que l'amélioration OOS n'est pas démontrée.
         double trailingAtrMult    = 0.0;
+        // Item 8s.1 (Sprint 8-quinquies) : > 0 = sortie STRUCTURELLE — en
+        // position, clôture sous le plus bas des N barres précédentes (barre
+        // courante exclue) → sortie (cassure d'un support récent). Gatée par
+        // minHoldDays, priorité SL > TP > structure > trailing. ≤ 0 =
+        // désactivé. Axe de recherche 8s.3 — pas de défaut actif tant que
+        // l'amélioration OOS n'est pas démontrée.
+        int    exitOnLowestLowN   = 0;
         double riskPerTradePct    = 0.02;  // risque 2% du capital par trade
         int    minHoldDays        = 3;
         int    smaTrendPeriod     = 200;   // filtre de régime : n'entrer que si prix > SMA200 (item 8.1) ; ≤ 1 = filtre désactivé
@@ -57,6 +64,7 @@ namespace trading {
             r.takeProfitPct   = takeProfitPct;
             r.trailingStopPct = trailingStopPct;
             r.trailingAtrMult = trailingAtrMult;
+            r.exitOnLowestLowN = exitOnLowestLowN;
             r.riskPerTradePct = riskPerTradePct;
             r.minHoldDays     = minHoldDays;
             // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :

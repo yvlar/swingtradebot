@@ -14,6 +14,9 @@
 //  loader — axe de recherche jugé en 8q.2, câblage différé au
 //  gate d'adoption 8q.3 (décision utilisateur 2026-07-03) pour ne
 //  pas toucher config/prod.json (gouverné) avant un verdict.
+//  Même règle pour exitOnLowestLowN et entryBreakoutM (items
+//  8s.1/8s.2) : axes de recherche jugés en 8s.3, câblage différé
+//  au gate d'adoption 8s.4.
 // ============================================================
 #include "strategies/SwingStrategy.hpp"
 #include <nlohmann/json.hpp>

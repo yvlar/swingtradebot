@@ -88,6 +88,10 @@ struct RiskConfig {
     // vrai true-range) — il REMPLACE le trailing % (repli sur le % si l'ATR est
     // incalculable) ; ≤ 0 = désactivé (trailing % historique).
     double trailingAtrMult = 0.0;
+    // Item 8s.1 : > 0 = sortie structurelle sous le plus bas des N barres
+    // précédentes (barre courante exclue), gatée par minHoldDays ; ≤ 0 =
+    // désactivé (comportement historique).
+    int    exitOnLowestLowN = 0;
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
     int    minHoldDays     = 3;
     // Nombre de barres demandées au data feed à chaque cycle (item 8.1) : doit
