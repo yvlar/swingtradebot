@@ -198,6 +198,31 @@ namespace trading {
                 return makeSignal(SignalType::SELL, bars, reason);
             }
 
+            // ── Entrée breakout « plus haut de M jours » (item 8s.2) ─────────
+            // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
+            // la re-entrée (raison plus spécifique quand les deux sont
+            // qualifiantes). À plat, régime haussier confirmé et clôture
+            // AU-DESSUS (strictement) du plus haut des M barres précédentes
+            // — barre courante exclue — → BUY : la force est DÉMONTRÉE par la
+            // cassure d'une résistance récente (hypothèse T3 prolongée), pas
+            // seulement décrite par l'état « prix > EMAs ». Fenêtre < M+1
+            // barres → pas de jugement de breakout.
+            if (config_.entryBreakoutM > 0
+                && regimeUp
+                && n >= static_cast<size_t>(config_.entryBreakoutM) + 1)
+            {
+                double plusHaut = bars[n-2].high;
+                for (size_t i = n - 1 - config_.entryBreakoutM; i + 1 < n; ++i)
+                    plusHaut = std::max(plusHaut, bars[i].high);
+                if (lastClose > plusHaut)
+                    return makeSignal(SignalType::BUY, bars,
+                                      "Breakout : clôture " +
+                                      std::to_string(static_cast<int>(lastClose)) +
+                                      " > plus haut " +
+                                      std::to_string(config_.entryBreakoutM) +
+                                      " jours | regime up");
+            }
+
             // ── Re-entrée sur régime (item 8.5, T4) ──────────────────────────
             // APRÈS le bloc VENTE : les signaux de sortie gardent la priorité
             // (un croisement baissier ou une vente RSI active ne sont jamais
