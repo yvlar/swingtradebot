@@ -187,6 +187,22 @@ namespace trading {
             auto cross = CrossoverDetector::detect(emaFastVals, emaSlowVals,
                                                    static_cast<size_t>(config_.emaSlow));
 
+            // Filtre de volatilité sur les entrées (item 8y.2) : calculé UNE
+            // fois, consommé par les QUATRE familles d'entrée (croisement,
+            // breakout, pullback, re-entrée). ATR(14) vrai true-range
+            // (computeBars) rapporté à la clôture. ATR incalculable (série
+            // vide ou nulle) → filtre INOPÉRANT (fail-open, décision
+            // utilisateur 2026-07-03) : le comportement chaîne est préservé.
+            double atrPct = 0.0;
+            bool entreeBloqueeVol = false;
+            if (config_.entryMaxAtrPct > 0.0 && lastClose > 0.0) {
+                auto atrVals = atr_->computeBars(bars);
+                if (!atrVals.empty() && atrVals[n-1] > 0.0) {
+                    atrPct = atrVals[n-1] / lastClose;
+                    entreeBloqueeVol = atrPct > config_.entryMaxAtrPct;
+                }
+            }
+
             // ── Signal d'ACHAT ────────────────────────────────────────────────
             // Conditions: régime de fond haussier (prix > SMA200) + croisement
             // haussier + prix > EMAs. Le filtre de régime (8.1) coupe les
@@ -197,7 +213,8 @@ namespace trading {
             // breakouts forts. On entre sur la force ; convention ≥ 100 car
             // RSI == 100.0 est atteignable (série de gains purs).
             const bool rsiGateOff = config_.rsiBuyMax >= 100.0;
-            if (regimeUp
+            if (!entreeBloqueeVol
+                && regimeUp
                 && cross == CrossoverDetector::Cross::BULLISH
                 && (rsiGateOff || lastRsi < config_.rsiBuyMax)
                 && lastClose   > lastEmaFast
@@ -225,6 +242,20 @@ namespace trading {
                                      : "RSI suracheté (" + std::to_string(static_cast<int>(lastRsi)) + ")";
                 return makeSignal(SignalType::SELL, bars, reason);
             }
+
+            // ── Filtre de volatilité : blocage des entrées (item 8y.2) ──────
+            // APRÈS le bloc VENTE (les sorties ne sont JAMAIS bloquées — on
+            // peut toujours se mettre à l'abri) et AVANT toutes les entrées
+            // restantes (breakout, pullback, re-entrée) ; le croisement
+            // d'achat, évalué plus haut, porte sa propre garde. HOLD à
+            // raison explicite : l'activation du filtre doit se VOIR (D41).
+            if (entreeBloqueeVol)
+                return makeSignal(SignalType::HOLD, bars,
+                                  "Entrée bloquée : volatilité ATR " +
+                                  std::to_string(atrPct * 100.0) +
+                                  " % > seuil " +
+                                  std::to_string(config_.entryMaxAtrPct * 100.0) +
+                                  " %");
 
             // ── Entrée breakout « plus haut de M jours » (item 8s.2) ─────────
             // APRÈS le bloc VENTE (les sorties gardent la priorité) et AVANT
