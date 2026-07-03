@@ -308,3 +308,171 @@ TEST(RiskManagerUnit, KillSwitchSkipsDrawdownWhenDayStartEquityInvalid) {
     KillSwitchConfig cfg;
     EXPECT_FALSE(rm.checkKillSwitch(cfg, 0.0, -500.0, 0, 0).has_value());
 }
+
+// ════════════════════════════════════════════════════════════
+//  Trailing adaptatif ATR (item 8q.1, ré-ouverture 8b.4)
+// ════════════════════════════════════════════════════════════
+// Hypothèse : un trailing FIXE en % est fragile parce que la « bonne »
+// distance dépend de la volatilité (l'axe le plus sensible depuis B2).
+// Convention arbitrée à l'ouverture (décision utilisateur 2026-07-03) :
+// quand trailingAtrMult > 0, le seuil devient peak − mult × ATR(14) et
+// REMPLACE le trailing % (pas de cumul) ; repli DÉFENSIF sur le % si l'ATR
+// est incalculable (fenêtre < 15 barres, série vide, barres plates) — une
+// position ouverte ne reste JAMAIS sans filet.
+
+namespace {
+
+    // Fenêtre à true range CONSTANT : open=close=100, high=101, low=99
+    // → TR_i = max(H−L, |H−Cprev|, |L−Cprev|) = max(2, 1, 1) = 2 pour toute
+    // barre, seed SMA = 2, le lissage de Wilder conserve 2 → ATR(14) = 2,0
+    // EXACTEMENT (représentable en double) dès l'indice 14.
+    std::vector<Bar> barresTrConstant(int n, double close = 100.0,
+                                      double demiAmplitude = 1.0) {
+        std::vector<Bar> bars;
+        for (int i = 0; i < n; ++i)
+            bars.push_back({"2024-01-01", close, close + demiAmplitude,
+                            close - demiAmplitude, close, 1'000});
+        return bars;
+    }
+
+} // namespace
+
+// Cas central calculé à la main : buy=100, peak=110, mult=3, ATR=2
+// → seuil = 110 − 3×2 = 104 (exact en double). Sortie à 104,0 (borne <=
+// verrouillée), pas de sortie à 104,1.
+TEST(RiskManagerUnit, AtrTrailingExitAtHandComputedThreshold) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    auto atSeuil = rm.checkExitConditions(104.0, 100.0, 5, 110.0,
+                                          0.05, 0.0, 0.03, 3, bars, 3.0);
+    ASSERT_TRUE(atSeuil.has_value());
+    EXPECT_NE(atSeuil->find("trailing"), std::string::npos);
+    EXPECT_NE(atSeuil->find("ATR"), std::string::npos);
+
+    auto auDessus = rm.checkExitConditions(104.1, 100.0, 5, 110.0,
+                                           0.05, 0.0, 0.03, 3, bars, 3.0);
+    EXPECT_FALSE(auDessus.has_value());
+}
+
+// Verrouille le LISSAGE de Wilder (pas seulement le seed) : TR 1..14 = 2,
+// dernière barre high=102/low=98 → TR15 = 4 → ATR@15 = (2×13 + 4)/14 = 30/14
+// ≈ 2,142857 → seuil = 110 − 3×30/14 ≈ 103,5714. Encadrement strict
+// (103,5 sort / 103,7 non), pas d'égalité flottante.
+TEST(RiskManagerUnit, AtrTrailingWilderSmoothingHandComputed) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    bars.back().high = 102.0;
+    bars.back().low  =  98.0;
+
+    auto sous = rm.checkExitConditions(103.5, 100.0, 5, 110.0,
+                                       0.05, 0.0, 0.03, 3, bars, 3.0);
+    ASSERT_TRUE(sous.has_value());
+    EXPECT_NE(sous->find("ATR"), std::string::npos);
+
+    auto dessus = rm.checkExitConditions(103.7, 100.0, 5, 110.0,
+                                         0.05, 0.0, 0.03, 3, bars, 3.0);
+    EXPECT_FALSE(dessus.has_value());
+}
+
+// La convention « remplace » : à 105, le trailing % sortirait (−4,5 % depuis
+// le pic ≤ −3 %) mais le seuil ATR (104) ne sort PAS → mult > 0 remplace le
+// %, il ne s'y ajoute pas (pas de max des deux).
+TEST(RiskManagerUnit, AtrTrailingReplacesPercentTrailing) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    EXPECT_FALSE(rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                        0.05, 0.0, 0.03, 3, bars, 3.0)
+                     .has_value());
+}
+
+// mult = 0 → chemin % historique, à l'identique de la surcharge 8 arguments
+// (délégation) : même décision, même raison, sans mention d'ATR.
+TEST(RiskManagerUnit, AtrTrailingDisabledWhenMultZero) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    auto r10 = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                      0.05, 0.0, 0.03, 3, bars, 0.0);
+    auto r8  = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                      0.05, 0.0, 0.03, 3);
+    ASSERT_TRUE(r10.has_value());
+    ASSERT_TRUE(r8.has_value());
+    EXPECT_EQ(*r10, *r8);
+    EXPECT_EQ(r10->find("ATR"), std::string::npos);
+}
+
+// Repli défensif : fenêtre trop courte pour ATR(14) (< 15 barres, ou vide)
+// → le trailing % reste actif — jamais de position sans filet.
+TEST(RiskManagerUnit, AtrTrailingFallsBackToPercentWhenWindowTooShort) {
+    RiskManager rm;
+    auto courte = barresTrConstant(10);
+    auto r = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, courte, 3.0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("trailing"), std::string::npos);
+    EXPECT_EQ(r->find("ATR"), std::string::npos);
+
+    auto vide = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                       0.05, 0.0, 0.03, 3, {}, 3.0);
+    ASSERT_TRUE(vide.has_value());
+    EXPECT_NE(vide->find("trailing"), std::string::npos);
+}
+
+// Repli défensif : barres plates (high = low = close) → ATR = 0, un seuil
+// peak − 0 sortirait à CHAQUE barre sous le pic — on retombe sur le %.
+TEST(RiskManagerUnit, AtrTrailingFallsBackWhenAtrZero) {
+    RiskManager rm;
+    auto plates = barresTrConstant(16, 100.0, 0.0);
+    auto r = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, plates, 3.0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("trailing"), std::string::npos);
+    EXPECT_EQ(r->find("ATR"), std::string::npos);
+}
+
+// Le gating minHoldDays s'applique au trailing ATR comme au trailing %
+// (miroir de TrailingStopOnlyAfterMinHoldDays).
+TEST(RiskManagerUnit, AtrTrailingOnlyAfterMinHoldDays) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    auto before = rm.checkExitConditions(104.0, 100.0, 2, 110.0,
+                                         0.05, 0.0, 0.03, 3, bars, 3.0);
+    EXPECT_FALSE(before.has_value());
+    auto after = rm.checkExitConditions(104.0, 100.0, 3, 110.0,
+                                        0.05, 0.0, 0.03, 3, bars, 3.0);
+    ASSERT_TRUE(after.has_value());
+    EXPECT_NE(after->find("ATR"), std::string::npos);
+}
+
+// Priorité inchangée : stop-loss (−6 % ≤ −5 %) ET seuil ATR (94 ≤ 104) vrais
+// simultanément → le stop-loss, vérifié en premier, l'emporte.
+TEST(RiskManagerUnit, StopLossTakesPriorityOverAtrTrailing) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    auto r = rm.checkExitConditions(94.0, 100.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, bars, 3.0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("stop-loss"), std::string::npos);
+    EXPECT_EQ(r->find("trailing"), std::string::npos);
+}
+
+// Priorité inchangée : take-profit (+9,5 % ≥ +5 %) ET seuil ATR (104 ≤ 104)
+// vrais simultanément → le take-profit l'emporte.
+TEST(RiskManagerUnit, TakeProfitTakesPriorityOverAtrTrailing) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    auto r = rm.checkExitConditions(104.0, 95.0, 5, 110.0,
+                                    0.05, 0.05, 0.03, 3, bars, 3.0);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("take-profit"), std::string::npos);
+    EXPECT_EQ(r->find("trailing"), std::string::npos);
+}
+
+// peakPrice=0 (pic jamais renseigné) : la garde `peakPrice > 0` écarte le
+// trailing ATR comme le trailing % (miroir de TrailingSkippedWhenPeakPriceZero).
+TEST(RiskManagerUnit, AtrTrailingSkippedWhenPeakPriceZero) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    EXPECT_FALSE(rm.checkExitConditions(98.0, 100.0, 5, 0.0,
+                                        0.05, 0.0, 0.03, 3, bars, 3.0)
+                     .has_value());
+}

@@ -163,6 +163,33 @@ public:
         int    minHoldDays
     ) const = 0;
 
+    // Variante « fenêtre de barres » (item 8q.1) : quand trailingAtrMult > 0,
+    // l'implémentation PEUT remplacer le trailing % par un trailing en
+    // multiples d'ATR(14) calculé sur les barres de la fenêtre courante
+    // (vrai true-range — la « bonne » distance de trailing dépend de la
+    // volatilité, hypothèse 8b.4). Implémentation par défaut RÉTRO-COMPATIBLE
+    // (même patron que IIndicator::computeBars, item 8.0) : ignore les barres
+    // et délègue à la surcharge historique — un IRiskManager qui ne connaît
+    // pas l'ATR garde exactement son comportement.
+    virtual std::optional<std::string> checkExitConditions(
+        double currentPrice,
+        double buyPrice,
+        int    holdDays,
+        double peakPrice,
+        double stopLossPct,
+        double takeProfitPct,
+        double trailingStopPct,
+        int    minHoldDays,
+        const std::vector<Bar>& bars,   // fenêtre courante (peut être vide)
+        double trailingAtrMult          // ≤ 0 = désactivé (trailing % historique)
+    ) const {
+        (void)bars;
+        (void)trailingAtrMult;
+        return checkExitConditions(currentPrice, buyPrice, holdDays, peakPrice,
+                                   stopLossPct, takeProfitPct, trailingStopPct,
+                                   minHoldDays);
+    }
+
     // Kill-switch (item 18) : retourne la raison de coupure si un garde-fou
     // est franchi (→ aucune nouvelle ENTRÉE), nullopt si les entrées sont
     // permises. Ne concerne JAMAIS une position déjà ouverte.

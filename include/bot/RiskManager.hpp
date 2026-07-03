@@ -10,6 +10,11 @@ namespace trading {
 // Formule de sizing: (Capital × RiskPct) / (Prix × StopLossPct)
 class RiskManager final : public IRiskManager {
 public:
+    // Rend visible la surcharge « barres + trailingAtrMult » héritée (8q.1) :
+    // sans ce using, l'override 8-args ci-dessous MASQUERAIT la variante
+    // 10-args de l'interface pour les appels sur le type concret.
+    using IRiskManager::checkExitConditions;
+
     explicit RiskManager(double maxCapitalUsagePct = 0.95)
         : maxCapitalUsagePct_(maxCapitalUsagePct) {}
 
