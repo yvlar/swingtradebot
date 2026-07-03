@@ -223,6 +223,17 @@ int main() {
                   << "%  p95=" << r.ddP95 << "%\n";
     }
 
+    // 7-ter. Grille de confirmation resserrée (Sprint 8-ter, item 8t.3) ───────
+    // Voisinage fin CENTRÉ sur le candidat (27 combos, mêmes objectif/pavage
+    // que la grille 8b.1) : un vrai plateau doit rester alpha > 0 ET retenir
+    // smaT=250 quand on resserre les crans (D36).
+    titre("7-ter. GRILLE DE CONFIRMATION RESSERREE AUTOUR DU CANDIDAT (8t.3)");
+    GridOptimizer optSerre({7, 9, 11}, {21}, {100}, {70}, {0.05}, {0.0},
+                           objectifOos, cfg,
+                           /*smaTrend*/ {225, 250, 275},
+                           /*trailing*/ {0.02, 0.03, 0.04});
+    optSerre.printSensitivityMap(optSerre.evaluate());
+
     std::cout << "\n";
     return 0;
 }
