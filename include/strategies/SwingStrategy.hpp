@@ -1,6 +1,7 @@
 #pragma once
 #include "core/Interfaces.hpp"
 #include "indicators/Indicators.hpp"
+#include "indicators/DayIndicators.hpp"
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -68,6 +69,16 @@ namespace trading {
         // Axe de recherche 8y.3 — pas de défaut actif tant que
         // l'amélioration OOS n'est pas démontrée.
         double entryPullbackRsiMax     = 0.0;
+        // Item 8y.2 (Sprint 8-sexies) : > 0 = filtre de VOLATILITÉ sur les
+        // entrées — TOUTE entrée (croisement, breakout, pullback,
+        // re-entrée) est bloquée si ATR(14)/clôture > seuil, strictement
+        // (hypothèse : les whipsaws coûteux arrivent en haute volatilité ;
+        // n'entrer que dans un marché calme). Les VENTES ne sont jamais
+        // bloquées. ATR incalculable → filtre INOPÉRANT (fail-open,
+        // décision utilisateur 2026-07-03). ≤ 0 = désactivé. Axe de
+        // recherche 8y.3 — pas de défaut actif tant que l'amélioration
+        // OOS n'est pas démontrée.
+        double entryMaxAtrPct          = 0.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -98,19 +109,26 @@ namespace trading {
 // Implémente IStrategy — dépend uniquement des abstractions IIndicator
     class SwingStrategy final : public IStrategy {
     public:
+        // Le 5e indicateur (ATR, item 8y.2) a un défaut pour préserver tous
+        // les sites d'appel historiques : nullptr → ATR(14) vrai true-range
+        // (même période que le trailing ATR 8q.1).
         explicit SwingStrategy(
                 SwingConfig                       config,
                 std::unique_ptr<IIndicator<double>> emaFast,
                 std::unique_ptr<IIndicator<double>> emaSlow,
                 std::unique_ptr<IIndicator<double>> rsi,
-                std::unique_ptr<IIndicator<double>> smaTrend
+                std::unique_ptr<IIndicator<double>> smaTrend,
+                std::unique_ptr<IIndicator<double>> atr = nullptr
         )
                 : config_(std::move(config))
                 , emaFast_(std::move(emaFast))
                 , emaSlow_(std::move(emaSlow))
                 , rsi_(std::move(rsi))
                 , smaTrend_(std::move(smaTrend))
-        {}
+                , atr_(std::move(atr))
+        {
+            if (!atr_) atr_ = std::make_unique<ATR>(14);
+        }
 
         // Factory method pour créer une instance avec les paramètres par défaut
         static std::unique_ptr<SwingStrategy> create(SwingConfig cfg = {}) {
@@ -304,6 +322,7 @@ namespace trading {
         std::unique_ptr<IIndicator<double>> emaSlow_;
         std::unique_ptr<IIndicator<double>> rsi_;
         std::unique_ptr<IIndicator<double>> smaTrend_;
+        std::unique_ptr<IIndicator<double>> atr_;   // filtre de volatilité (item 8y.2)
     };
 
 } // namespace trading

@@ -743,6 +743,143 @@ TEST(SwingStrategyUnit, ReentryStillBuysWhenPullbackNotTriggered) {
         << "raison réelle : " << sig.reason;
 }
 
+// ════════════════════════════════════════════════════════════
+//  Filtre de volatilité sur les entrées (item 8y.2)
+// ════════════════════════════════════════════════════════════
+// Hypothèse (Sprint 8-sexies) : les whipsaws coûteux arrivent en haute
+// volatilité — n'entrer que dans un marché calme. entryMaxAtrPct > 0 :
+// TOUTE entrée (croisement, breakout, pullback, re-entrée) est bloquée si
+// ATR(14)/clôture > seuil (strictement), avec un HOLD à raison explicite
+// (observabilité D41 : l'activation du filtre doit se VOIR). Les VENTES ne
+// sont JAMAIS bloquées. ATR incalculable (série vide) → filtre INOPÉRANT
+// (fail-open, décision utilisateur 2026-07-03 : le comportement chaîne est
+// préservé). ≤ 0 = désactivé.
+
+namespace {
+
+// Harnais 8y.2 : chaque « famille » d'entrée est armée pour tirer (régime
+// up, prix 110 > SMA 100), l'ATR est injecté en 5e indicateur (série
+// constante, ou vide pour le cas fail-open). Seul le filtre varie.
+enum class EntreeVoulue { CROISEMENT, REENTREE, BREAKOUT, PULLBACK };
+
+Signal evalAtrFilterCase(EntreeVoulue entree, double maxAtrPct,
+                         double atrLast, bool atrVide = false,
+                         bool bearishCross = false) {
+    const size_t n = 30;
+    std::vector<double> emaSlow(n, 100.0);
+    std::vector<double> emaFast(n, 105.0);       // au-dessus, sans croisement
+    std::vector<double> rsi(n, 50.0);
+    std::vector<double> sma(n, 100.0);
+
+    SwingConfig cfg;
+    cfg.entryMaxAtrPct = maxAtrPct;
+    cfg.regimeReentry  = false;
+    double lastCloseVoulu = 110.0;
+    switch (entree) {
+        case EntreeVoulue::CROISEMENT:
+            std::fill(emaFast.begin(), emaFast.end() - 1, 99.0); // dessous → dessus
+            break;
+        case EntreeVoulue::REENTREE:
+            cfg.regimeReentry = true;
+            break;
+        case EntreeVoulue::BREAKOUT:
+            cfg.entryBreakoutM = 5;
+            lastCloseVoulu = 111.0;              // > highs 110,5 des précédentes
+            break;
+        case EntreeVoulue::PULLBACK:
+            cfg.entryPullbackRsiMax = 60.0;      // RSI 50 ≤ 60 → creux qualifiant
+            break;
+    }
+    if (bearishCross) emaFast[n-1] = 95.0;       // passage au-dessus → dessous
+
+    std::vector<Bar> bars;
+    for (size_t i = 0; i + 1 < n; ++i) bars.push_back(make_bar((int)i, 110.0));
+    bars.push_back(make_bar((int)n - 1, lastCloseVoulu));
+
+    std::unique_ptr<IIndicator<double>> atr;
+    if (atrVide) atr = std::make_unique<EmptyIndicator>();
+    else atr = std::make_unique<ValueIndicator>(std::vector<double>(n, atrLast));
+
+    SwingStrategy strat(cfg,
+        std::make_unique<ValueIndicator>(emaFast),
+        std::make_unique<ValueIndicator>(emaSlow),
+        std::make_unique<ValueIndicator>(rsi),
+        std::make_unique<ValueIndicator>(sma),
+        std::move(atr));
+    return strat.evaluate(bars);
+}
+
+} // namespace
+
+// ATR 5/clôture 110 ≈ 4,5 % > seuil 2 % : l'entrée sur CROISEMENT est
+// bloquée — HOLD avec raison explicite (l'activation du filtre se voit).
+TEST(SwingStrategyUnit, AtrFilterBlocksCrossoverEntry) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : la RE-ENTRÉE 8.5 est bloquée aussi.
+TEST(SwingStrategyUnit, AtrFilterBlocksReentry) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::REENTREE, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : l'entrée BREAKOUT 8s.2 est bloquée aussi.
+TEST(SwingStrategyUnit, AtrFilterBlocksBreakout) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::BREAKOUT, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Même seuil : l'entrée PULLBACK 8y.1 est bloquée aussi — le filtre couvre
+// les QUATRE familles d'entrée.
+TEST(SwingStrategyUnit, AtrFilterBlocksPullback) {
+    auto sig = evalAtrFilterCase(EntreeVoulue::PULLBACK, 0.02, 5.0);
+    EXPECT_EQ(sig.type, SignalType::HOLD);
+    EXPECT_NE(sig.reason.find("volatilit"), std::string::npos)
+        << "raison réelle : " << sig.reason;
+}
+
+// Marché calme (ATR 1/110 ≈ 0,9 % < 2 %) : l'entrée passe normalement.
+TEST(SwingStrategyUnit, AtrFilterAllowsEntryBelowThreshold) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 1.0).type,
+              SignalType::BUY);
+}
+
+// Borne STRICTE : ATR/clôture exactement ÉGAL au seuil (5,5/110 = 5 %)
+// n'est PAS bloqué — il faut dépasser (>).
+TEST(SwingStrategyUnit, NoAtrBlockWhenRatioEqualsThreshold) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.05, 5.5).type,
+              SignalType::BUY);
+}
+
+// Seuil 0 → désactivé : même un ATR énorme ne bloque rien.
+TEST(SwingStrategyUnit, AtrFilterDisabledWhenThresholdZero) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.0, 50.0).type,
+              SignalType::BUY);
+}
+
+// Les VENTES ne sont JAMAIS bloquées : croisement baissier + volatilité
+// au-dessus du seuil → SELL quand même (on peut toujours sortir).
+TEST(SwingStrategyUnit, SellNeverBlockedByVolatility) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::REENTREE, 0.02, 5.0,
+                                /*atrVide=*/false, /*bearishCross=*/true).type,
+              SignalType::SELL);
+}
+
+// Fail-open : ATR incalculable (série vide) → filtre INOPÉRANT, l'entrée
+// passe — le comportement chaîne est préservé (décision 2026-07-03).
+TEST(SwingStrategyUnit, AtrFilterFailOpenWhenAtrUnavailable) {
+    EXPECT_EQ(evalAtrFilterCase(EntreeVoulue::CROISEMENT, 0.02, 0.0,
+                                /*atrVide=*/true).type,
+              SignalType::BUY);
+}
+
 // Indicateurs injectés défaillants : HOLD explicite, jamais de crash
 TEST(SwingStrategyUnit, FailedIndicatorComputationReturnsHold) {
     SwingStrategy strat(SwingConfig{},
