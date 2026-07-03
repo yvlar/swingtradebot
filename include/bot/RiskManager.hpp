@@ -57,6 +57,10 @@ public:
         return true;
     }
 
+    // Les surcharges déclarées ici masqueraient sinon les variantes héritées
+    // de checkExitConditions (name hiding) — on ré-expose tout le jeu.
+    using IRiskManager::checkExitConditions;
+
     // Surcharge historique (8 arguments) : trailing % pur — délègue à la
     // variante « barres » avec l'ATR désactivé (comportement inchangé).
     std::optional<std::string> checkExitConditions(

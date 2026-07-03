@@ -476,3 +476,151 @@ TEST(RiskManagerUnit, AtrTrailingSkippedWhenPeakPriceZero) {
                                         0.05, 0.0, 0.03, 3, bars, 3.0)
                      .has_value());
 }
+
+// ════════════════════════════════════════════════════════════
+//  Sortie structurelle « plus bas de N jours » (item 8s.1)
+// ════════════════════════════════════════════════════════════
+// Hypothèse (Sprint 8-quinquies) : une sortie sur STRUCTURE de prix — clôture
+// sous le plus bas des N barres PRÉCÉDENTES (barre courante exclue) — colle
+// mieux aux retournements qu'une distance depuis le pic. Décisions
+// utilisateur d'ouverture (2026-07-03) : gatée par minHoldDays (comme le
+// trailing qu'elle concurrence) ; priorité SL > TP > structure > trailing.
+// exitOnLowestLowN ≤ 0 = désactivé (comportement historique inchangé).
+
+namespace {
+
+    // Barres dont seuls les plus bas importent : open = close, high = close+1,
+    // low fourni par la liste (une barre par valeur), volume constant.
+    std::vector<Bar> barresAvecLows(const std::vector<double>& lows,
+                                    double close = 100.0) {
+        std::vector<Bar> bars;
+        for (double lo : lows)
+            bars.push_back({"2024-01-01", close, close + 1.0, lo, close, 1'000});
+        return bars;
+    }
+
+} // namespace
+
+// Cas central calculé à la main : N=5, plus bas des 5 barres PRÉCÉDENTES
+// = 100. Les deux bornes de fenêtre sont verrouillées en même temps : la
+// barre plus ancienne (low 90) est HORS fenêtre et la barre COURANTE (low 99)
+// est EXCLUE — si l'une ou l'autre comptait, le seuil serait 90 ou 99 et la
+// sortie à 100,0 n'aurait pas lieu. Borne <= verrouillée (100,1 ne sort pas).
+TEST(RiskManagerUnit, StructureExitAtHandComputedThreshold) {
+    RiskManager rm;
+    auto bars = barresAvecLows({90.0, 100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    auto atSeuil = rm.checkExitConditions(100.0, 98.0, 5, 101.0,
+                                          0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(atSeuil.has_value());
+    EXPECT_NE(atSeuil->find("structure"), std::string::npos);
+
+    auto auDessus = rm.checkExitConditions(100.1, 98.0, 5, 101.0,
+                                           0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    EXPECT_FALSE(auDessus.has_value());
+}
+
+// La barre courante est exclue du plus bas : ici elle fait 94 (sous la
+// clôture 95) — si elle comptait, le seuil serait 94 et 95 ne sortirait pas.
+// Le plus bas des 5 PRÉCÉDENTES (100) déclenche la sortie.
+TEST(RiskManagerUnit, StructureExitExcludesCurrentBarFromLowestLow) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0, 94.0});
+    auto r = rm.checkExitConditions(95.0, 98.0, 5, 96.0,
+                                    0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("structure"), std::string::npos);
+}
+
+// N=0 → désactivé : le scénario qui sortirait en structure ne sort pas, et
+// la délégation est l'identité stricte du chemin historique (même raison de
+// trailing que la surcharge 8 arguments).
+TEST(RiskManagerUnit, StructureExitDisabledWhenNZero) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    EXPECT_FALSE(rm.checkExitConditions(100.0, 98.0, 5, 101.0,
+                                        0.05, 0.0, 0.03, 3, bars, 0.0, 0)
+                     .has_value());
+
+    auto r11 = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                      0.05, 0.0, 0.03, 3, bars, 0.0, 0);
+    auto r8  = rm.checkExitConditions(105.0, 100.0, 5, 110.0,
+                                      0.05, 0.0, 0.03, 3);
+    ASSERT_TRUE(r11.has_value());
+    ASSERT_TRUE(r8.has_value());
+    EXPECT_EQ(*r11, *r8);
+}
+
+// Fenêtre trop courte : N=5 exige N+1 barres (les N précédentes + la
+// courante) — avec 5 barres, pas de sortie structure (et pas d'accès hors
+// bornes).
+TEST(RiskManagerUnit, StructureExitNeedsNPlusOneBars) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0});
+    EXPECT_FALSE(rm.checkExitConditions(100.0, 98.0, 5, 101.0,
+                                        0.05, 0.0, 0.03, 3, bars, 0.0, 5)
+                     .has_value());
+}
+
+// Décision utilisateur (2026-07-03) : la structure est gatée par minHoldDays,
+// comme le trailing qu'elle concurrence (miroir de TrailingStopOnlyAfterMinHoldDays).
+TEST(RiskManagerUnit, StructureExitOnlyAfterMinHoldDays) {
+    RiskManager rm;
+    auto bars = barresAvecLows({90.0, 100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    auto before = rm.checkExitConditions(100.0, 98.0, 2, 101.0,
+                                         0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    EXPECT_FALSE(before.has_value());
+    auto after = rm.checkExitConditions(100.0, 98.0, 3, 101.0,
+                                        0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(after.has_value());
+    EXPECT_NE(after->find("structure"), std::string::npos);
+}
+
+// Priorité : −8 % sous l'achat (stop-loss) ET clôture 92 ≤ plus bas 100
+// (structure) vrais simultanément → le stop-loss, vérifié en premier, gagne.
+TEST(RiskManagerUnit, StopLossTakesPriorityOverStructureExit) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    auto r = rm.checkExitConditions(92.0, 100.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("stop-loss"), std::string::npos);
+    EXPECT_EQ(r->find("structure"), std::string::npos);
+}
+
+// Priorité : +11 % depuis l'achat (take-profit 5 %) ET clôture 100 ≤ plus
+// bas 100 (structure) vrais simultanément → le take-profit gagne.
+TEST(RiskManagerUnit, TakeProfitTakesPriorityOverStructureExit) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    auto r = rm.checkExitConditions(100.0, 90.0, 5, 101.0,
+                                    0.05, 0.05, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("take-profit"), std::string::npos);
+    EXPECT_EQ(r->find("structure"), std::string::npos);
+}
+
+// Priorité : clôture 100 ≤ plus bas 100 (structure) ET −9,1 % depuis le pic
+// (trailing %) vrais simultanément → la structure, vérifiée avant le
+// trailing, l'emporte.
+TEST(RiskManagerUnit, StructureExitTakesPriorityOverTrailing) {
+    RiskManager rm;
+    auto bars = barresAvecLows({100.0, 101.0, 102.0, 103.0, 104.0, 99.0});
+    auto r = rm.checkExitConditions(100.0, 98.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, bars, 0.0, 5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("structure"), std::string::npos);
+    EXPECT_EQ(r->find("trailing"), std::string::npos);
+}
+
+// La structure passe AVANT le trailing quel que soit son MODE : avec un
+// trailing ATR actif (seuil 110 − 3×2 = 104), la clôture 99 ≤ plus bas 99
+// sort en « structure », pas en ATR.
+TEST(RiskManagerUnit, StructureExitTakesPriorityOverAtrTrailing) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);   // plus bas constant à 99, ATR = 2
+    auto r = rm.checkExitConditions(99.0, 98.0, 5, 110.0,
+                                    0.05, 0.0, 0.03, 3, bars, 3.0, 5);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NE(r->find("structure"), std::string::npos);
+    EXPECT_EQ(r->find("ATR"), std::string::npos);
+}
