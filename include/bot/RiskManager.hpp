@@ -1,7 +1,9 @@
 #pragma once
 #include "core/Interfaces.hpp"
+#include "indicators/DayIndicators.hpp"
 #include <cmath>
 #include <algorithm>
+#include <sstream>
 
 namespace trading {
 
@@ -10,11 +12,6 @@ namespace trading {
 // Formule de sizing: (Capital × RiskPct) / (Prix × StopLossPct)
 class RiskManager final : public IRiskManager {
 public:
-    // Rend visible la surcharge « barres + trailingAtrMult » héritée (8q.1) :
-    // sans ce using, l'override 8-args ci-dessous MASQUERAIT la variante
-    // 10-args de l'interface pour les appels sur le type concret.
-    using IRiskManager::checkExitConditions;
-
     explicit RiskManager(double maxCapitalUsagePct = 0.95)
         : maxCapitalUsagePct_(maxCapitalUsagePct) {}
 
@@ -60,10 +57,8 @@ public:
         return true;
     }
 
-    // Vérifie les conditions de sortie dans cet ordre de priorité:
-    // 1. Stop-loss strict
-    // 2. Take-profit
-    // 3. Trailing stop (seulement après minHoldDays)
+    // Surcharge historique (8 arguments) : trailing % pur — délègue à la
+    // variante « barres » avec l'ATR désactivé (comportement inchangé).
     std::optional<std::string> checkExitConditions(
         double currentPrice,
         double buyPrice,
@@ -73,6 +68,39 @@ public:
         double takeProfitPct,
         double trailingStopPct,
         int    minHoldDays
+    ) const override {
+        return checkExitConditions(currentPrice, buyPrice, holdDays, peakPrice,
+                                   stopLossPct, takeProfitPct, trailingStopPct,
+                                   minHoldDays, /*bars=*/{},
+                                   /*trailingAtrMult=*/0.0);
+    }
+
+    // Vérifie les conditions de sortie dans cet ordre de priorité:
+    // 1. Stop-loss strict
+    // 2. Take-profit
+    // 3. Trailing stop (seulement après minHoldDays) — deux modes (item 8q.1) :
+    //    • trailingAtrMult > 0 : seuil peak − mult × ATR(14) (vrai true-range
+    //      sur les barres de la fenêtre courante). Il REMPLACE le trailing %
+    //      (décision utilisateur 2026-07-03 : pas de cumul — A/B propre).
+    //      Repli DÉFENSIF sur le % si l'ATR est incalculable (fenêtre < 15
+    //      barres → série vide) ou nul (barres plates) : une position ouverte
+    //      ne reste JAMAIS sans filet.
+    //      NB : comme le seed EMA du backtest, la valeur d'ATR dépend du début
+    //      de fenêtre (seed SMA de Wilder) — déterministe, mais la fenêtre
+    //      prod doit rester ≥ 15 barres (l'unification lookback prod/backtest
+    //      reste D19/9.2).
+    //    • sinon : trailing % historique (peak × (1 − trailingStopPct)).
+    std::optional<std::string> checkExitConditions(
+        double currentPrice,
+        double buyPrice,
+        int    holdDays,
+        double peakPrice,
+        double stopLossPct,
+        double takeProfitPct,
+        double trailingStopPct,
+        int    minHoldDays,
+        const std::vector<Bar>& bars,
+        double trailingAtrMult
     ) const override {
         if (buyPrice <= 0) return std::nullopt;
 
@@ -91,9 +119,24 @@ public:
 
         // 3. Trailing stop (seulement après minHoldDays)
         if (holdDays >= minHoldDays && peakPrice > 0) {
-            double drawdown = (currentPrice - peakPrice) / peakPrice;
-            if (drawdown <= -trailingStopPct)
-                return "trailing-stop (" + formatPct(drawdown) + " depuis le pic)";
+            bool atrActif = false;
+            if (trailingAtrMult > 0) {
+                const auto serie = ATR(kAtrPeriode).computeBars(bars);
+                const double atr = serie.empty() ? 0.0 : serie.back();
+                if (atr > 0) {
+                    atrActif = true;
+                    const double seuil = peakPrice - trailingAtrMult * atr;
+                    if (currentPrice <= seuil)
+                        return "trailing-stop ATR (clôture " + formatPrix(currentPrice)
+                             + " ≤ pic " + formatPrix(peakPrice) + " − "
+                             + formatMult(trailingAtrMult) + "×ATR " + formatPrix(atr) + ")";
+                }
+            }
+            if (!atrActif) {
+                double drawdown = (currentPrice - peakPrice) / peakPrice;
+                if (drawdown <= -trailingStopPct)
+                    return "trailing-stop (" + formatPct(drawdown) + " depuis le pic)";
+            }
         }
 
         return std::nullopt;
@@ -131,11 +174,33 @@ public:
     }
 
 private:
+    // Période d'ATR du trailing adaptatif (item 8q.1) : ATR(14), le standard
+    // de Wilder — non configurable tant que l'edge du mécanisme n'est pas
+    // démontré (seul le multiplicateur est un axe de recherche, 8q.2).
+    static constexpr int kAtrPeriode = 14;
+
     double maxCapitalUsagePct_;
 
     static std::string formatPct(double pct) {
         std::string s = std::to_string(std::round(pct * 1000) / 10);
         return s.substr(0, s.find('.') + 2) + "%";
+    }
+
+    // Prix/ATR avec 2 décimales (les 6 décimales de std::to_string bruitent
+    // les logs de sortie)
+    static std::string formatPrix(double v) {
+        std::ostringstream oss;
+        oss.precision(2);
+        oss << std::fixed << v;
+        return oss.str();
+    }
+
+    // Multiplicateur ATR sans zéros de traîne (3 → « 3 », 2,5 → « 2.5 »)
+    static std::string formatMult(double m) {
+        std::string s = formatPrix(m);
+        while (!s.empty() && s.back() == '0') s.pop_back();
+        if (!s.empty() && s.back() == '.') s.pop_back();
+        return s;
     }
 };
 
