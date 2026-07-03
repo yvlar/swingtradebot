@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -300,6 +301,49 @@ int main() {
             for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
             if (!ws.empty()) alpha /= static_cast<double>(ws.size());
             std::cout << "  -> " << std::left << std::setw(21) << v.first
+                      << std::right << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles ("
+                      << ws.size() << " fenetres)\n";
+        }
+    }
+
+    // 10. 3e famille de signaux (Sprint 8-sexies, item 8y.3) ──────────────────
+    // La chaîne v2 contre : entrée PULLBACK « RSI ≤ seuil en régime up »
+    // (entryPullbackRsiMax, 8y.1 — variantes « s'ajoute » et « remplace »
+    // vis-à-vis de la re-entrée 8.5, comme le breakout 8s.3) et filtre de
+    // VOLATILITÉ sur les entrées (entryMaxAtrPct, 8y.2 — ATR(14)/clôture,
+    // crans {0,010, 0,015, 0,025}, cran bas ajouté par décision utilisateur
+    // d'ouverture), sur les TROIS pavages (le réglage est choisi sur le FIN,
+    // jugé sur les deux autres). Les verrous CI sont dans
+    // test_pullback_volatility_integration.cpp.
+    titre("10. 3e FAMILLE (chaine v2 vs pullback/filtre ATR, trois pavages — 8y.3)");
+    std::vector<std::pair<std::string, SwingConfig>> duelPullback = {
+        {"chaine v2", cfg},
+    };
+    for (double rsiMax : {30.0, 40.0, 50.0}) {
+        SwingConfig cAjout = cfg;
+        cAjout.entryPullbackRsiMax = rsiMax;
+        duelPullback.push_back({"pullback RSI<=" + std::to_string(static_cast<int>(rsiMax)) + " +", cAjout});
+        SwingConfig cRemplace = cAjout;
+        cRemplace.regimeReentry = false;
+        duelPullback.push_back({"pullback RSI<=" + std::to_string(static_cast<int>(rsiMax)) + " rempl.", cRemplace});
+    }
+    for (double seuilAtr : {0.010, 0.015, 0.025}) {
+        SwingConfig c = cfg;
+        c.entryMaxAtrPct = seuilAtr;
+        std::ostringstream nomAtr;
+        nomAtr << "filtre ATR " << std::fixed << std::setprecision(3) << seuilAtr;
+        duelPullback.push_back({nomAtr.str(), c});
+    }
+    for (const auto& p : pavagesAtr) {
+        std::cout << "\n  Pavage " << p.nom << " :\n";
+        for (const auto& v : duelPullback) {
+            const auto ws = WalkForward(v.second, qqq, p.is, p.oos, p.pas, p.dec).run();
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << std::left << std::setw(22) << v.first
                       << std::right << " : alpha OOS moyen "
                       << std::fixed << std::setprecision(4) << alpha
                       << " pt, " << trades << " trades OOS pooles ("
