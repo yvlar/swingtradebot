@@ -10,38 +10,36 @@
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
 | Architecture | 88        | 68                           |
-| Qualité      | 91        | 60                           |
-| FinTech      | 83        | 38                           |
+| Qualité      | 92        | 60                           |
+| FinTech      | 84        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-02 (Sprint Sécurité-Réel, 3e passe — durcissement PRODUCTION : gate live mécanique (le « paper tant que pas d'edge » est désormais un verrou testé), heartbeat sur cycle sain, secrets par env, kill-switch alerté et externalisé, CI Release+sanitizers (2 fuites et 1 data race trouvées et corrigées), Docker prod Release+healthcheck, README/RUNBOOK, prompts protégés. 2e passe : D38, 9.1, 9.3, SMS E2E. 1re passe : B1/B2/B3/B4/M2/M3 + re-baseline (D37))
-- **Sprint courant** : Sprint 8-ter — Valider le candidat d'edge HORS de la grille qui l'a choisi (candidat post-B2 : 9/250/0,03, alpha OOS +0,23 — re-calé, voir D37) — décision utilisateur du 2026-07-02
+- **Dernière mise à jour** : 2026-07-03 (Sprint 8-ter — validation hors-grille du candidat d'edge : candidat RÉFUTÉ sur les 3 volets (fenêtres non-choisies, Monte-Carlo, grille resserrée) → « candidat non confirmé » consigné, aucune adoption, prod reste paper. Nouveau mécanisme additif : offset de départ du pavage WalkForward)
+- **Sprint courant** : Sprint 8-quater — Trailing adaptatif ATR (ré-ouverture de 8b.4 : gate OUVERT depuis B2 — trailingStopPct est l'axe le plus sensible — et 8t.3 confirme que le trailing FIXE est l'axe fragile du plateau) — décision utilisateur du 2026-07-03
 
-> ### ⚠️ Rentabilité : premier CANDIDAT d'edge (grille 8b.1) — non adopté, à valider hors-grille
+> ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
-> capacité à gagner de l'argent. Le Sprint 8-bis a jugé la chaîne v2 sur un pavage
-> fin (4 fenêtres OOS, 8b.3 — verdict Sprint 8 CONFIRMÉ, aucune inversion : alpha
-> −7,15 vs −9,05 pour l'état 8.1) et sur 3 actifs supplémentaires (8b.2 — aucun
-> alpha OOS > 0, mais comportement cohérent partout : la chaîne n'est pas un
-> artefact QQQ). La grille ré-axée sur la chaîne v2 (8b.1) a produit le **premier
-> candidat d'edge du projet** : (emaFast=9, smaT=250, trail=0,05) → **alpha OOS
-> +0,10 sur QQQ, +1,26 IWM, +0,81 MDY, −0,53 SPY** (Sharpe OOS 1,22, verdict
-> verrouillé par `V2ChainExtendedGridOosVerdictIsLocked`). Réserves sérieuses :
-> biais de sélection (meilleur de 18 combos jugés sur les MÊMES fenêtres),
-> 4-8 trades OOS par actif, et la grille pleine 81 combos retient un plateau
-> différent sur les axes EMA — seul **smaT=250 est stable**. **Décision
-> utilisateur (2026-07-02) : consigner, ne PAS adopter — le Sprint 8-ter valide
-> le candidat hors-grille avant toute adoption. Pas de déploiement, la prod
-> reste paper.**
+> capacité à gagner de l'argent. Le Sprint 8-ter a fait passer au candidat post-B2
+> (emaFast=9, smaT=250, trail=0,03 — alpha OOS +0,23 sur SES fenêtres de grille)
+> une validation dédiée HORS de la grille qui l'a choisi. Verdict triple, tous
+> verrouillés par test : **8t.1** — sur le pavage canonique (fenêtres jamais vues
+> par la grille) le candidat rend **−19,10 pt vs −9,90** pour la chaîne (pire de
+> 9,2 pts), et le signe s'INVERSE sur le pavage décalé (−5,38 vs −12,83) : un
+> avantage qui dépend du choix des fenêtres n'est pas un edge. **8t.2** — Monte-
+> Carlo des trades OOS : CAGR p50 **4,41 % < 6,60 %** (seul acquis : DD p95
+> 11,71 % vs 16,48 %). **8t.3** — la grille resserrée autour du candidat dérive
+> vers (9, **275**, **0,04**) : même l'axe « stable » (smaT, D36) bouge avec la
+> maille — artefact de sélection. **Conclusion (8t.4, branche « sinon ») :
+> candidat non confirmé, AUCUNE adoption, la prod reste paper. Retour à la
+> recherche : Sprint 8-quater (trailing ATR, gate 8b.4 ouvert).**
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **30**  | Premier réglage à alpha OOS > 0 sur 3 actifs sur 4, trouvé et VERROUILLÉ honnêtement (jamais l'IS, plateau, filtre alpha) — mais non validé hors de la grille qui l'a choisi, et la chaîne par défaut reste négative (−7,15). La note ne franchira 50 qu'avec le candidat CONFIRMÉ hors-grille (Sprint 8-ter), et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 537/537 verts (465 unitaires + 72 intégration) — et la
+> | **Rentabilité** | **25**  | Le premier candidat d'edge est réfuté proprement (3 verrous indépendants) : retour à « aucun candidat vivant », d'où −5. La chaîne v2 conserve sa progression (−6,88 sur pavage fin) et le PROCESSUS de validation hors-grille existe désormais (offset de pavage, triple verdict) — c'est lui qui empêchera d'adopter un artefact. La note ne franchira 50 qu'avec un candidat CONFIRMÉ hors-grille, et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
+- **État des tests** : 545/545 verts (468 unitaires + 77 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +25 à la 1re passe du Sprint Sécurité-Réel (470 → 495),
-  +15 à la 2e passe (495 → 510), +27 à la 3e passe (510 → 537), aucune dérive
-  hors cycle (`ctest -N` recalé à chaque passe). Détail au changelog.
+  suites concurrentes. +8 au Sprint 8-ter (537 → 545), aucune dérive hors
+  cycle (`ctest -N` recalé à l'ouverture : 537 conforme). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -620,7 +618,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   sans gate, fichiers de règles protégés) ; docs binaires marquées
   obsolètes ; UML complété.
 
-# 🟣 SPRINT 8-TER — Valider le candidat d'edge hors-grille — **sprint courant**
+# 🟣 SPRINT 8-TER — Valider le candidat d'edge hors-grille ✅ (clos le 2026-07-03, verdict : candidat RÉFUTÉ)
 
 > Décision utilisateur (2026-07-02) à la clôture du Sprint 8-bis : la grille a produit
 > le premier candidat d'edge. **RE-CALÉ post-B2 (D37, correction du look-ahead)** : le
@@ -637,31 +635,70 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > NB : le gate 8b.4 (trailing ATR) est OUVERT depuis B2 (trailing = axe le plus
 > sensible) — à ré-examiner après ce sprint.
 
-- [ ] **8t.1** **Verdict du candidat sur des fenêtres qu'il n'a PAS choisies** : re-juger
-  le candidat vs la chaîne v2 sur le pavage canonique 2 fenêtres (IS=700/OOS=400,
-  `test_strategy_v2_integration.cpp:23-25`) ET sur un pavage décalé (ex. IS=500/OOS=300
-  avec offset de départ ≠ 0, `WalkForward.hpp:53-72` — vérifier que le harnais permet
-  l'offset, sinon l'ajouter additivement). **Acceptation** : verdicts verrouillés
-  (config candidat EXPLICITE, D33) ; alpha OOS du candidat > chaîne v2 sur les fenêtres
-  non-choisies, sinon consigner « candidat non confirmé » (résultat valide).
-- [ ] **8t.2** **Monte-Carlo du candidat** : bootstrap des trades OOS poolés du candidat
-  (`MonteCarlo.hpp`, graine fixe) — distribution CAGR/drawdown p5/p50/p95 ; comparer à
-  la chaîne v2. **Acceptation** : verdict verrouillé ; p50 CAGR du candidat ≥ chaîne et
-  p95 drawdown non dégradé, sinon « non confirmé ».
-- [ ] **8t.3** **Grille de CONFIRMATION resserrée autour du candidat** : voisinage fin
-  smaT {225,250,275} × trail **{0,02/0,03/0,04}** (centré sur le candidat post-B2 —
-  l'ancienne grille {0,04/0,05/0,06} excluait trail=0,03) × emaFast {7,9,11}, mêmes
-  objectif/pavage que 8b.1 — un vrai plateau doit rester alpha > 0 quand on resserre
-  les crans (D36 : les axes EMA du plateau bougent entre 18 et 81 combos, seul
-  smaT=250 est stable).
-  **Acceptation** : verdict verrouillé ; le plateau resserré reste alpha > 0 et contient
-  smaT=250, sinon « artefact de grille ».
-- [ ] **8t.4** **Décision d'adoption (Décision requise)** : si 8t.1 ET 8t.2 ET 8t.3
-  confirment, poser à l'utilisateur l'adoption du candidat comme défauts (SwingConfig +
-  ProdConfig) avec goldens re-figés et delta chiffré, et re-dérouler la DoD du Sprint 8
-  (battre le B&H net de coûts en OOS, OU < 5 pts d'écart avec drawdown réduit ≥ 50 %).
-  Sinon : consigner « candidat non confirmé », la prod reste paper, retour à la
-  recherche (8b.4 ré-ouvrable, autres axes).
+- [x] **8t.1** **Verdict du candidat sur des fenêtres qu'il n'a PAS choisies** → `f332f33` + `401067a`
+  Prérequis livré : `WalkForward` gagne un paramètre `offset` additif (défaut 0,
+  rétro-compat bit-identique verrouillée par `OffsetZeroMatchesLegacyCtor`).
+  Pavage décalé arbitré à l'ouverture (décision utilisateur 2026-07-03) :
+  IS=500/**OOS=400**/pas=400/**offset=90** (3 fenêtres inédites [590,990) [990,1390)
+  [1390,1790), les 90 dernières barres jugées en OOS pour la 1re fois) — et non
+  l'exemple littéral OOS=300 (warmup candidat ~251 barres → ~49 tradables, piège
+  D34/D35). **Verdict verrouillé (`test_candidate_validation_integration.cpp`) :
+  NON CONFIRMÉ** — pavage canonique : candidat **−19,10** vs chaîne −9,90 (10 vs 11
+  trades poolés) ; pavage décalé : candidat −5,38 vs chaîne −12,83. Le SIGNE de la
+  comparaison s'inverse selon le pavage : pas un edge.
+- [x] **8t.2** **Monte-Carlo du candidat** → `fff8a2a`
+  Bootstrap (graine 42, 2000 chemins) des trades OOS poolés du pavage décalé
+  (fenêtres disjointes et non-choisies), même dénominateur d'années (4,77 ans).
+  **Verdict verrouillé : NON CONFIRMÉ** — CAGR p50 candidat **4,41 % < 6,60 %**
+  chaîne (le critère « ≥ » échoue même sur le pavage favorable au candidat).
+  Seul acquis, verrouillé aussi : risque plus faible (DD p95 11,71 % vs 16,48 %).
+- [x] **8t.3** **Grille de CONFIRMATION resserrée autour du candidat** → `05569e1`
+  27 combos emaFast {7,9,11} × smaT {225,250,275} × trail {0,02/0,03/0,04},
+  candidat au CENTRE du cube, mêmes objectif/pavage que 8b.1.
+  **Verdict verrouillé : ARTEFACT DE GRILLE** — le filtre alpha > 0 passe mais le
+  plateau resserré est (9, **275**, **0,04**) : il ne contient PAS smaT=250 ; à
+  crans resserrés, même l'axe réputé stable (D36) dérive. Verrou
+  `EXPECT_NE(smaT, 250)` = cœur du verdict. Exécution 2,3 s (timeout intact).
+- [x] **8t.4** **Décision d'adoption** → branche « sinon » appliquée (aucun code)
+  La condition « 8t.1 ET 8t.2 ET 8t.3 confirment » est FAUSSE (0 volet sur 3) :
+  **« candidat non confirmé » consigné, AUCUNE adoption** (SwingConfig, ProdConfig,
+  config/prod.json et goldens strictement inchangés), la prod reste paper.
+  Retour à la recherche : Sprint 8-quater (8b.4, décision utilisateur 2026-07-03).
+
+# 🟣 SPRINT 8-QUATER — Trailing adaptatif ATR (ré-ouverture de 8b.4) — **sprint courant**
+
+> Décision utilisateur (2026-07-03) à la clôture du Sprint 8-ter : le candidat de
+> grille est réfuté, retour à la recherche par l'axe désigné DEUX FOIS par la
+> mesure : `trailingStopPct` est l'axe le plus sensible depuis B2 (verrou 8b.1,
+> sensibilité 0,266) ET l'axe qui fait dériver le plateau resserré (8t.3 :
+> 0,03 → 0,04). Hypothèse de l'item 8b.4 : un trailing FIXE en % est fragile parce
+> que la « bonne » distance dépend de la volatilité — un trailing en multiples
+> d'ATR (`include/indicators/DayIndicators.hpp:20`, vrai true-range depuis 8.0/D18)
+> s'adapte. Discipline inchangée : flag additif A/B-able, verdicts OOS verrouillés
+> (configs EXPLICITES D33, comptes de trades D34), et — leçon 8-ter — tout
+> gagnant de grille est jugé sur des fenêtres NON-CHOISIES avant toute adoption.
+
+- [ ] **8q.1** **Trailing ATR dans le moteur de sortie** : nouveau réglage
+  `SwingConfig::trailingAtrMult` (défaut 0 = désactivé → comportement et goldens
+  strictement inchangés) ; quand > 0, la sortie trailing de `checkExitConditions`
+  (`include/bot/RiskManager.hpp:62`, branche trailing `:90`) utilise
+  `peak − mult × ATR(14)` au lieu de `peak × (1 − trailingStopPct)`. L'ATR est
+  calculé sur les barres de la fenêtre courante (`computeBars`, vrai true-range).
+  Convention à trancher à l'implémentation : priorité si les deux trailing sont
+  configurés (proposition : ATR remplace le %, il ne s'y ajoute pas).
+  **Acceptation** : tests rouges unitaires (RiskManagerUnit) sur le calcul de
+  sortie ATR calculé à la main ; flag off = aucun golden touché (vérifié).
+- [ ] **8q.2** **Verdict OOS du trailing ATR vs chaîne v2** : chaîne + ATR (grille
+  courte de `mult` ∈ {2, 3, 4} pour choisir, jugée en OOS) vs chaîne v2 trail fixe
+  0,03, sur les TROIS pavages existants (canonique 700/400, fin 500/300, décalé
+  500/400 offset 90 — leçon 8-ter : juger d'emblée sur des fenêtres variées,
+  `test_candidate_validation_integration.cpp` comme modèle).
+  **Acceptation** : verdicts verrouillés (D33/D34) ; alpha OOS ≥ chaîne sur les
+  pavages non-choisis par la mini-grille, sinon « pas d'amélioration » (valide).
+- [ ] **8q.3** **Décision de suite (Décision requise)** : si 8q.2 confirme une
+  amélioration robuste, poser l'adoption du défaut (goldens re-figés, delta
+  chiffré) ; sinon consigner et statuer avec l'utilisateur sur la suite de la
+  recherche (autres familles de signaux vs pause stratégie).
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
@@ -720,11 +757,70 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D33 | ✅ | (Sprint 8) **Les verrous de verdict OOS étaient construits sur `prodSwingConfig()` = les DÉFAUTS de SwingConfig** (`test_strategy_v2_integration.cpp`) : le premier item de 8.2–8.5 qui adoptait son réglage comme nouveau défaut aurait déplacé silencieusement la mesure HISTORIQUE du verdict 8.1. Corrigé AVANT tout changement de défaut (`a0ab08d`) : chaque verrou construit sa config champ par champ (`cfg81()`, `cfg82()`…). **Règle de DoD adoptée : tout verrou de verdict construit sa config EXPLICITEMENT, jamais depuis les défauts** | Corrigé (commit prep du sprint) ; règle ajoutée à la DoD des verdicts |
 | D34 | 🟡 | (Sprint 8) **Les 2 fenêtres OOS du pavage IS=700/OOS=400 ne portaient AUCUN trade sous la config 8.1** : l'alpha OOS −14,10 du verdict 8.1 était du pur cash drag (jamais en position). Conséquence : l'acceptation de 8.2 (« gain moyen des gagnants ↑ ») était INDÉCIDABLE à son tour de rôle — adoptée comme retrait de contrainte morte, ré-examinée (et validée : −10,03 vs −10,20) sur la chaîne finale une fois 8.3/8.5 livrés. Leçon : un verdict OOS sans trades ne juge que le temps en cash ; vérifier le nombre de trades poolés AVANT d'interpréter les ratios. Le pavage fin (8b.3) réduit ce risque structurellement | ✅ Adressé au Sprint 8-bis (8b.3, `481f713`) : 13 trades OOS poolés sur 4 fenêtres, chaque verrou fige désormais son NOMBRE de trades. Résidu : l'état 8.1 reste à 0 trade OOS même sur 4 fenêtres (constat, pas un défaut du pavage) |
 | D35 | 🟡 | (Sprint 8-bis) **Le warmup local de `runRange` (~201 barres, SMA200) consomme le début de CHAQUE fenêtre** (`BackTester.hpp:142-145` : chaque sous-fenêtre ré-amorce ses indicateurs — isolation honnête, mais coût fixe). Une fenêtre OOS de 250 barres n'aurait que ~49 barres tradables → verdict quasi pur cash drag (le piège D34 sous une autre forme). Règle adoptée : **dimensionner toute fenêtre OOS largement au-dessus du warmup** (OOS=300 → ~99 tradables pour le pavage fin ; l'exemple littéral « OOS=250 » de l'item 8b.3 a été ajusté en conséquence, décision utilisateur 2026-07-02). Garde-fou possible (backlog) : `WalkForward` pourrait AVERTIR si `oosBars ≤ warmup + marge` | Documenté (choix consigné dans `test_strategy_v2_integration.cpp`) ; garde-fou au backlog qualité harnais |
-| D36 | 🟠 | (Sprint 8-bis) **Premier candidat d'edge — mais le plateau de grille n'est PAS stable entre les tailles de grille.** La grille 18 combos retient (emaFast=9, smaT=250, trail=0,05) ; la grille pleine 81 combos (axes emaSlow/emaFast élargis) retient (emaFast=5, emaSlow=50, smaT=250, trail=0,03). Seul **smaTrendPeriod=250** est commun aux deux plateaux. S'y ajoutent le biais de sélection (le « meilleur de N combos » est jugé sur les MÊMES fenêtres OOS que son verdict) et des échantillons minces (4-8 trades OOS/actif). Leçon : un gagnant de grille n'est pas un edge — c'est une HYPOTHÈSE à confirmer hors de la grille qui l'a choisie. **Décision utilisateur (2026-07-02) : consigner sans adopter** | **Sprint 8-ter** (validation hors-grille : fenêtres non-choisies, Monte-Carlo, grille resserrée, décision d'adoption gatée) |
-| D37 | 🔴 | (Sprint Sécurité-Réel) **Le backtest avait un biais de LOOK-AHEAD structurel** : décision ET fill au close de la même barre (`BackTester.hpp` + `PaperBroker`), alors qu'en prod la décision porte sur le close d'hier et l'exécution se fait au prix d'aujourd'hui. TOUTES les mesures historiques (goldens, verdicts OOS 8.x, grille 8b.1, Monte-Carlo) étaient prises sur un moteur flatté. Corrigé (S.8, `f89d35a` : exécution à l'open i+1) et re-mesuré : aucune inversion des verdicts qualitatifs (DoD toujours non atteinte, pas d'edge multi-actifs), l'in-sample QQQ monte même de +18,70 à +19,33 %. **MAIS le verdict de grille 8b.1 change** : le plateau devient (emaFast=9, smaT=250, **trail=0,03**) avec alpha OOS **+0,23** (vs 0,05/+0,10 pré-B2 — le candidat SURVIT à la correction, bon signe), et l'axe le plus sensible devient **trailingStopPct** (0,266 vs smaT 0,194) → **le gate 8b.4 (trailing adaptatif ATR) s'OUVRE désormais**. Le Sprint 8-ter doit re-caler son point d'entrée (candidat = 9/250/0,03) et ses grilles de confirmation | **Sprint 8-ter** (re-caler le candidat post-B2) + 8b.4 ré-ouvrable |
+| D36 | 🟠 | (Sprint 8-bis) **Premier candidat d'edge — mais le plateau de grille n'est PAS stable entre les tailles de grille.** La grille 18 combos retient (emaFast=9, smaT=250, trail=0,05) ; la grille pleine 81 combos (axes emaSlow/emaFast élargis) retient (emaFast=5, emaSlow=50, smaT=250, trail=0,03). Seul **smaTrendPeriod=250** est commun aux deux plateaux. S'y ajoutent le biais de sélection (le « meilleur de N combos » est jugé sur les MÊMES fenêtres OOS que son verdict) et des échantillons minces (4-8 trades OOS/actif). Leçon : un gagnant de grille n'est pas un edge — c'est une HYPOTHÈSE à confirmer hors de la grille qui l'a choisie. **Décision utilisateur (2026-07-02) : consigner sans adopter** | ✅ Soldée au Sprint 8-ter (2026-07-03) : la validation hors-grille RÉFUTE le candidat sur les 3 volets (8t.1 fenêtres non-choisies : −19,10 vs −9,90 ; 8t.2 Monte-Carlo : CAGR p50 4,41 < 6,60 ; 8t.3 grille resserrée : plateau dérivé vers 275/0,04). La méfiance de D36 était justifiée — le processus a fonctionné |
+| D37 | 🔴 | (Sprint Sécurité-Réel) **Le backtest avait un biais de LOOK-AHEAD structurel** : décision ET fill au close de la même barre (`BackTester.hpp` + `PaperBroker`), alors qu'en prod la décision porte sur le close d'hier et l'exécution se fait au prix d'aujourd'hui. TOUTES les mesures historiques (goldens, verdicts OOS 8.x, grille 8b.1, Monte-Carlo) étaient prises sur un moteur flatté. Corrigé (S.8, `f89d35a` : exécution à l'open i+1) et re-mesuré : aucune inversion des verdicts qualitatifs (DoD toujours non atteinte, pas d'edge multi-actifs), l'in-sample QQQ monte même de +18,70 à +19,33 %. **MAIS le verdict de grille 8b.1 change** : le plateau devient (emaFast=9, smaT=250, **trail=0,03**) avec alpha OOS **+0,23** (vs 0,05/+0,10 pré-B2 — le candidat SURVIT à la correction, bon signe), et l'axe le plus sensible devient **trailingStopPct** (0,266 vs smaT 0,194) → **le gate 8b.4 (trailing adaptatif ATR) s'OUVRE désormais**. Le Sprint 8-ter doit re-caler son point d'entrée (candidat = 9/250/0,03) et ses grilles de confirmation | ✅ Re-calage fait au Sprint 8-ter (grille 8t.3 centrée sur 9/250/0,03, section 6 du CLI corrigée trail 0,05 → 0,03) ; le candidat re-calé est ensuite RÉFUTÉ (voir D36). Le gate 8b.4 ouvert par cette découverte devient le Sprint 8-quater |
 | D38 | ✅ | (Sprint Sécurité-Réel) **`IBKRBroker::residentStopOrderId_` n'est pas persisté** : après un restart, `cancelStopLoss` ne retrouve pas l'orderId du stop résident déposé par le process précédent → l'annulation à la sortie est un no-op et le stop IBKR peut rester orphelin chez le broker (se déclencherait après coup). Mitigé par : (a) `stopArmed` persisté empêche d'empiler un 2e stop, (b) le cas « position fermée par le stop résident » est réconcilié proprement (reset + cooldown de ré-entrée) | ✅ Corrigé à la 2e passe (S.10, `75339e2`) : re-découverte broker-locale via GET `/iserver/account/orders` + tag cOID « swingbot-SYM-STOP- » — pas de persistance nécessaire |
+| D39 | 🟡 | (Sprint 8-ter) **Un axe de grille n'est « stable » qu'à la maille où on l'a mesuré.** D36 concluait « seul smaT=250 est stable » entre les grilles 18 et 81 combos (crans 150/200/250) ; la grille de CONFIRMATION resserrée (crans 225/250/275, 8t.3) fait dériver ce même axe vers 275 (et le trailing vers 0,04). Leçon générale : la stabilité d'un plateau doit être testée en RESSERRANT les crans autour du gagnant (le mécanisme 8t.3, désormais réutilisable), pas seulement en élargissant la grille. Garde-fou adopté de fait : toute future validation de candidat inclut une grille resserrée verrouillée | Documenté (mécanisme en place : `CandidateConfirmationTightGridOosVerdictIsLocked` sert de modèle) |
 
 ## Changelog
+
+### Sprint 8-ter — Valider le candidat d'edge hors-grille (2026-07-03)
+
+**Baseline réelle à l'ouverture** : **537/537 verte**, conforme au tableau de bord
+(`ctest -N` = 537, aucune dérive hors cycle). Environnement : Linux, paquets
+système (chemin CI, sans vcpkg).
+
+**Décisions utilisateur d'ouverture** : (1) pavage décalé de 8t.1 =
+IS=500/**OOS=400**/pas=400/**offset=90** et non l'exemple littéral OOS=300
+(warmup candidat ~251 barres → ~49 tradables, piège D34/D35 — même arbitrage
+que D35 au Sprint 8-bis) ; (2) périmètre = sprint complet + clôture.
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `f332f33` feat(backtest) : offset de départ additif du pavage walk-forward (préparation 8t.1)
+- `401067a` test(backtest) : verdict hors-grille du candidat vs chaîne v2, pavages canonique et décalé (item 8t.1)
+- `fff8a2a` test(backtest) : Monte-Carlo des trades OOS poolés du candidat vs chaîne v2 (item 8t.2)
+- `05569e1` test(backtest) : grille de confirmation resserrée autour du candidat, 27 combos (item 8t.3)
+
+**Tests** : 537 → **545** (+8 : 468 unitaires + 77 intégration). Ajouts :
+`WalkForwardUnit` +3 (pavage décalé aux bornes exactes, rétro-compat offset=0
+bit-identique, série trop courte pour l'offset), nouvelle suite
+`CandidateValidationIntegration` +4 (structure du pavage décalé, verdicts
+canonique/décalé, Monte-Carlo), `GridOptimizerIntegration` +1 (grille resserrée).
+Discipline « sentinelles → passe rouge → figer » sur les 4 verrous de mesure ;
+rouge de compilation (ctor 6 arguments inexistant) pour l'offset. Sprint 100 %
+MESURE : le seul code produit touché est `WalkForward.hpp` (paramètre additif,
+défaut 0 = pavage historique inchangé) — **goldens et verrous historiques
+strictement intacts** (recoupement : la chaîne rend exactement −9,9023 / 11
+trades sur le pavage canonique, conforme au verrou de
+`test_strategy_v2_integration.cpp`).
+
+**Verdicts OUT-OF-SAMPLE du sprint** (tous verrouillés par test — le candidat
+post-B2 (9/250/0,03) vs la chaîne v2, configs explicites D33) :
+- **8t.1 (fenêtres non-choisies)** : **NON CONFIRMÉ** — pavage canonique
+  700/400 : candidat −19,10 vs chaîne −9,90 (pire de 9,2 pts, 10 vs 11 trades) ;
+  pavage décalé 500/400 offset 90 : candidat −5,38 vs chaîne −12,83 (+7,45 pts).
+  Le signe de la comparaison s'INVERSE selon le pavage → l'avantage mesuré par
+  la grille 8b.1 était un artefact de ses fenêtres, pas un edge.
+- **8t.2 (Monte-Carlo, trades OOS du pavage décalé, 4,77 ans)** : **NON
+  CONFIRMÉ** — CAGR p50 candidat 4,41 % < chaîne 6,60 % (critère « ≥ » échoué
+  même sur le pavage favorable). Acquis verrouillé : risque plus faible
+  (DD p95 11,71 % vs 16,48 %, DD p50 5,32 % vs 7,93 %).
+- **8t.3 (grille resserrée 27 combos, candidat au centre)** : **ARTEFACT DE
+  GRILLE** — alpha > 0 passe mais le plateau dérive vers (9, 275, 0,04) : il ne
+  contient pas smaT=250 (D39 — même l'axe « stable » de D36 bouge avec la maille).
+- **8t.4** : condition d'adoption FAUSSE (0/3) → branche « sinon » mécanique :
+  « candidat non confirmé » consigné, aucune adoption, prod paper. Suite
+  décidée avec l'utilisateur : **Sprint 8-quater** (trailing ATR, gate 8b.4).
+
+**Découvertes** : D39 (la stabilité d'un axe de grille dépend de la maille —
+le mécanisme « grille resserrée verrouillée » devient le garde-fou standard).
+D36 et D37 soldées (validation hors-grille rendue ; re-calage post-B2 fait).
+
+**Interfaces modifiées** (additives uniquement) : `WalkForward` gagne un 6e
+paramètre `offset` (défaut 0, rétro-compat bit-identique verrouillée) ;
+`printReport` affiche le décalage s'il est non nul. CLI `validate` : section 6
+re-calée sur le candidat post-B2 (trail 0,05 → 0,03, D37), nouvelles sections
+7 (duel par pavage), 7-bis (Monte-Carlo du duel), 7-ter (grille resserrée).
 
 ### Sprint Sécurité-Réel, 3e passe — durcissement production (2026-07-02)
 
@@ -1304,6 +1400,57 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 8-ter — Valider le candidat d'edge hors-grille (2026-07-03)
+
+**1. Découpage** : bon — 3 items de mesure indépendants + un gate de décision, et
+l'ORDRE avait une logique de coût : 8t.1 (le juge le plus dur, fenêtres non-choisies)
+d'abord ; dès son verdict, 8t.2 et 8t.3 ne pouvaient plus que confirmer ou nuancer.
+Les trois volets ont convergé (0/3) SANS se recouvrir : 8t.1 juge la généralisation
+aux fenêtres, 8t.2 la distribution des trades, 8t.3 la stabilité à la maille — c'est
+la bonne décomposition d'une validation de candidat et elle est désormais réutilisable
+telle quelle (fichier `test_candidate_validation_integration.cpp` + grille resserrée
+comme modèles). Aucune dépendance ratée ; le seul prérequis technique (offset de
+pavage) avait été identifié À LA PLANIFICATION en relisant `WalkForward.hpp:61`.
+
+**2. Suffisance des prompts** : suffisants, aucune improvisation de workflow. Les
+deux décisions produit (fenêtres du pavage décalé — l'exemple littéral OOS=300 de la
+ROADMAP retombait dans le piège D34/D35 —, et périmètre) posées à l'utilisateur À
+L'OUVERTURE (leçon récurrente depuis le Sprint 3) ; la décision de clôture (sprint
+suivant) posée avec le triple verdict chiffré. Le gate 8t.4 s'est résolu
+MÉCANIQUEMENT (condition « 3/3 confirment » fausse → branche « sinon » prescrite par
+la ROADMAP) : aucune question d'adoption à poser, c'est le scénario prévu.
+**Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt / garde-fous** : (a) **D39** — « seul smaT=250 est stable »
+(D36) n'était vrai qu'à la maille 150/200/250 : la grille resserrée l'a réfuté en une
+passe de 2,3 s. Garde-fou adopté : toute validation de candidat inclut désormais une
+grille RESSERRÉE verrouillée (le test 8t.3 est le modèle), pas seulement des grilles
+élargies. (b) L'exemple littéral d'un item de ROADMAP (OOS=300) peut être piégé par
+une interaction découverte APRÈS sa rédaction (warmup 251 du candidat) : re-dériver
+les constantes d'un item au moment de l'exécuter, jamais les copier — c'est
+exactement ce que la relecture d'ouverture a fait. (c) Le CLI portait un candidat
+pré-B2 périmé (trail=0,05, section 6) : quand un verdict de test est re-figé (D37),
+balayer AUSSI les outils d'inspection qui citent les mêmes valeurs.
+
+**4. Notes /100** (précédent 88/91/83/72, Rentabilité 30) :
+- **Architecture 88** (=) : une seule extension, strictement additive (offset de
+  pavage, défaut 0 bit-identique) — propre mais trop petite pour bouger la note.
+  Toujours plafonnée par 9.2 (lookback unifié) côté moteur.
+- **Qualité 92** (+1) : +8 tests dont un recoupement INTER-FICHIERS (la chaîne rend
+  −9,9023/11 trades dans le nouveau fichier, identique au verrou historique), chaque
+  verdict avec direction MESURÉE puis figée (jamais inventée), goldens intacts sur
+  tout le sprint, rétro-compat de l'offset prouvée par test dédié.
+- **FinTech 84** (+1) : le projet sait désormais RÉFUTER un candidat — validation
+  hors-grille en trois volets indépendants, tous verrouillés. C'est le pendant
+  négatif indispensable du harnais (un processus qui ne peut que confirmer ne prouve
+  rien). +1 seulement car l'edge lui-même n'a pas progressé ; > 85 exige un candidat
+  CONFIRMÉ hors-grille.
+- **Production 72** (=) : rien de prod ce sprint (voulu) ; D32 et 9.x inchangés.
+- **Rentabilité 25** (−5) : le premier candidat est mort — honnêtement, la capacité
+  démontrée à gagner de l'argent recule à « aucun candidat vivant ». Ce qui reste :
+  la chaîne v2 (−6,88 en OOS fin) et un processus de validation qui a coûté 4 commits
+  pour éviter d'adopter un artefact — moins cher qu'un déploiement raté.
 
 ### Sprint 8-bis — Chercher l'edge avec le harnais (2026-07-02)
 
