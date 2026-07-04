@@ -171,6 +171,23 @@ SwingConfig cfgPullback(double rsiMax = kRsiCandidat) {
     return c;
 }
 
+// Variantes d'ATTÉNUATION du drawdown (item 8d.6, décision 8d.5) — le pullback
+// gagne de l'alpha mais double le drawdown de queue ; on cherche à le brider
+// SANS perdre l'alpha, avec des champs de config EXISTANTS :
+//   • + filtre de volatilité : n'acheter le creux QUE si l'ATR est bas
+//     (entryMaxAtrPct, 8y.2, s'applique à toutes les entrées) ;
+//   • + stop plus serré (stopLossPct, défaut 0,05).
+SwingConfig cfgPullbackAtr(double maxAtrPct) {
+    SwingConfig c = cfgPullback();
+    c.entryMaxAtrPct = maxAtrPct;
+    return c;
+}
+SwingConfig cfgPullbackStop(double stopPct) {
+    SwingConfig c = cfgPullback();
+    c.stopLossPct = stopPct;
+    return c;
+}
+
 double meanOosAlpha(const std::vector<WfWindow>& w) {
     if (w.empty()) return 0.0;
     double s = 0.0;
@@ -418,4 +435,71 @@ TEST(PullbackConfirmationIntegration, PullbackLongShiftedPavingVerdictIsLocked) 
     EXPECT_NEAR(aP, -10.0033, 1e-2);
     EXPECT_EQ(tradesOos(wP).size(), 105u);
     EXPECT_GT(aP, meanOosAlpha(wC));         // acceptation alpha PASSE aussi ici
+}
+
+// ─── 8d.6 — ATTÉNUATION du drawdown : brider le pullback sans perdre l'alpha ──
+// Décision utilisateur 8d.5 (2026-07-04) : ne pas adopter tant que le drawdown
+// de queue n'est pas maîtrisé. On teste, avec des champs de config EXISTANTS,
+// si gater le pullback par la volatilité (entryMaxAtrPct) ou resserrer le stop
+// (stopLossPct) ramène le DD p95 vers celui de la chaîne (10,80) TOUT EN
+// gardant l'alpha ≥ chaîne sur les deux pavages longs.
+// CRITÈRE DE RÉUSSITE (re-gate) : DD p95 ≤ 12,80 (chaîne + ~2 pts) ET alpha ≥
+// chaîne sur canonique-long (−17,3033) ET décalé-long (−11,0503).
+namespace {
+double ddP95Canonical(const SwingConfig& c) {
+    const auto ws = WalkForward(c, SWINGBOT_QQQ_CSV, kIsCan, kOosCan, kStepCan).run();
+    std::vector<TradeRecord> pool;
+    size_t bars = 0;
+    for (const auto& x : ws) {
+        pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end());
+        bars += (x.oosEnd - x.oosStart);
+    }
+    return MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0).ddP95;
+}
+double alphaLongCanon(const SwingConfig& c) {
+    return meanOosAlpha(WalkForward(c, SWINGBOT_QQQ_MAX_CSV,
+                                    kIsLong, kOosLong, kStepLong).run());
+}
+double alphaLongShift(const SwingConfig& c) {
+    return meanOosAlpha(WalkForward(c, SWINGBOT_QQQ_MAX_CSV,
+                                    kIsLongD, kOosLongD, kStepLongD, kOffsetLongD).run());
+}
+} // namespace
+
+TEST(PullbackConfirmationIntegration, PullbackAttenuationVariantsAreLocked) {
+    struct Variante { const char* nom; SwingConfig cfg;
+                      double ddP95; double aCanon; double aShift; };
+    // Figé le 2026-07-04. AUCUNE variante ne REUSSIT (DD p95 ≤ 12,80 ET alpha ≥
+    // chaîne sur les deux pavages longs). Le seul levier qui casse le drawdown
+    // est le gating ATR ≤ 0,015 : DD p95 19,27 → 7,12 (SOUS la chaîne !) — mais
+    // il perd l'alpha sur le canonique-long (−17,83 < −17,30). Le stade serré
+    // ne bouge PAS le DD canonique (le stop ne mord pas sur 2019-2026, le
+    // trailing 3 % tire d'abord) tout en rabotant l'alpha long. LEÇON (D44) :
+    // l'alpha du pullback ET son drawdown viennent des MÊMES achats de creux
+    // en régime volatil — les deux leviers testés ne les séparent pas.
+    Variante variantes[] = {
+        {"pullback nu",        cfgPullback(),          19.2742, -17.1682, -10.0033},
+        {"+ ATR<=0.015",       cfgPullbackAtr(0.015),   7.1217, -17.8340, -10.0269},
+        {"+ ATR<=0.025",       cfgPullbackAtr(0.025),  21.0907, -16.9849, -10.4046},
+        {"+ stop 0.03",        cfgPullbackStop(0.03),  19.2742, -16.0649,  -8.1484},
+        {"+ stop 0.04",        cfgPullbackStop(0.04),  19.2742, -16.7756,  -9.3481},
+    };
+    std::cout << std::fixed << std::setprecision(4)
+              << "  8d.6 — attenuation du drawdown (reference chaine : DD p95 10,80 ;"
+              << " alpha long -17,30 / -11,05)\n";
+    for (auto& v : variantes) {
+        const double dd = ddP95Canonical(v.cfg);
+        const double aC = alphaLongCanon(v.cfg);
+        const double aS = alphaLongShift(v.cfg);
+        const bool ddOk    = dd <= 12.80;
+        const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
+        std::cout << "  " << std::left << std::setw(16) << v.nom << std::right
+                  << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
+                  << "), alpha long " << aC << " / " << aS
+                  << " (" << (alphaOk ? "OK" : "--") << ")"
+                  << ((ddOk && alphaOk) ? "  <<< REUSSIT" : "") << "\n";
+        EXPECT_NEAR(dd, v.ddP95, 1e-3);   // SENTINELLE → figer
+        EXPECT_NEAR(aC, v.aCanon, 1e-2);  // SENTINELLE → figer
+        EXPECT_NEAR(aS, v.aShift, 1e-2);  // SENTINELLE → figer
+    }
 }

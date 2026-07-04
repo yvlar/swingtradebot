@@ -421,6 +421,20 @@ int main() {
     std::cout << "\n  VERDICT 8d.3 : alpha CONFIRME (generalise donnees longues + multi-actifs),\n"
               << "  mais drawdown de queue quasi double (DD p95 10,80 -> 19,27) → adoption gatee (8d.5).\n";
 
+    std::cout << "\n  Attenuation du drawdown (8d.6, DD p95 canonique QQQ) :\n";
+    for (const auto& v : {std::make_pair("pullback nu",  cfgPull),
+                          std::make_pair("+ ATR<=0.015", [&]{ SwingConfig c = cfgPull; c.entryMaxAtrPct = 0.015; return c; }()),
+                          std::make_pair("+ stop 0.03",  [&]{ SwingConfig c = cfgPull; c.stopLossPct = 0.03; return c; }())}) {
+        const auto ws = WalkForward(v.second, qqq, 700, 400, 400).run();
+        std::vector<TradeRecord> pool; size_t bars = 0;
+        for (const auto& x : ws) { pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end()); bars += (x.oosEnd - x.oosStart); }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0);
+        std::cout << "  -> " << std::left << std::setw(14) << v.first << std::right
+                  << " : DD p95 " << std::fixed << std::setprecision(4) << r.ddP95 << " %\n";
+    }
+    std::cout << "  VERDICT 8d.6 : le gating ATR casse le drawdown (7,12 < chaine) mais perd l'alpha\n"
+              << "  long ; aucune variante ne reussit DD+alpha → alpha et risque du pullback sont couples (D44).\n";
+
     std::cout << "\n";
     return 0;
 }
