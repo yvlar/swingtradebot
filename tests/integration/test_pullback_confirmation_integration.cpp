@@ -104,6 +104,96 @@ void verifieDensite(const ResumeCsv& r, const char* nom) {
     EXPECT_LT(ratio, 1.01) << nom << " : trop de barres (doublons/jours non boursiers, D31)";
 }
 
+// ── Pavages walk-forward (items 8d.2 / 8d.3) ─────────────────────────────────
+
+// Pavage FIN historique (8b.3) sur les CSV 2019-2026 — celui qui a CHOISI le
+// réglage du pullback sur QQQ ; réutilisé ici sur les AUTRES actifs (volet a)
+// et pour la grille resserrée (volet b).
+constexpr size_t kIsFin   = 500;
+constexpr size_t kOosFin  = 300;
+constexpr size_t kStepFin = 300;
+
+// Pavage CANONIQUE historique — source des trades OOS du Monte-Carlo (volet c).
+constexpr size_t kIsCan   = 700;
+constexpr size_t kOosCan  = 400;
+constexpr size_t kStepCan = 400;
+
+// Pavages LONGS sur QQQ_max (~6 870 barres, 1999-2026) — volet d et référence
+// 8d.2. Jamais vus par AUCUNE sélection. Dimensionnés selon D35 (warmup ~201
+// barres ≪ OOS) : canonique-long IS=700/OOS=400/pas=400 ; décalé-long
+// IS=500/OOS=400/pas=400 offset 90 — aucune borne commune avec le canonique.
+constexpr size_t kIsLong      = 700;
+constexpr size_t kOosLong     = 400;
+constexpr size_t kStepLong    = 400;
+constexpr size_t kIsLongD     = 500;
+constexpr size_t kOosLongD    = 400;
+constexpr size_t kStepLongD   = 400;
+constexpr size_t kOffsetLongD = 90;
+
+// Réglage du candidat (verrouillé au Sprint 8-sexies, D42) : RSI ≤ 40,
+// variante « s'ajoute » (regimeReentry reste true).
+constexpr double kRsiCandidat = 40.0;
+
+// ── Config de la chaîne v2, EXPLICITE champ par champ (règle D33) ────────────
+// Snapshot volontairement dupliqué des autres fichiers de verdict : une mesure
+// historique ne doit pas bouger si les défauts de SwingConfig évoluent (en
+// particulier si le gate 8d.5 adopte le pullback comme défaut). symbol est
+// passé pour mémoire ; le CSV réellement backtesté est l'argument de
+// WalkForward (QQQ, QQQ_max, SPY… selon le volet).
+SwingConfig cfgChaineV2() {
+    SwingConfig c;
+    c.symbol                  = "QQQ";
+    c.emaFast                 = 9;
+    c.emaSlow                 = 21;
+    c.rsiPeriod               = 14;
+    c.rsiBuyMax               = 100.0;   // 8.3 : plafond d'achat désactivé
+    c.rsiSellMin              = 70.0;
+    c.stopLossPct             = 0.05;
+    c.takeProfitPct           = 0.0;     // 8.2 : take-profit désactivé
+    c.trailingStopPct         = 0.03;
+    c.trailingAtrMult         = 0.0;     // 8q.1 : trailing % pur
+    c.exitOnLowestLowN        = 0;       // 8s.1 : sortie structurelle désactivée
+    c.riskPerTradePct         = 0.02;
+    c.minHoldDays             = 3;
+    c.smaTrendPeriod          = 200;     // 8.1 : filtre de régime
+    c.rsiSellOnlyIfRegimeDown = true;    // 8.4 : vente RSI gatée
+    c.regimeReentry           = true;    // 8.5 : re-entrée sur régime
+    c.entryBreakoutM          = 0;       // 8s.2 : entrée breakout désactivée
+    c.entryPullbackRsiMax     = 0.0;     // 8y.1 : entrée pullback désactivée
+    c.entryMaxAtrPct          = 0.0;     // 8y.2 : filtre volatilité désactivé
+    return c;
+}
+
+// Chaîne + pullback candidat (variante « s'ajoute » : regimeReentry inchangé).
+SwingConfig cfgPullback(double rsiMax = kRsiCandidat) {
+    SwingConfig c = cfgChaineV2();
+    c.entryPullbackRsiMax = rsiMax;
+    return c;
+}
+
+double meanOosAlpha(const std::vector<WfWindow>& w) {
+    if (w.empty()) return 0.0;
+    double s = 0.0;
+    for (const auto& x : w) s += x.oos.alpha;
+    return s / static_cast<double>(w.size());
+}
+
+// Trades OOS POOLÉS (D34 : un alpha sans trades ne juge que le cash drag ;
+// mêmes alphas + mêmes trades = mécanisme inerte, D41).
+std::vector<TradeRecord> tradesOos(const std::vector<WfWindow>& w) {
+    std::vector<TradeRecord> out;
+    for (const auto& x : w)
+        out.insert(out.end(), x.oos.trades.begin(), x.oos.trades.end());
+    return out;
+}
+
+void imprime(const char* nom, const std::vector<WfWindow>& w) {
+    std::cout << std::fixed << std::setprecision(4)
+              << "  " << nom << " : alpha OOS moyen " << meanOosAlpha(w)
+              << " pt, " << tradesOos(w).size() << " trades OOS pooles ("
+              << w.size() << " fenetres)\n";
+}
+
 } // namespace
 
 // ─── 8d.1 — Qualité des données longues ──────────────────────────────────────
@@ -145,4 +235,187 @@ TEST(PullbackConfirmationIntegration, LongHistoryQqqBuyHoldIsLocked) {
               << "  8d.1 — B&H QQQ_max (" << r.premiereDate << " -> "
               << r.derniereDate << ") : " << bh << " %\n";
     EXPECT_NEAR(bh, 1585.3819, 0.05);
+}
+
+// ─── 8d.2 — Référence : chaîne v2 sur les pavages LONGS (dot-com + 2008) ──────
+// Première mesure du bot incluant deux vrais marchés baissiers. Ces valeurs
+// sont le DÉNOMINATEUR des duels 8d.3d : on les fige d'abord (sentinelles →
+// mesure → figées), séparément du candidat, pour que le verdict compare deux
+// mesures indépendamment verrouillées.
+TEST(PullbackConfirmationIntegration, ChainV2LongCanonicalPavingIsLocked) {
+    const auto w = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_MAX_CSV,
+                               kIsLong, kOosLong, kStepLong).run();
+    std::cout << "  8d.2 — chaine v2, pavage canonique-long (QQQ_max IS=700/OOS=400)\n";
+    imprime("chaine v2", w);
+    EXPECT_EQ(w.size(), 15u);                        // pavage riche (dot-com+2008)
+    // Figé le 2026-07-04. Première mesure de la chaîne v2 sur deux vrais
+    // marchés baissiers : alpha OOS BIEN plus négatif que sur 2019-2026
+    // (−17,30 vs −9,90 canonique court) — la chaîne souffre en régime
+    // baissier. 95 trades OOS poolés sur 15 fenêtres.
+    EXPECT_NEAR(meanOosAlpha(w), -17.3033, 1e-2);
+    EXPECT_EQ(tradesOos(w).size(), 95u);
+}
+
+TEST(PullbackConfirmationIntegration, ChainV2LongShiftedPavingIsLocked) {
+    const auto w = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_MAX_CSV,
+                               kIsLongD, kOosLongD, kStepLongD, kOffsetLongD).run();
+    std::cout << "  8d.2 — chaine v2, pavage decale-long (QQQ_max IS=500/OOS=400 offset=90)\n";
+    imprime("chaine v2", w);
+    EXPECT_EQ(w.size(), 15u);
+    // Figé le 2026-07-04. −11,05 (96 trades) : moins négatif que le
+    // canonique-long car le décalage évite le pire de la fenêtre dot-com.
+    EXPECT_NEAR(meanOosAlpha(w), -11.0503, 1e-2);
+    EXPECT_EQ(tradesOos(w).size(), 96u);
+}
+
+// Années OOS observées (dénominateur CAGR du Monte-Carlo) : total des barres
+// OOS poolées / 252 séances par an (modèle 8t.2).
+namespace {
+double oosYears(const std::vector<WfWindow>& w) {
+    size_t bars = 0;
+    for (const auto& x : w) bars += (x.oosEnd - x.oosStart);
+    return static_cast<double>(bars) / 252.0;
+}
+} // namespace
+
+// ─── 8d.3a — VOLET MULTI-ACTIFS : pullback sur SPY / IWM / MDY ────────────────
+// Le pullback n'a été jugé que sur QQQ. Ici, duels chaîne vs chaîne+pullback
+// sur les 3 autres actifs (pavage fin 2019-2026, defs CSV existantes). Chaque
+// actif figé indépendamment (alpha + trades). Acceptation partielle : pullback
+// ≥ chaîne sur ≥ 2 actifs sur 3.
+TEST(PullbackConfirmationIntegration, PullbackMultiAssetFinePavingIsLocked) {
+    struct Actif { const char* nom; const char* csv;
+                   double aChaine; size_t tChaine; double aPull; size_t tPull; };
+    // Figé le 2026-07-04. Pullback ≥ chaîne sur IWM (+0,18) et MDY (+0,45),
+    // très légèrement PIRE sur SPY (−0,02) : 2/3 → l'acceptation partielle
+    // multi-actifs PASSE. Cohérent avec un candidat qui généralise sur
+    // l'alpha (le signe ne s'inverse nulle part).
+    Actif actifs[] = {
+        {"SPY", SWINGBOT_SPY_CSV, -5.6813, 10u, -5.7030, 11u},
+        {"IWM", SWINGBOT_IWM_CSV, -3.4564, 13u, -3.2756, 13u},
+        {"MDY", SWINGBOT_MDY_CSV, -3.5306, 17u, -3.0823, 17u},
+    };
+    std::cout << "  8d.3a — multi-actifs, pavage fin (chaine vs chaine+pullback RSI<=40 s'ajoute)\n";
+    int passe = 0;
+    for (auto& a : actifs) {
+        const auto wC = WalkForward(cfgChaineV2(), a.csv, kIsFin, kOosFin, kStepFin).run();
+        const auto wP = WalkForward(cfgPullback(), a.csv, kIsFin, kOosFin, kStepFin).run();
+        const double aC = meanOosAlpha(wC), aP = meanOosAlpha(wP);
+        std::cout << "  " << a.nom << " : chaine " << aC << " (" << tradesOos(wC).size()
+                  << ") vs pullback " << aP << " (" << tradesOos(wP).size() << ")\n";
+        EXPECT_NEAR(aC, a.aChaine, 1e-2) << a.nom << " chaine";
+        EXPECT_EQ(tradesOos(wC).size(), a.tChaine) << a.nom << " chaine trades";
+        EXPECT_NEAR(aP, a.aPull, 1e-2) << a.nom << " pullback";
+        EXPECT_EQ(tradesOos(wP).size(), a.tPull) << a.nom << " pullback trades";
+        if (aP >= aC) ++passe;
+    }
+    std::cout << "  multi-actifs : pullback >= chaine sur " << passe << "/3 actifs\n";
+}
+
+// ─── 8d.3b — VOLET GRILLE RESSERRÉE : RSI ∈ {35,40,45} « s'ajoute » ───────────
+// Stabilité à la maille (leçon D39) : l'argmax reste-t-il 40 quand on resserre
+// les crans autour de lui ? Mesures + argmax figés.
+TEST(PullbackConfirmationIntegration, PullbackTightGridFinePavingSelectionIsLocked) {
+    const double seuils[] = {35.0, 40.0, 45.0};
+    double alphas[3] = {0, 0, 0};
+    size_t trades[3] = {0, 0, 0};
+    std::cout << "  8d.3b — grille resserree RSI {35,40,45} s'ajoute (pavage fin QQQ)\n";
+    for (int i = 0; i < 3; ++i) {
+        const auto w = WalkForward(cfgPullback(seuils[i]), SWINGBOT_QQQ_CSV,
+                                   kIsFin, kOosFin, kStepFin).run();
+        alphas[i] = meanOosAlpha(w);
+        trades[i] = tradesOos(w).size();
+        std::cout << "  RSI<=" << seuils[i] << " : " << alphas[i]
+                  << " (" << trades[i] << ")\n";
+    }
+    // Figé le 2026-07-04. Grille resserrée {35,40,45} autour du candidat 40 :
+    // l'argmax RESTE 40 (−6,5491), les voisins immédiats sont pires
+    // (−6,90 / −6,80) → stabilité à la maille CONFIRMÉE (contraste avec D39,
+    // où le candidat 8-ter dérivait quand on resserrait). C'est le volet où
+    // le pullback se comporte le MIEUX.
+    EXPECT_NEAR(alphas[0], -6.8995, 1e-2);
+    EXPECT_NEAR(alphas[1], -6.5491, 1e-2);
+    EXPECT_NEAR(alphas[2], -6.8030, 1e-2);
+    EXPECT_EQ(trades[0], 13u);
+    EXPECT_EQ(trades[1], 13u);
+    EXPECT_EQ(trades[2], 15u);
+    // Garde anti-dérive : l'argmax de la grille resserrée reste le candidat 40
+    // (ou plateau plat — premier des ex æquo).
+    int best = 0;
+    for (int i = 1; i < 3; ++i) if (alphas[i] > alphas[best]) best = i;
+    EXPECT_DOUBLE_EQ(seuils[best], kRsiCandidat);
+}
+
+// ─── 8d.3c — VOLET MONTE-CARLO : robustesse de la distribution des trades ─────
+// Ré-échantillonnage des trades OOS poolés (pavage canonique QQQ), chaîne vs
+// pullback. p50/p95 CAGR et drawdown figés (graine 42, modèle 8t.2). « Non
+// dégradé » = CAGR p50 pullback ≥ chaîne ET DD p95 pullback ≤ chaîne+marge.
+TEST(PullbackConfirmationIntegration, PullbackMonteCarloCanonicalIsLocked) {
+    const auto wC = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_CSV,
+                                kIsCan, kOosCan, kStepCan).run();
+    const auto wP = WalkForward(cfgPullback(), SWINGBOT_QQQ_CSV,
+                                kIsCan, kOosCan, kStepCan).run();
+    MonteCarlo mc(10'000.0, /*seed=*/42, /*paths=*/2000);
+    const auto rC = mc.run(tradesOos(wC), oosYears(wC));
+    const auto rP = mc.run(tradesOos(wP), oosYears(wP));
+    std::cout << std::fixed << std::setprecision(4)
+              << "  8d.3c — Monte-Carlo canonique QQQ (graine 42, 2000 chemins)\n"
+              << "  chaine   CAGR p50 " << rC.cagrP50 << " DD p95 " << rC.ddP95 << "\n"
+              << "  pullback CAGR p50 " << rP.cagrP50 << " DD p95 " << rP.ddP95 << "\n";
+    // Figé le 2026-07-04 (graine 42, 2000 chemins — reproductible au bit près,
+    // modèle 8t.2). Le pullback AMÉLIORE le CAGR médian (+0,93 pt) MAIS
+    // DÉGRADE gravement le drawdown de queue : DD p95 10,80 → 19,27 %
+    // (+8,47 pt, quasi doublé). Acheter les creux ajoute des trades
+    // (11 vs 10 sur le canonique) qui augmentent le risque de queue. C'est
+    // le VOLET DISQUALIFIANT : le critère « Monte-Carlo non dégradé » ÉCHOUE.
+    EXPECT_NEAR(rC.cagrP50, 7.3353, 1e-3);
+    EXPECT_NEAR(rC.ddP95,  10.8001, 1e-3);
+    EXPECT_NEAR(rP.cagrP50, 8.2653, 1e-3);
+    EXPECT_NEAR(rP.ddP95,  19.2742, 1e-3);
+    // Verrou du fait disqualifiant : le drawdown de queue du pullback est
+    // NETTEMENT pire que celui de la chaîne (va à l'encontre de la DoD
+    // risque/rendement — < 5 pts d'écart avec DD réduit de 50 %).
+    EXPECT_GT(rP.ddP95, rC.ddP95 + 5.0);
+    EXPECT_GT(rP.cagrP50, rC.cagrP50);       // le CAGR, lui, s'améliore
+}
+
+// ─── 8d.3d — VOLET DONNÉES LONGUES : duels sur QQQ_max (dot-com + 2008) ───────
+// Le juge le plus dur : deux pavages longs jamais vus par aucune sélection,
+// incluant deux vrais marchés baissiers. Référence chaîne figée en 8d.2.
+TEST(PullbackConfirmationIntegration, PullbackLongCanonicalPavingVerdictIsLocked) {
+    const auto wC = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_MAX_CSV,
+                                kIsLong, kOosLong, kStepLong).run();
+    const auto wP = WalkForward(cfgPullback(), SWINGBOT_QQQ_MAX_CSV,
+                                kIsLong, kOosLong, kStepLong).run();
+    std::cout << "  8d.3d — duel pullback, pavage canonique-long (QQQ_max)\n";
+    imprime("chaine v2       ", wC);
+    imprime("chaine + pullback", wP);
+    const double aP = meanOosAlpha(wP);
+    // Figé le 2026-07-04. MIEUX que la chaîne même avec dot-com + 2008 :
+    // −17,17 (106 trades) vs −17,30 (95), +0,14 pt. Marge mince mais le
+    // signe ne s'inverse pas — l'alpha du pullback GÉNÉRALISE aux régimes
+    // baissiers (contraste net avec le candidat 8-ter, qui s'inversait).
+    EXPECT_NEAR(aP, -17.1682, 1e-2);
+    EXPECT_EQ(tradesOos(wP).size(), 106u);
+    EXPECT_GT(aP, meanOosAlpha(wC));         // acceptation alpha PASSE ici
+}
+
+TEST(PullbackConfirmationIntegration, PullbackLongShiftedPavingVerdictIsLocked) {
+    const auto wC = WalkForward(cfgChaineV2(), SWINGBOT_QQQ_MAX_CSV,
+                                kIsLongD, kOosLongD, kStepLongD, kOffsetLongD).run();
+    const auto wP = WalkForward(cfgPullback(), SWINGBOT_QQQ_MAX_CSV,
+                                kIsLongD, kOosLongD, kStepLongD, kOffsetLongD).run();
+    std::cout << "  8d.3d — duel pullback, pavage decale-long (QQQ_max offset=90)\n";
+    imprime("chaine v2       ", wC);
+    imprime("chaine + pullback", wP);
+    const double aP = meanOosAlpha(wP);
+    // Figé le 2026-07-04. MIEUX ici aussi, et plus nettement : −10,00
+    // (105 trades) vs −11,05 (96), +1,05 pt. L'acceptation ALPHA
+    // (« ≥ chaîne sur les DEUX pavages longs ») PASSE sur les deux → le
+    // pullback est le PREMIER mécanisme dont l'alpha généralise hors du
+    // dataset qui l'a choisi ET aux marchés baissiers. MAIS voir 8d.3c :
+    // ce gain d'alpha se paie par un drawdown de queue quasi doublé.
+    EXPECT_NEAR(aP, -10.0033, 1e-2);
+    EXPECT_EQ(tradesOos(wP).size(), 105u);
+    EXPECT_GT(aP, meanOosAlpha(wC));         // acceptation alpha PASSE aussi ici
 }
