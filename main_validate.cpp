@@ -435,6 +435,29 @@ int main() {
     std::cout << "  VERDICT 8d.6 : le gating ATR casse le drawdown (7,12 < chaine) mais perd l'alpha\n"
               << "  long ; aucune variante ne reussit DD+alpha → alpha et risque du pullback sont couples (D44).\n";
 
+    // 12. Sizing modulé par la volatilité (Sprint 8-octies, 8o.3) ─────────────
+    // MC désormais SIZE-AWARE (D45, 8o.1) : le vol-sizing (8o.2) est enfin
+    // mesurable. DD p95 canonique (MC size-aware). Verrous CI dans
+    // test_pullback_confirmation_integration.cpp (VolSizingDecouplingIsLocked).
+    titre("12. VOL-SIZING (pullback + volSizingAtrRef, MC size-aware — 8o.3)");
+    std::cout << "\n  DD p95 canonique QQQ (MC size-aware, reference chaine 4,28) :\n";
+    for (const auto& v : {std::make_pair("pullback nu",  40.0),
+                          std::make_pair("+ vol 0.015",  15.0),
+                          std::make_pair("+ vol 0.025",  25.0)}) {
+        SwingConfig c = cfg;
+        c.entryPullbackRsiMax = 40.0;
+        if (v.second < 40.0) c.volSizingAtrRef = v.second / 1000.0;
+        const auto ws = WalkForward(c, qqq, 700, 400, 400).run();
+        std::vector<TradeRecord> pool; size_t bars = 0;
+        for (const auto& x : ws) { pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end()); bars += (x.oosEnd - x.oosStart); }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0);
+        std::cout << "  -> " << std::left << std::setw(14) << v.first << std::right
+                  << " : DD p95 " << std::fixed << std::setprecision(4) << r.ddP95 << " %\n";
+    }
+    std::cout << "  VERDICT 8o.3 : le vol-sizing REDUIT le DD du pullback (7,88 -> 6,51 a ref 0,015)\n"
+              << "  au prix d'un cheveu d'alpha, mais ne le ramene PAS au niveau chaine (4,28) : premiere\n"
+              << "  frontiere DD/alpha favorable, decouplage PARTIEL — decision d'adoption au gate 8o.4.\n";
+
     std::cout << "\n";
     return 0;
 }

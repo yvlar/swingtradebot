@@ -193,6 +193,18 @@ SwingConfig cfgPullbackRisk(double riskPct) {
     c.riskPerTradePct = riskPct;
     return c;
 }
+// Sizing modulé par la volatilité (item 8o.2/8o.3) : réduit la taille en
+// régime volatil. Appliqué au pullback (c) ou à la chaîne seule (orthogonal).
+SwingConfig cfgPullbackVolSizing(double ref) {
+    SwingConfig c = cfgPullback();
+    c.volSizingAtrRef = ref;
+    return c;
+}
+SwingConfig cfgChaineVolSizing(double ref) {
+    SwingConfig c = cfgChaineV2();
+    c.volSizingAtrRef = ref;
+    return c;
+}
 
 double meanOosAlpha(const std::vector<WfWindow>& w) {
     if (w.empty()) return 0.0;
@@ -551,6 +563,57 @@ TEST(PullbackConfirmationIntegration, PullbackThirdLeverVariantsAreLocked) {
         const bool ddOk    = dd <= 6.28;
         const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
         std::cout << "  " << std::left << std::setw(14) << v.nom << std::right
+                  << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
+                  << "), alpha long " << aC << " / " << aS
+                  << " (" << (alphaOk ? "OK" : "--") << ")"
+                  << ((ddOk && alphaOk) ? "  <<< REUSSIT" : "") << "\n";
+        EXPECT_NEAR(dd, v.ddP95, 1e-3);   // SENTINELLE → figer
+        EXPECT_NEAR(aC, v.aCanon, 1e-2);  // SENTINELLE → figer
+        EXPECT_NEAR(aS, v.aShift, 1e-2);  // SENTINELLE → figer
+    }
+}
+
+// ─── 8o.3 — Le vol-sizing découple-t-il l'alpha du risque du pullback ? ───────
+// Enfin mesurable : le MC est size-aware (D45, 8o.1). On veut ramener le DD du
+// pullback (7,88) vers celui de la chaîne (4,28) EN PRÉSERVANT l'alpha long
+// (≥ chaîne : −17,3033 / −11,0503). Mini-grille volSizingAtrRef sur le pullback,
+// + un contrôle « vol-sizing sur la chaîne SEULE » (orthogonalité).
+TEST(PullbackConfirmationIntegration, VolSizingDecouplingIsLocked) {
+    struct Variante { const char* nom; SwingConfig cfg;
+                      double ddP95; double aCanon; double aShift; };
+    // Figé le 2026-07-04. VERDICT : le vol-sizing est le PREMIER levier à
+    // réduire le DD du pullback vers la chaîne à faible coût d'alpha, mais il ne
+    // DÉCOUPLE PAS complètement :
+    //   • pull+vol 0,015 : DD 7,88 → 6,51 (−1,37, ~35 % du chemin vers 4,28)
+    //     pour −0,11 pt d'alpha canonique (et +0,84 sur le décalé) — la
+    //     MEILLEURE frontière DD/alpha vue, mais DD 6,51 > 6,28 (rate le seuil
+    //     d'un cheveu) ET alpha canonique < chaîne d'un cheveu → n'atteint pas
+    //     « DD ≤ chaîne+2 ET alpha ≥ chaîne » ;
+    //   • pull+vol 0,025/0,040 : réf trop haute, le sizing ne se déclenche
+    //     quasi jamais (volatilité QQQ surtout < 2,5 %) → DD ≈ pullback nu ;
+    //   • chaine+vol 0,025 : sur la chaîne SEULE, quasi inerte (déjà ~40 %
+    //     déployé en marché calme) — le vol-sizing n'aide que là où il y a des
+    //     entrées volatiles à brider (les creux du pullback). Orthogonalité
+    //     confirmée : c'est bien un levier SPÉCIFIQUE au pullback.
+    // Alpha inchangé vs avant D45 pour la chaîne/pullback (backtest identique).
+    Variante variantes[] = {
+        {"chaine v2",          cfgChaineV2(),               4.2758, -17.3033, -11.0503},
+        {"pullback nu",        cfgPullback(),               7.8821, -17.1682, -10.0033},
+        {"pull+vol 0.015",     cfgPullbackVolSizing(0.015), 6.5053, -17.4170, -10.2113},
+        {"pull+vol 0.025",     cfgPullbackVolSizing(0.025), 7.9744, -17.1847,  -9.9832},
+        {"pull+vol 0.040",     cfgPullbackVolSizing(0.040), 7.8821, -17.1803, -10.0153},
+        {"chaine+vol 0.025",   cfgChaineVolSizing(0.025),   4.2758, -17.3714, -11.0499},
+    };
+    std::cout << std::fixed << std::setprecision(4)
+              << "  8o.3 — vol-sizing (reference chaine : DD p95 4,28 ; "
+              << "alpha long -17,30 / -11,05)\n";
+    for (auto& v : variantes) {
+        const double dd = ddP95Canonical(v.cfg);
+        const double aC = alphaLongCanon(v.cfg);
+        const double aS = alphaLongShift(v.cfg);
+        const bool ddOk    = dd <= 6.28;                       // ≤ chaîne + ~2
+        const bool alphaOk = aC >= -17.3033 && aS >= -11.0503; // ≥ chaîne
+        std::cout << "  " << std::left << std::setw(16) << v.nom << std::right
                   << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
                   << "), alpha long " << aC << " / " << aS
                   << " (" << (alphaOk ? "OK" : "--") << ")"
