@@ -11,11 +11,11 @@
 |--------------|-----------|------------------------------|
 | Architecture | 88        | 68                           |
 | Qualité      | 93        | 60                           |
-| FinTech      | 87        | 38                           |
+| FinTech      | 88        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-04 (Sprint 8-septies — données longues (~1999+, dot-com/2008) + confirmation hors-protocole du pullback : l'**ALPHA est CONFIRMÉ** (généralise aux marchés baissiers +0,14/+1,05 et à 2/3 actifs, grille stable à 40 — première fois qu'un candidat tient hors de son protocole, D42 levée sur l'alpha) MAIS le **Monte-Carlo DISQUALIFIE** (DD p95 10,80 → 19,27 %, quasi doublé). Trois leviers config-only (stop, gate ATR, riskPerTradePct) n'ont pas découplé alpha et risque (D44) → décision utilisateur : **NON adopté**, le vrai levier (position-sizing modulé par la volatilité, code moteur) devient le Sprint 8-octies. Aucune adoption, prod reste paper. Nouveau : 4 CSV total-return longs + `scripts/export_total_return.py`)
-- **Sprint courant** : Sprint 8-octies — Position-sizing modulé par la volatilité (réduire la taille en régime volatil pour découpler alpha et risque — le levier identifié par D44 ; jugé sur données longues, cible = DoD risque/rendement) — décision utilisateur du 2026-07-04
+- **Dernière mise à jour** : 2026-07-04 (Sprint 8-octies — position-sizing modulé par la volatilité. **Découverte D45** (avant tout code) : le Monte-Carlo était AVEUGLE à la taille de position → corrigé (8o.1, `deployedFraction`) — l'ancien MC surestimait tout d'un facteur ~2,5 (la chaîne ne déploie que ~40 %) ; garde-fou de risque désormais CORRECT. Le vol-sizing (8o.2) donne un **découplage PARTIEL** du pullback : DD p95 7,88 → 6,51 à faible coût d'alpha (première frontière DD/alpha favorable) mais insuffisant (n'atteint pas le seuil, alpha absolu toujours négatif) → décision utilisateur : **NON adopté**, prod paper. Cinq axes de la chaîne mono-actif soldés ; cap sur la ROTATION multi-actifs — Sprint 8-nonies)
+- **Sprint courant** : Sprint 8-nonies — Rotation multi-actifs / détention par régime (être investi dans l'actif au régime le plus fort parmi QQQ/SPY/IWM/MDY, cash en régime baissier — premier axe à viser l'alpha ABSOLU, la cause racine T4 du déficit ; jugé sur données longues) — décision utilisateur du 2026-07-04
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -41,20 +41,21 @@
 > deux pavages non-choisis** — l'entrée pullback RSI ≤ 40 « s'ajoute »
 > (+0,42/+1,52 pt) — mais SANS edge absolu (alpha négatif partout) : adoption
 > différée à une confirmation hors-protocole (D42), le filtre ATR est réfuté.
-> **Quatre familles explorées (paramètres, trailing, structure/breakout,
-> pullback/volatilité) ; le pullback voit son ALPHA confirmé hors-protocole
-> (Sprint 8-septies, données longues + multi-actifs) mais reste inadoptable
-> — son alpha et son drawdown sont couplés (D44). Cap sur le seul levier
-> restant : le position-sizing modulé par la volatilité (Sprint 8-octies).**
+> **CINQ axes de la chaîne mono-actif explorés (paramètres, trailing,
+> structure/breakout, pullback/volatilité, sizing) ; le pullback voit son ALPHA
+> confirmé hors-protocole (données longues + multi-actifs) mais reste
+> inadoptable — le vol-sizing améliore la frontière DD/alpha (D45 a d'abord
+> corrigé un MC aveugle à la taille) sans clore le critère, et l'alpha absolu
+> reste négatif. La chaîne mono-actif est soldée ; CHANGEMENT DE PARADIGME :
+> rotation multi-actifs pour viser l'alpha ABSOLU (Sprint 8-nonies, T4).**
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). La note ne franchira 50 qu'avec un mécanisme réduisant le risque SANS tuer l'alpha (espoir du 8-octies) ou un changement de paradigme, et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 616/616 verts (512 unitaires + 104 intégration) — et la
+> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
+- **État des tests** : 623/623 verts (517 unitaires + 106 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +11 au Sprint 8-septies (605 → 616 : nouvelle suite
-  `PullbackConfirmationIntegration`), aucune dérive hors cycle. Détail au
-  changelog.
+  suites concurrentes. +7 au Sprint 8-octies (616 → 623 : vol-sizing +
+  Monte-Carlo size-aware D45), aucune dérive hors cycle. Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1015,7 +1016,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   pullback (D42), changement de paradigme (rotation multi-actifs /
   détention par régime), ou pause stratégie → Sprint 9.x moteur (9.2, 9.4).
 
-# 🟣 SPRINT 8-OCTIES — Position-sizing modulé par la volatilité — **sprint courant**
+# 🟣 SPRINT 8-OCTIES — Position-sizing modulé par la volatilité ✅ (clos le 2026-07-04, verdict : découplage partiel, non adopté ; correctif harnais D45)
 
 > Décision utilisateur (2026-07-04) à la clôture du Sprint 8-septies : le
 > pullback est le premier candidat dont l'alpha GÉNÉRALISE (données longues +
@@ -1031,29 +1032,88 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > verdicts OOS sur données longues + 3 pavages, D33/D34/D41, confirmation
 > hors-protocole D42/D43 avant toute adoption.
 
-- [ ] **8o.1** **Sizing modulé par la volatilité dans le moteur de risque** :
-  nouveau champ `SwingConfig::volSizingAtrRef` (défaut 0 = désactivé =
-  sizing actuel). Quand > 0, `RiskManager::positionSize` multiplie la
-  quantité par `min(1, volSizingAtrRef / (ATR(14)/close))` — pleine taille
-  en marché calme, réduite proportionnellement quand la volatilité dépasse
-  la référence. Extension ADDITIVE (surcharge à barres, patron 8q.1/8.0 —
-  `include/bot/RiskManager.hpp:123` a déjà la surcharge « fenêtre de
-  barres ») ; plomberie SwingConfig→RiskConfig (`SwingStrategy.hpp:90`).
-  **Acceptation** : tests rouges RiskManagerUnit calculés à la main (pleine
-  taille sous la réf, réduction linéaire au-dessus, borne à 1, ATR
-  incalculable → pleine taille = fail-open) ; défaut 0 = goldens intacts.
-- [ ] **8o.2** **Verdicts OOS : le sizing vol aide-t-il la chaîne, puis le
-  pullback ?** mini-grille `volSizingAtrRef` ∈ {à re-dériver} sur le pavage
-  fin ; duels sur données longues + canonique + décalé (modèle
-  `test_pullback_confirmation_integration.cpp`), jugés d'abord sur la CHAÎNE
-  seule (le sizing vol est orthogonal), puis sur chaîne+pullback. Cible
-  explicite : **DD p95 réduit sans perdre l'alpha** (la DoD risque/rendement,
-  pas l'alpha absolu). Verrous D33/D34, deltas + DD p95 figés.
-- [ ] **8o.3** **Décision de suite (Décision requise)** : si le sizing vol
-  réduit le DD en préservant l'alpha (seul OU en débloquant l'adoption du
-  pullback) → poser l'adoption (re-baseline documentée) ; sinon consigner
-  et statuer — options : rotation multi-actifs / détention par régime
-  (changement de paradigme, T4), ou pause stratégie → Sprint 9.x moteur.
+> **DÉCOUVERTE À L'OUVERTURE (D45)** : avant tout code (leçon D41), l'exploration
+> a montré que le Monte-Carlo était AVEUGLE à la taille de position — il
+> composait `pnlPct` (rendement de la position) sur l'équité pleine, ignorant le
+> capital réellement déployé. Le vol-sizing y aurait été INERTE (comme
+> riskPerTradePct en 8d.7 : l'« invariance » était CET artefact). Décision
+> utilisateur (voie B) : corriger le harnais d'abord (8o.1), puis mesurer.
+
+- [x] **8o.1** **Monte-Carlo size-aware (correctif D45)** → `b64ffd7`
+  `TradeRecord::deployedFraction` (capital investi / équité à l'entrée,
+  calculé par PaperBroker) ; `MonteCarlo::run` bootstrappe
+  `deployedFraction × pnlPct`. La chaîne ne déploie que ~40 % → CAGR et DD
+  médians chutent (l'ancien MC surestimait tout). **Re-baseline documentée**
+  des valeurs dérivées du MC (MonteCarloIntegration, CandidateValidation 8t.2,
+  confirmation 8d.3c/8d.6/8d.7) — goldens BACKTEST byte-identiques
+  (deployedFraction est seulement enregistré). MonteCarloUnit : reproductibilité
+  intacte (défaut f=1.0) + 1 cas size-aware à la main. Nuance : riskPerTradePct
+  n'est plus « invariant » (artefact D45 levé).
+- [x] **8o.2** **Sizing modulé par la volatilité dans le moteur** → `ebbadd8`
+  `SwingConfig::volSizingAtrRef` (défaut 0 = off), porté à RiskConfig.
+  Surcharge « barres » de `positionSize` (patron additif 8q.1) : ×
+  `min(1, volSizingAtrRef / (ATR(14)/prix))`, fail-open (ATR incalculable →
+  pleine taille). Câblé dans TradingBot. **Acceptation satisfaite** : 5 tests
+  RiskManagerUnit à la main (pleine taille sous réf, réduction au-dessus,
+  borne à 1, fail-open, désactivé = identité) ; défaut 0 = goldens intacts.
+- [x] **8o.3** **Verdict OOS : le vol-sizing découple-t-il ?** → `9060747`
+  MC size-aware, DD p95 canonique (réf chaîne 4,28) + alpha long. **Verdict :
+  DÉCOUPLAGE PARTIEL** — pull+vol 0,015 réduit le DD 7,88 → **6,51**
+  (~35 % du chemin vers la chaîne) pour −0,11 pt d'alpha canonique (+0,84
+  décalé) : PREMIÈRE frontière DD/alpha favorable, mais DD 6,51 > seuil 6,28
+  ET alpha canonique < chaîne d'un cheveu → critère « DD ≤ chaîne+2 ET alpha
+  ≥ chaîne » NON atteint. Réfs 0,025/0,040 quasi inertes (volatilité QQQ
+  < 2,5 %) ; sur la chaîne SEULE le vol-sizing est inerte → levier SPÉCIFIQUE
+  au pullback (orthogonalité confirmée). Section 12 du CLI.
+- [x] **8o.4** **Gate d'adoption (Décision requise)** → décision utilisateur (2026-07-04), aucun code
+  Découplage partiel, critère non atteint, et alpha absolu toujours négatif
+  (ne bat pas le B&H) → **décision utilisateur : consigner sans adopter**.
+  `volSizingAtrRef` et `entryPullbackRsiMax` restent à 0 ; défauts,
+  `config/prod.json`, goldens intacts ; prod paper. Acquis verrouillés : D45
+  (MC size-aware — correctif durable du harnais), vol-sizing = premier levier
+  à réduire le risque du pullback sans casser l'alpha (mais insuffisant).
+  Suite décidée avec l'utilisateur : **Sprint 8-nonies** (rotation
+  multi-actifs — attaquer le déficit d'alpha lui-même, T4).
+
+# 🟣 SPRINT 8-NONIES — Rotation multi-actifs / détention par régime — **sprint courant**
+
+> Décision utilisateur (2026-07-04) à la clôture du Sprint 8-octies :
+> CHANGEMENT DE PARADIGME. Cinq axes de raffinement de la chaîne mono-actif
+> sont soldés (paramètres, trailing, structure/breakout, pullback/volatilité,
+> sizing) ; le meilleur (pullback) confirme un alpha qui GÉNÉRALISE mais reste
+> NÉGATIF (~−17 pt sur données longues). La cause racine est identifiée depuis
+> le méta-audit (T4) : le bot est long-only mono-actif, en CASH l'essentiel du
+> temps → il paie le temps hors marché face à un actif qui monte. La rotation
+> attaque CE déficit : être investi dans l'actif au régime le plus fort parmi
+> QQQ/SPY/IWM/MDY (données longues total-return disponibles depuis 8d.1), repli
+> en cash seulement en régime baissier généralisé. C'est le premier axe à VISER
+> l'alpha absolu, pas à raffiner une chaîne perdante. Discipline inchangée :
+> additif, verdicts OOS sur données longues + 3 pavages, D33/D34/D42/D43
+> (confirmation hors-protocole avant toute adoption), prod paper tant que
+> l'edge n'est pas démontré.
+
+- [ ] **8n.1** **Moteur de rotation (au niveau harnais, sans toucher la chaîne)** :
+  un `RotationBacktester` (ou extension de `WalkForward`) qui, à chaque barre,
+  classe les N actifs par force de régime (ex. rendement SMA200-relatif, ou
+  pente de SMA) et détient le meilleur si son régime est haussier, sinon cash.
+  Réutilise `CsvDataFeed`/`Backtester` par actif ; aligne les calendriers de
+  barres (dates communes). Point d'entrée : `include/backtest/BackTester.hpp`
+  (runRange) et les 4 CSV `*_max.csv`. **Acceptation** : tests unitaires du
+  classement de régime (calculés à la main sur séries synthétiques) ;
+  reproductibilité (mêmes dates → même choix).
+- [ ] **8n.2** **Verdict OOS : la rotation bat-elle le B&L (best buy-and-hold)
+  net de coûts ?** La référence n'est plus « alpha vs QQQ B&H » mais vs le
+  MEILLEUR actif détenu passivement, ET vs un panier équipondéré. Walk-forward
+  sur données longues (dot-com/2008 = le test décisif d'un filtre de régime),
+  3 pavages, coûts de rotation inclus (chaque bascule paie slippage+spread).
+  Verrous D33/D34, alpha + DD p95 (MC size-aware) + Calmar figés.
+- [ ] **8n.3** **Décision de suite (Décision requise)** : si la rotation
+  démontre un alpha OOS positif net de coûts (enfin un edge !) → confirmation
+  hors-protocole complète (D42/D43) puis mise en prod (Sprint 9) ; sinon
+  consigner — la stratégie mono-actif ET la rotation seraient soldées, et la
+  question deviendrait « ce moteur peut-il battre le B&H, ou l'accepte-t-on
+  comme un outil de gestion du risque à rendement B&H ? » (redéfinition
+  d'objectif avec l'utilisateur).
 
 # 🟣 SPRINT 9 — Mise en production de la stratégie validée
 
@@ -1120,9 +1180,58 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D41 | 🟡 | (Sprint 8-quinquies) **Un mécanisme optionnel peut être structurellement MASQUÉ par un mécanisme existant — vérifier son ACTIVATION avant d'interpréter son verdict OOS.** Deux formes observées le même sprint : (a) le breakout « s'ajoute » est un quasi sous-ensemble de la re-entrée 8.5 → deltas EXACTEMENT nuls partout (prédit à l'ouverture, ce qui a motivé la variante « remplace » — la prédiction a été MESURÉE, pas crue sur parole) ; (b) la sortie structurelle N ≥ 20 ne tire JAMAIS avant le trailing % 0,03 → mesures identiques à la chaîne sur les trois pavages (non prédit, détecté par les verrous D34 : mêmes alphas ET mêmes comptes de trades que la chaîne). Un « ≥ chaîne » par ÉGALITÉ d'inertie ne valide rien — et un argmax de mini-grille peut être un ex æquo dégénéré (verrouillé : premier des ex æquo). Garde-fou adopté : tout verrou de mini-grille COMPARE ses mesures à la chaîne et documente l'inertie éventuelle ; tout nouvel item de mécanisme anticipe ses interactions de masquage dès sa rédaction (fait pour 8y.1/8y.2) | Consigné (verrous `SignalFamiliesIntegration`) ; règle intégrée aux items du Sprint 8-sexies |
 | D42 | 🟡 | (Sprint 8-sexies) **Premier mécanisme candidat VIVANT du protocole : l'entrée pullback (RSI ≤ 40, « s'ajoute ») passe l'acceptation « ≥ chaîne sur les DEUX pavages non-choisis »** — première fois depuis que le protocole 3-pavages existe (fin +0,33 / canonique +0,42 / décalé +1,52 pt, signe stable partout — contraste avec le candidat 8-ter et le breakout 8s.3, réfutés à ce même juge). MAIS l'alpha OOS reste négatif sur les trois pavages (aucun edge absolu) et la leçon D36 s'applique : le candidat 8b.1 avait lui aussi survécu à sa PREMIÈRE validation avant d'être réfuté hors-grille. **Décision utilisateur (2026-07-03) : CONFIRMER avant d'adopter** — la validation hors-protocole (walk-forward multi-actifs SPY/IWM/MDY, Monte-Carlo des trades OOS, grille resserrée RSI {35, 40, 45} — modèle 8-ter) est le PRÉREQUIS de toute adoption ; d'ici là, défauts SwingConfig, goldens et config/prod.json inchangés (câblage ConfigLoader différé, règle 8q.3). Le sprint de confirmation reste au backlog (le sprint suivant est la 4e famille — décision utilisateur) | ✅ Confirmé sur l'ALPHA au Sprint 8-septies (8d.3, `1676727`) : l'alpha généralise aux données longues (dot-com/2008) ET à 2/3 actifs, argmax de grille stable — connaissance POSITIVE, la méfiance D36 est levée sur l'alpha. Mais l'adoption est bloquée par le RISQUE (D44), pas par l'alpha |
 | D43 | 🟡 | (Sprint 8-septies) **Multiple-testing : plus on juge d'hypothèses, plus le « meilleur » est un artefact probable.** Depuis le Sprint 8, le protocole a jugé un grand nombre d'hypothèses (paramètres 8b.1, trailing 8q, structure/breakout 8s, pullback/volatilité 8y, + les variantes d'atténuation 8d.6/8d.7). Chaque « gagnant » d'une sélection sur les mêmes fenêtres est suspect (D36 en est un cas). **Règle adoptée** : toute adoption future exige la confirmation hors-protocole COMPLÈTE (généralisation D42 : données longues + multi-actifs + grille resserrée + Monte-Carlo, PAS seulement le pavage de choix) — c'est exactement ce qui a distingué le pullback (alpha confirmé) du candidat 8b.1 (réfuté). Aucune modification des `prompt-*.md` (règle intangible) : la règle vit dans la ROADMAP | Consigné (règle de DoD des verdicts) ; appliqué dès 8d.3 |
-| D44 | 🟠 | (Sprint 8-septies) **L'alpha et le drawdown du pullback sont COUPLÉS — ils viennent des mêmes achats de creux en régime volatil.** Le pullback confirme son alpha (D42) mais double le drawdown de queue (DD p95 10,80 → 19,27 %, 8d.3c). Trois leviers config-only ont échoué à les séparer (8d.6/8d.7) : le gating ATR ne casse le DD qu'à une valeur ISOLÉE (0,015, voisins pires → sur-ajustement probable) et au prix de l'alpha ; le stop serré ne bouge pas le DD (le trailing 3 % tire d'abord) ; `riskPerTradePct` est INVARIANT d'échelle sur le drawdown en % (il scale l'équité uniformément). **Conclusion : le découplage config-only est épuisé ; le vrai levier est un position-sizing MODULÉ par la volatilité (code moteur), qui réduirait la taille seulement quand la volatilité est haute.** Décision utilisateur (2026-07-04) : pullback NON adopté, vol-sizing au backlog (Sprint 8-octies) | Sprint 8-octies (moteur) ; le pullback reste flag additif défaut 0 en attendant |
+| D44 | 🟠 | (Sprint 8-septies) **L'alpha et le drawdown du pullback sont COUPLÉS — ils viennent des mêmes achats de creux en régime volatil.** Le pullback confirme son alpha (D42) mais double le drawdown de queue (DD p95 10,80 → 19,27 %, 8d.3c). Trois leviers config-only ont échoué à les séparer (8d.6/8d.7) : le gating ATR ne casse le DD qu'à une valeur ISOLÉE (0,015, voisins pires → sur-ajustement probable) et au prix de l'alpha ; le stop serré ne bouge pas le DD (le trailing 3 % tire d'abord) ; `riskPerTradePct` est INVARIANT d'échelle sur le drawdown en % (il scale l'équité uniformément). **Conclusion : le découplage config-only est épuisé ; le vrai levier est un position-sizing MODULÉ par la volatilité (code moteur), qui réduirait la taille seulement quand la volatilité est haute.** Décision utilisateur (2026-07-04) : pullback NON adopté, vol-sizing au backlog (Sprint 8-octies) | ⚠️ Le sous-constat « riskPerTradePct invariant d'échelle » s'est révélé être un ARTEFACT du MC aveugle à la taille (D45) : corrigé, riskPerTradePct RÉDUIT bien le DD (mais coûte l'alpha). Le vol-sizing a été exploré au Sprint 8-octies : découplage PARTIEL (DD 7,88 → 6,51 à faible coût d'alpha) mais insuffisant → non adopté. Le fond de D44 (alpha/risque du pullback difficiles à séparer) TIENT |
+| D45 | 🟠 | (Sprint 8-octies) **Le Monte-Carlo était AVEUGLE à la taille de position.** `MonteCarlo::run` bootstrappait `pnlPct` (rendement de la POSITION, indépendant de la taille) en le composant sur l'équité PLEINE — donc tout schéma de sizing (riskPerTradePct, vol-sizing) y était INERTE (cause de l'invariance du DD constatée en 8d.7, prise à tort pour une propriété d'échelle en D44). Détecté par exploration AVANT d'écrire le vol-sizing (leçon D41). **Correctif (8o.1, `b64ffd7`)** : `TradeRecord::deployedFraction` (capital investi / équité à l'entrée, calculé par PaperBroker) ; le MC bootstrappe `deployedFraction × pnlPct`. Le MC reflète enfin la taille — et révèle que l'ancien SURESTIMAIT tout (la chaîne ne déploie que ~40 % : DD p95 8d.3c 19,27 → 7,88, chaîne 10,80 → 4,28). Re-baseline documentée des valeurs MC (goldens backtest intacts). C'est ce correctif qui a rendu le vol-sizing (8o.2/8o.3) MESURABLE | ✅ Corrigé au Sprint 8-octies (8o.1) ; garde-fou : MonteCarloUnit teste désormais la pondération par deployedFraction |
 
 ## Changelog
+
+### Sprint 8-octies — Position-sizing modulé par la volatilité (2026-07-04)
+
+**Contexte** : enchaîné directement après le Sprint 8-septies (décision
+utilisateur « oui »). But : tester le vol-sizing (levier identifié par D44)
+pour découpler l'alpha du risque du pullback.
+
+**Baseline à l'ouverture** : **616/616 verte**. Environnement : Linux, paquets
+système. **Découverte pré-code D45** (exploration avant écriture, leçon D41) :
+le Monte-Carlo était aveugle à la taille de position → le vol-sizing y aurait
+été inerte. Décision utilisateur (voie B) : corriger le harnais d'abord.
+
+**Commits** :
+- `b64ffd7` fix(backtest) : Monte-Carlo sensible à la taille (item 8o.1, D45)
+- `ebbadd8` feat(risk) : position-sizing modulé par la volatilité (item 8o.2, D44)
+- `9060747` test(validation) : verdict OOS du vol-sizing — découplage partiel (item 8o.3)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 616 → **623** (+7 : 517 unitaires + 106 intégration). MonteCarloUnit
++1 (pondération deployedFraction, f=0,5 à la main — reproductibilité f=1.0
+intacte) ; RiskManagerUnit +5 (vol-sizing : pleine taille sous réf, réduction
+au-dessus, borne 1, fail-open, désactivé = identité) ; PullbackConfirmation +1
+(`VolSizingDecouplingIsLocked`, 6 variantes figées). **Re-baseline documentée
+D45** des valeurs dérivées du MC (MonteCarloIntegration 6,95/8,59 → 2,78/3,30 ;
+CandidateValidation 8t.2 ; confirmation 8d.3c/8d.6/8d.7) — **goldens backtest
+byte-identiques** (deployedFraction seulement enregistré, sizing inchangé).
+
+**Interfaces modifiées** (additives) : `TradeRecord` gagne `deployedFraction`
+(défaut 1.0) ; `IRiskManager`/`RiskManager` gagnent une surcharge « barres » de
+`positionSize` (défaut délégant) ; `SwingConfig`/`RiskConfig` gagnent
+`volSizingAtrRef` (défaut 0). `MonteCarlo::run` pondère par deployedFraction.
+
+**Verdicts** :
+- **D45 (MC size-aware)** : la chaîne ne déploie que ~40 % → l'ancien MC
+  surestimait CAGR ET drawdown d'un facteur ~2,5. Conséquence rétroactive :
+  le DD « disqualifiant » du pullback (19,27) était surestimé — corrigé à 7,88
+  (vs chaîne 4,28, toujours ~1,8× : le verdict qualitatif tient) ; et
+  riskPerTradePct n'est PLUS invariant (artefact D45 levé).
+- **8o.3 (vol-sizing)** : DÉCOUPLAGE PARTIEL. pull+vol 0,015 réduit le DD
+  7,88 → **6,51** (~35 % du chemin vers la chaîne) pour −0,11 pt d'alpha
+  canonique (+0,84 décalé) — PREMIÈRE frontière DD/alpha favorable, mais
+  n'atteint pas « DD ≤ chaîne+2 ET alpha ≥ chaîne ». Réfs hautes inertes ;
+  levier SPÉCIFIQUE au pullback (inerte sur la chaîne seule).
+- **8o.4** : découplage partiel + alpha absolu toujours négatif → décision
+  utilisateur **consigner sans adopter**, prod paper. Suite : **Sprint
+  8-nonies** (rotation multi-actifs — viser l'alpha absolu, T4).
+
+**Découvertes** : D45 (MC aveugle à la taille — corrigé, garde-fou unitaire).
 
 ### Sprint 8-septies — Données longues & confirmation du pullback (2026-07-04)
 
@@ -2044,6 +2153,58 @@ nommé ; golden non régressé ; commentaires/logs en français ; aucun secret c
 fin de l'ère « qualité déclarative ».
 
 ## Rétrospectives
+
+### Sprint 8-octies — Position-sizing modulé par la volatilité (2026-07-04)
+
+**1. Découpage** : excellent, et le point saillant du sprint s'est joué AVANT
+tout code. L'exploration du chemin de sizing (leçon D41 : vérifier l'ACTIVATION
+d'un mécanisme) a révélé que le Monte-Carlo était aveugle à la taille — donc
+que le sprint tel qu'écrit dans la ROADMAP (« cible = DD p95 réduit ») aurait
+mesuré « aucun changement » et conclu à tort. Cette découverte a été portée à
+l'utilisateur comme un FORK (corriger le harnais / cible backtest / pivoter),
+transformant un piège silencieux en décision éclairée. Le découpage qui en a
+résulté — 8o.1 harnais, 8o.2 mécanisme, 8o.3 verdict, 8o.4 gate — est le plus
+propre du cycle : chaque commit atomique, rouge→vert, goldens prouvés intacts.
+
+**2. Suffisance des prompts** : suffisants. La procédure a absorbé un correctif
+de harnais (re-baseline d'un outil validé) sans improviser : re-baseline
+DOCUMENTÉE, goldens backtest prouvés byte-identiques, chaque valeur MC re-mesurée
+avec un commentaire D45. Le garde-fou « re-baseline documentée » de la DoD a
+exactement servi. **Aucune modification des prompts nécessaire.**
+
+**3. À détecter plus tôt / garde-fous** : (a) **D45 aurait dû être vu au Sprint
+7.3** (création du Monte-Carlo) : bootstrapper `pnlPct` sur l'équité pleine
+suppose 100 % de déploiement, hypothèse jamais explicitée. Elle a faussé TOUS
+les DD du MC pendant 8 sprints (heureusement des comparaisons relatives, donc
+les verdicts qualitatifs tiennent). Garde-fou adopté : MonteCarloUnit teste
+désormais la pondération par la taille. Leçon générale : un outil de mesure
+mérite le même « test d'activation » qu'un mécanisme de trading (que
+mesure-t-il RÉELLEMENT ?). (b) L'invariance de riskPerTradePct (8d.7) était le
+SYMPTÔME de D45 — on l'a consignée comme « propriété d'échelle » sans creuser ;
+la creuser une barre plus tôt aurait trouvé D45 au sprint précédent. Signal
+retenu : une invariance PARFAITE (byte-identique) est suspecte, elle cache
+souvent un chemin mort.
+
+**4. Notes /100** (précédent 88/93/87/72, Rentabilité 28) :
+- **Architecture 88** (=) : extensions strictement additives (surcharge
+  positionSize à défaut délégant, champ de config, champ TradeRecord) ; le
+  RiskManager consomme l'ATR concret, frontière d'injection respectée.
+- **Qualité 93** (=) : +7 tests, un correctif de harnais avec re-baseline
+  DOCUMENTÉE et goldens backtest prouvés intacts, un garde-fou unitaire nouveau
+  (pondération taille). Discipline sans faille — mais D45 rappelle qu'un outil
+  de mesure non testé sur son hypothèse centrale est une dette silencieuse.
+- **FinTech 88** (+1) : le harnais de risque est désormais CORRECT (le MC
+  reflète la taille) — un gain durable qui fiabilise tout jugement de
+  risque futur, et le moteur sait moduler la taille par la volatilité. +1
+  seulement : l'edge n'a pas progressé.
+- **Production 72** (=) : rien de prod ce sprint (voulu) ; prod.json intact.
+- **Rentabilité 28** (=) : le vol-sizing est le premier levier à améliorer la
+  frontière DD/alpha du pullback (progrès réel de CONNAISSANCE), mais le
+  découplage est partiel, le critère non atteint, et l'alpha absolu reste
+  négatif. Cinq axes de la chaîne mono-actif sont soldés ; la capacité
+  démontrée à gagner de l'argent n'a pas bougé. Le prochain sprint (rotation)
+  est le premier à viser l'alpha ABSOLU — c'est là que la note pourra enfin
+  franchir 50 si un edge apparaît.
 
 ### Sprint 8-septies — Données longues & confirmation du pullback (2026-07-04)
 
