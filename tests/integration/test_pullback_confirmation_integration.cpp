@@ -187,6 +187,12 @@ SwingConfig cfgPullbackStop(double stopPct) {
     c.stopLossPct = stopPct;
     return c;
 }
+// 3e levier (item 8d.7) : réduire le risque par trade (positions plus petites).
+SwingConfig cfgPullbackRisk(double riskPct) {
+    SwingConfig c = cfgPullback();
+    c.riskPerTradePct = riskPct;
+    return c;
+}
 
 double meanOosAlpha(const std::vector<WfWindow>& w) {
     if (w.empty()) return 0.0;
@@ -494,6 +500,54 @@ TEST(PullbackConfirmationIntegration, PullbackAttenuationVariantsAreLocked) {
         const bool ddOk    = dd <= 12.80;
         const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
         std::cout << "  " << std::left << std::setw(16) << v.nom << std::right
+                  << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
+                  << "), alpha long " << aC << " / " << aS
+                  << " (" << (alphaOk ? "OK" : "--") << ")"
+                  << ((ddOk && alphaOk) ? "  <<< REUSSIT" : "") << "\n";
+        EXPECT_NEAR(dd, v.ddP95, 1e-3);   // SENTINELLE → figer
+        EXPECT_NEAR(aC, v.aCanon, 1e-2);  // SENTINELLE → figer
+        EXPECT_NEAR(aS, v.aShift, 1e-2);  // SENTINELLE → figer
+    }
+}
+
+// ─── 8d.7 — 3e levier de découplage alpha/risque (décision re-gate 8d.5) ──────
+// L'atténuation 8d.6 n'a rien trouvé qui garde l'alpha ET casse le drawdown.
+// On creuse deux leviers config-only supplémentaires : (1) riskPerTradePct
+// réduit (positions plus petites) — le levier explicitement demandé ; (2) un
+// sweep FIN du gate ATR entre 0,015 (cassait le DD mais perdait 0,53 pt
+// d'alpha) et 0,025 (transparent). MÊME critère : DD p95 ≤ 12,80 ET alpha ≥
+// chaîne sur les DEUX pavages longs (−17,3033 / −11,0503).
+TEST(PullbackConfirmationIntegration, PullbackThirdLeverVariantsAreLocked) {
+    struct Variante { const char* nom; SwingConfig cfg;
+                      double ddP95; double aCanon; double aShift; };
+    // Figé le 2026-07-04. AUCUNE variante ne réussit — le découplage config-only
+    // est ÉPUISÉ (D44 renforcé) :
+    //   • riskPerTradePct : DD p95 STRICTEMENT inchangé (19,2742 aux deux
+    //     crans) — le sizing scale l'équité uniformément, le drawdown en % est
+    //     invariant d'échelle. Levier INOPÉRANT pour le risque de queue.
+    //   • ATR 0,018 / 0,020 : DD p95 PIRE que le pullback nu (21,96 / 25,09) —
+    //     desserrer le gate au-delà de 0,015 aggrave le risque. Le 0,015 de
+    //     8d.6 était une falaise étroite et isolée (voisins tous pires) →
+    //     suspect de sur-ajustement (D36), pas un plateau exploitable.
+    // Conclusion : le seul vrai levier restant serait un position-sizing
+    // MODULÉ par la volatilité (réduire la taille SEULEMENT en régime volatil)
+    // = code moteur, hors config → backlog (item de sprint moteur, pas un flag).
+    Variante variantes[] = {
+        {"risk 0.010",   cfgPullbackRisk(0.010), 19.2742, -17.8252, -11.3039},
+        {"risk 0.015",   cfgPullbackRisk(0.015), 19.2742, -17.4898, -10.6775},
+        {"ATR<=0.018",   cfgPullbackAtr(0.018),  21.9595, -16.8470, -10.0722},
+        {"ATR<=0.020",   cfgPullbackAtr(0.020),  25.0858, -17.0015, -10.5339},
+    };
+    std::cout << std::fixed << std::setprecision(4)
+              << "  8d.7 — 3e levier (reference chaine : DD p95 10,80 ;"
+              << " alpha long -17,30 / -11,05)\n";
+    for (auto& v : variantes) {
+        const double dd = ddP95Canonical(v.cfg);
+        const double aC = alphaLongCanon(v.cfg);
+        const double aS = alphaLongShift(v.cfg);
+        const bool ddOk    = dd <= 12.80;
+        const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
+        std::cout << "  " << std::left << std::setw(14) << v.nom << std::right
                   << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
                   << "), alpha long " << aC << " / " << aS
                   << " (" << (alphaOk ? "OK" : "--") << ")"
