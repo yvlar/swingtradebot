@@ -89,6 +89,11 @@ target_compile_definitions(validate PRIVATE
         SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
         SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
         SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+        # Données longues (item 8d.1) : historique max ~1999+, dot-com/2008 inclus
+        SWINGBOT_QQQ_MAX_CSV="${CMAKE_SOURCE_DIR}/QQQ_max.csv"
+        SWINGBOT_SPY_MAX_CSV="${CMAKE_SOURCE_DIR}/SPY_max.csv"
+        SWINGBOT_IWM_MAX_CSV="${CMAKE_SOURCE_DIR}/IWM_max.csv"
+        SWINGBOT_MDY_MAX_CSV="${CMAKE_SOURCE_DIR}/MDY_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
@@ -160,6 +165,7 @@ add_executable(integration_tests
         tests/integration/test_trailing_atr_integration.cpp
         tests/integration/test_signal_families_integration.cpp
         tests/integration/test_pullback_volatility_integration.cpp
+        tests/integration/test_pullback_confirmation_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
@@ -173,6 +179,11 @@ target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_SPY_CSV="${CMAKE_SOURCE_DIR}/SPY.csv"
         SWINGBOT_IWM_CSV="${CMAKE_SOURCE_DIR}/IWM.csv"
         SWINGBOT_MDY_CSV="${CMAKE_SOURCE_DIR}/MDY.csv"
+        # Données longues (item 8d.1) : historique max ~1999+, dot-com/2008 inclus
+        SWINGBOT_QQQ_MAX_CSV="${CMAKE_SOURCE_DIR}/QQQ_max.csv"
+        SWINGBOT_SPY_MAX_CSV="${CMAKE_SOURCE_DIR}/SPY_max.csv"
+        SWINGBOT_IWM_MAX_CSV="${CMAKE_SOURCE_DIR}/IWM_max.csv"
+        SWINGBOT_MDY_MAX_CSV="${CMAKE_SOURCE_DIR}/MDY_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 

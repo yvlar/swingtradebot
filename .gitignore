@@ -52,6 +52,13 @@ build_log*.txt
 !SPY.csv
 !IWM.csv
 !MDY.csv
+# Données longues total-return ~1999+ (dot-com/2008 inclus — item 8d.1) :
+# versionnées car la confirmation du pullback (8d.3) et ses verrous OOS en
+# dépendent. Export reproductible via scripts/export_total_return.py.
+!QQQ_max.csv
+!SPY_max.csv
+!IWM_max.csv
+!MDY_max.csv
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/
