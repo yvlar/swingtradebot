@@ -79,6 +79,14 @@ namespace trading {
         // recherche 8y.3 — pas de défaut actif tant que l'amélioration
         // OOS n'est pas démontrée.
         double entryMaxAtrPct          = 0.0;
+        // Item 8o.2 (Sprint 8-octies, D44) : > 0 = référence de volatilité
+        // relative (ATR(14)/clôture) du SIZING MODULÉ par la volatilité — la
+        // taille de position est réduite en régime plus volatil que ce seuil
+        // (couper le risque de queue des achats de creux volatils sans les
+        // supprimer). ≤ 0 = désactivé (sizing par le risque seul). Axe de
+        // recherche 8o.3 — pas de défaut actif tant que l'amélioration OOS
+        // n'est pas démontrée.
+        double volSizingAtrRef         = 0.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -96,6 +104,7 @@ namespace trading {
             r.trailingAtrMult = trailingAtrMult;
             r.exitOnLowestLowN = exitOnLowestLowN;
             r.riskPerTradePct = riskPerTradePct;
+            r.volSizingAtrRef = volSizingAtrRef;
             r.minHoldDays     = minHoldDays;
             // La fenêtre de données doit couvrir la SMA de régime (item 8.1) :
             // sinon le bot ne reçoit pas assez de barres pour la calculer.
