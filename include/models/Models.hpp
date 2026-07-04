@@ -93,6 +93,10 @@ struct RiskConfig {
     // désactivé (comportement historique).
     int    exitOnLowestLowN = 0;
     double riskPerTradePct = 0.02;  // risque 2% du capital par trade
+    // Item 8o.2 (D44) : > 0 = référence de volatilité relative (ATR/prix) du
+    // sizing modulé — la taille est réduite en régime plus volatil que ce
+    // seuil. ≤ 0 = désactivé (sizing par le risque seul).
+    double volSizingAtrRef = 0.0;
     int    minHoldDays     = 3;
     // Nombre de barres demandées au data feed à chaque cycle (item 8.1) : doit
     // couvrir la période du filtre de régime (SMA200 → ~230). Défaut 60 = ancien

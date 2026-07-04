@@ -254,7 +254,9 @@ private:
             int shares = riskManager_->positionSize(
                 account.cash, price,
                 riskCfg_.stopLossPct,
-                riskCfg_.riskPerTradePct
+                riskCfg_.riskPerTradePct,
+                bars,                       // fenêtre courante (item 8o.2 : ATR)
+                riskCfg_.volSizingAtrRef    // ≤ 0 = sizing historique
             );
             if (shares <= 0) {
                 logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");

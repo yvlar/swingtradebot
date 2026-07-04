@@ -142,6 +142,27 @@ public:
         double riskPerTradePct
     ) const = 0;
 
+    // Variante « fenêtre de barres » (item 8o.2) : quand volSizingAtrRef > 0,
+    // l'implémentation PEUT réduire la taille en régime VOLATIL — multiplier
+    // les actions par min(1, volSizingAtrRef / (ATR(14)/prix)) : pleine taille
+    // en marché calme, réduite quand la volatilité relative dépasse la
+    // référence (hypothèse D44 : couper le risque de queue des achats de creux
+    // volatils sans les supprimer). Implémentation par défaut RÉTRO-COMPATIBLE
+    // (patron computeBars/8q.1) : ignore les barres et délègue à la surcharge
+    // historique — un IRiskManager qui n'en tient pas compte garde son
+    // comportement. Fail-open : ATR incalculable → pleine taille.
+    virtual int positionSize(
+        double capital,
+        double price,
+        double stopLossPct,
+        double riskPerTradePct,
+        const std::vector<Bar>& bars,   // fenêtre courante (peut être vide)
+        double volSizingAtrRef          // ≤ 0 = désactivé (sizing historique)
+    ) const {
+        (void)bars; (void)volSizingAtrRef;
+        return positionSize(capital, price, stopLossPct, riskPerTradePct);
+    }
+
     // Vérifie si le trade respecte les règles de risque
     // (dont coût total = price × qty ≤ cash disponible)
     virtual bool isTradeAllowed(

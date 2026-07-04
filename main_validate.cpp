@@ -351,6 +351,113 @@ int main() {
         }
     }
 
+    // 11. Confirmation hors-protocole du pullback (Sprint 8-septies, 8d.3) ─────
+    // Le pullback (RSI ≤ 40 « s'ajoute », candidat D42) est jugé HORS du
+    // protocole qui l'a choisi : multi-actifs, grille resserrée, Monte-Carlo,
+    // et surtout DONNÉES LONGUES (QQQ_max ~1999+, dot-com 2000-2002 et 2008
+    // inclus). Verdict : l'ALPHA généralise (≥ chaîne sur les 2 pavages longs
+    // et 2/3 actifs, argmax de grille stable à 40), MAIS le Monte-Carlo montre
+    // un drawdown de queue quasi DOUBLÉ (DD p95 10,80 → 19,27 %). Verrous CI
+    // dans test_pullback_confirmation_integration.cpp.
+    titre("11. CONFIRMATION PULLBACK (donnees longues + multi-actifs + Monte-Carlo — 8d.3)");
+    SwingConfig cfgPull = cfg;
+    cfgPull.entryPullbackRsiMax = 40.0;   // candidat D42, variante « s'ajoute »
+
+    std::cout << "\n  Donnees LONGUES QQQ_max (~1999+, dot-com + 2008) :\n";
+    const struct { const char* nom; size_t is, oos, pas, dec; } pavagesLong[] = {
+        {"canonique-long (IS=700/OOS=400)",         700, 400, 400,  0},
+        {"decale-long (IS=500/OOS=400, offset=90)", 500, 400, 400, 90},
+    };
+    const std::string qqqMax = SWINGBOT_QQQ_MAX_CSV;
+    for (const auto& p : pavagesLong) {
+        std::cout << "  Pavage " << p.nom << " :\n";
+        for (const auto& v : {std::make_pair("chaine v2", cfg),
+                              std::make_pair("chaine + pullback", cfgPull)}) {
+            const auto ws = WalkForward(v.second, qqqMax, p.is, p.oos, p.pas, p.dec).run();
+            double alpha = 0; size_t trades = 0;
+            for (const auto& x : ws) { alpha += x.oos.alpha; trades += x.oos.trades.size(); }
+            if (!ws.empty()) alpha /= static_cast<double>(ws.size());
+            std::cout << "  -> " << std::left << std::setw(18) << v.first
+                      << std::right << " : alpha OOS moyen "
+                      << std::fixed << std::setprecision(4) << alpha
+                      << " pt, " << trades << " trades OOS pooles ("
+                      << ws.size() << " fenetres)\n";
+        }
+    }
+
+    std::cout << "\n  Multi-actifs (pavage fin 2019-2026, chaine vs chaine+pullback) :\n";
+    const std::pair<const char*, std::string> autresActifs[] = {
+        {"SPY", SWINGBOT_SPY_CSV}, {"IWM", SWINGBOT_IWM_CSV}, {"MDY", SWINGBOT_MDY_CSV},
+    };
+    for (const auto& a : autresActifs) {
+        const auto wC = WalkForward(cfg,     a.second, 500, 300, 300).run();
+        const auto wP = WalkForward(cfgPull, a.second, 500, 300, 300).run();
+        double aC = 0, aP = 0;
+        for (const auto& x : wC) aC += x.oos.alpha;
+        for (const auto& x : wP) aP += x.oos.alpha;
+        if (!wC.empty()) aC /= static_cast<double>(wC.size());
+        if (!wP.empty()) aP /= static_cast<double>(wP.size());
+        std::cout << "  -> " << std::left << std::setw(4) << a.first << std::right
+                  << " : chaine " << std::fixed << std::setprecision(4) << aC
+                  << " vs pullback " << aP << (aP >= aC ? "  (pullback >=)" : "  (chaine >)")
+                  << "\n";
+    }
+
+    std::cout << "\n  Monte-Carlo canonique QQQ (graine 42, 2000 chemins) — le volet DISQUALIFIANT :\n";
+    for (const auto& v : {std::make_pair("chaine v2", cfg),
+                          std::make_pair("chaine + pullback", cfgPull)}) {
+        const auto ws = WalkForward(v.second, qqq, 700, 400, 400).run();
+        std::vector<TradeRecord> pool;
+        size_t bars = 0;
+        for (const auto& x : ws) {
+            pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end());
+            bars += (x.oosEnd - x.oosStart);
+        }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0);
+        std::cout << "  -> " << std::left << std::setw(18) << v.first << std::right
+                  << " : CAGR p50 " << std::fixed << std::setprecision(4) << r.cagrP50
+                  << " %, DD p95 " << r.ddP95 << " %\n";
+    }
+    std::cout << "\n  VERDICT 8d.3 : alpha CONFIRME (generalise donnees longues + multi-actifs),\n"
+              << "  mais drawdown de queue quasi double (DD p95 10,80 -> 19,27) → adoption gatee (8d.5).\n";
+
+    std::cout << "\n  Attenuation du drawdown (8d.6, DD p95 canonique QQQ) :\n";
+    for (const auto& v : {std::make_pair("pullback nu",  cfgPull),
+                          std::make_pair("+ ATR<=0.015", [&]{ SwingConfig c = cfgPull; c.entryMaxAtrPct = 0.015; return c; }()),
+                          std::make_pair("+ stop 0.03",  [&]{ SwingConfig c = cfgPull; c.stopLossPct = 0.03; return c; }())}) {
+        const auto ws = WalkForward(v.second, qqq, 700, 400, 400).run();
+        std::vector<TradeRecord> pool; size_t bars = 0;
+        for (const auto& x : ws) { pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end()); bars += (x.oosEnd - x.oosStart); }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0);
+        std::cout << "  -> " << std::left << std::setw(14) << v.first << std::right
+                  << " : DD p95 " << std::fixed << std::setprecision(4) << r.ddP95 << " %\n";
+    }
+    std::cout << "  VERDICT 8d.6 : le gating ATR casse le drawdown (7,12 < chaine) mais perd l'alpha\n"
+              << "  long ; aucune variante ne reussit DD+alpha → alpha et risque du pullback sont couples (D44).\n";
+
+    // 12. Sizing modulé par la volatilité (Sprint 8-octies, 8o.3) ─────────────
+    // MC désormais SIZE-AWARE (D45, 8o.1) : le vol-sizing (8o.2) est enfin
+    // mesurable. DD p95 canonique (MC size-aware). Verrous CI dans
+    // test_pullback_confirmation_integration.cpp (VolSizingDecouplingIsLocked).
+    titre("12. VOL-SIZING (pullback + volSizingAtrRef, MC size-aware — 8o.3)");
+    std::cout << "\n  DD p95 canonique QQQ (MC size-aware, reference chaine 4,28) :\n";
+    for (const auto& v : {std::make_pair("pullback nu",  40.0),
+                          std::make_pair("+ vol 0.015",  15.0),
+                          std::make_pair("+ vol 0.025",  25.0)}) {
+        SwingConfig c = cfg;
+        c.entryPullbackRsiMax = 40.0;
+        if (v.second < 40.0) c.volSizingAtrRef = v.second / 1000.0;
+        const auto ws = WalkForward(c, qqq, 700, 400, 400).run();
+        std::vector<TradeRecord> pool; size_t bars = 0;
+        for (const auto& x : ws) { pool.insert(pool.end(), x.oos.trades.begin(), x.oos.trades.end()); bars += (x.oosEnd - x.oosStart); }
+        const auto r = MonteCarlo(10'000.0, 42, 2000).run(pool, static_cast<double>(bars) / 252.0);
+        std::cout << "  -> " << std::left << std::setw(14) << v.first << std::right
+                  << " : DD p95 " << std::fixed << std::setprecision(4) << r.ddP95 << " %\n";
+    }
+    std::cout << "  VERDICT 8o.3 : le vol-sizing REDUIT le DD du pullback (7,88 -> 6,51 a ref 0,015)\n"
+              << "  au prix d'un cheveu d'alpha, mais ne le ramene PAS au niveau chaine (4,28) : premiere\n"
+              << "  frontiere DD/alpha favorable, decouplage PARTIEL — decision d'adoption au gate 8o.4.\n";
+
     std::cout << "\n";
     return 0;
 }

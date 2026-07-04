@@ -15,10 +15,17 @@ struct TradeRecord {
     double      sellPrice   = 0.0;
     int         shares      = 0;
     double      pnl         = 0.0;   // P&L en dollars
-    double      pnlPct      = 0.0;   // P&L en %
+    double      pnlPct      = 0.0;   // P&L en % (rendement de la POSITION, indépendant de la taille)
     int         holdDays    = 0;
     std::string exitReason;          // "stop-loss", "take-profit", "trailing-stop", "signal"
     bool        isWin       = false;
+    // Fraction du capital réellement DÉPLOYÉE à l'entrée (item 8o.1, D45) :
+    // (actions × prix d'entrée) / équité totale à l'entrée. Permet au
+    // Monte-Carlo de refléter la TAILLE de position : le rendement porté au
+    // portefeuille est deployedFraction × pnlPct, pas pnlPct (qui suppose
+    // 100 % de déploiement). Défaut 1.0 = plein déploiement (rétro-compatible
+    // avec les TradeRecords synthétiques des tests unitaires).
+    double      deployedFraction = 1.0;
 };
 
 // ─── PaperBroker ──────────────────────────────────────────────────────────────
@@ -61,6 +68,9 @@ public:
             cost = price * qty * (1.0 + commissionPct_);
         }
 
+        // Équité totale à l'entrée : à plat (avant achat), équité = cash pur.
+        // Sert à calculer la fraction déployée du trade (D45, sizing MC).
+        entryEquity_ = cash_;
         cash_ -= cost;
         position_ = Position{symbol, qty, price, price * qty, 0.0};
         currentBuyDate_ = fillDate_.value_or(currentDate_);
@@ -94,6 +104,11 @@ public:
         trade.pnl        = (price - position_->avgPrice) * qty
                            - price * qty * commissionPct_;
         trade.pnlPct     = (price - position_->avgPrice) / position_->avgPrice * 100.0;
+        // Fraction déployée (D45) : capital investi à l'entrée / équité d'entrée.
+        // Garde entryEquity_ > 0 → sinon 1.0 (plein déploiement par défaut).
+        trade.deployedFraction = entryEquity_ > 0.0
+            ? (position_->avgPrice * position_->shares) / entryEquity_
+            : 1.0;
         trade.holdDays   = holdDays_;
         trade.exitReason = lastExitReason_;
         trade.isWin      = trade.pnl > 0;
@@ -183,6 +198,7 @@ private:
     std::optional<std::string> fillDate_;     // date d'exécution (B2), sinon date courante
     std::string              currentDate_;
     std::string              currentBuyDate_;
+    double                   entryEquity_ = 0.0;  // équité totale à l'entrée (D45, sizing MC)
     std::string              lastExitReason_ = "signal";
     int                      holdDays_ = 0;
     std::vector<TradeRecord> trades_;

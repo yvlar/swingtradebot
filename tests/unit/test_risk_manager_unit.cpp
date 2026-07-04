@@ -337,6 +337,52 @@ namespace {
 
 } // namespace
 
+// ════════════════════════════════════════════════════════════
+//  positionSize modulé par la volatilité (item 8o.2, D44)
+//  barresTrConstant(16,100,1) → ATR(14)=2, prix=100 → volatilité
+//  relative volRel = ATR/prix = 0,02. Base : positionSize(10000,100,
+//  0.05,0.02) = 40 actions (dollarRisk 200 / riskPerShare 5).
+// ════════════════════════════════════════════════════════════
+
+// volSizingAtrRef > volRel → facteur min(1, 0,03/0,02) = 1 → PLEINE taille.
+TEST(RiskManagerUnit, VolSizingFullSizeBelowReference) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, bars, 0.03), 40);
+}
+
+// volSizingAtrRef < volRel → facteur min(1, 0,01/0,02) = 0,5 → 40 × 0,5 = 20.
+TEST(RiskManagerUnit, VolSizingReducesAboveReference) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, bars, 0.01), 20);
+}
+
+// Le facteur est BORNÉ à 1 : marché très calme (réf ≫ volRel) ne gonfle
+// jamais la taille au-dessus du sizing par le risque.
+TEST(RiskManagerUnit, VolSizingNeverExceedsBaseSize) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, bars, 1.0), 40);
+}
+
+// Fail-open : fenêtre trop courte pour ATR(14) (< 15 barres) → série vide →
+// PLEINE taille (jamais de blocage silencieux du sizing).
+TEST(RiskManagerUnit, VolSizingFailOpenWhenAtrUnavailable) {
+    RiskManager rm;
+    auto bars = barresTrConstant(10);   // < 15 → ATR incalculable
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, bars, 0.01), 40);
+}
+
+// volSizingAtrRef ≤ 0 → identité stricte avec le sizing historique.
+TEST(RiskManagerUnit, VolSizingDisabledIsIdentity) {
+    RiskManager rm;
+    auto bars = barresTrConstant(16);
+    const int base = rm.positionSize(10'000.0, 100.0, 0.05, 0.02);
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, bars, 0.0), base);
+    EXPECT_EQ(rm.positionSize(10'000.0, 100.0, 0.05, 0.02, {}, 0.0),  base);
+}
+
 // Cas central calculé à la main : buy=100, peak=110, mult=3, ATR=2
 // → seuil = 110 − 3×2 = 104 (exact en double). Sortie à 104,0 (borne <=
 // verrouillée), pas de sortie à 104,1.

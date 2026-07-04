@@ -42,6 +42,35 @@ public:
         return std::max(0, shares);
     }
 
+    // Masquage : ré-exposer la surcharge de base à côté de la variante barres.
+    using IRiskManager::positionSize;
+
+    // Sizing modulé par la volatilité (item 8o.2, D44) : réduit la taille
+    // SEULEMENT en régime volatil. Facteur = min(1, volSizingAtrRef /
+    // (ATR(14)/prix)) — pleine taille tant que la volatilité relative reste
+    // sous la référence, réduction proportionnelle au-dessus. Fail-open : ATR
+    // incalculable (fenêtre < 15 barres ou nul) → pleine taille (jamais de
+    // blocage silencieux du sizing). volSizingAtrRef ≤ 0 → sizing historique.
+    int positionSize(
+        double capital,
+        double price,
+        double stopLossPct,
+        double riskPerTradePct,
+        const std::vector<Bar>& bars,
+        double volSizingAtrRef
+    ) const override {
+        int shares = positionSize(capital, price, stopLossPct, riskPerTradePct);
+        if (volSizingAtrRef <= 0 || shares <= 0 || price <= 0) return shares;
+
+        const auto serie = ATR(kAtrPeriode).computeBars(bars);
+        const double atr = serie.empty() ? 0.0 : serie.back();
+        if (atr <= 0) return shares;   // fail-open : pas d'ATR → pleine taille
+
+        const double volRel = atr / price;                 // volatilité relative
+        const double facteur = std::min(1.0, volSizingAtrRef / volRel);
+        return static_cast<int>(shares * facteur);
+    }
+
     // Vérifie qu'on n'est pas déjà en position, que le compte est actif
     // et que le coût total de l'ordre tient dans le cash disponible
     bool isTradeAllowed(
