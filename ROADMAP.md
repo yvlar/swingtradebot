@@ -15,7 +15,7 @@
 | Production   | 72        | 35                           |
 
 - **Dernière mise à jour** : 2026-07-03 (Sprint 8-sexies — 3e famille de signaux jugée sur les trois pavages : l'entrée pullback RSI ≤ 40 « s'ajoute » est la **PREMIÈRE amélioration robuste du protocole** (meilleure que la chaîne sur les DEUX pavages non-choisis : +0,42 pt canonique, +1,52 pt décalé) mais l'alpha OOS reste négatif partout (aucun edge absolu) → décision utilisateur : **CONFIRMER avant d'adopter** (validation hors-protocole multi-actifs/Monte-Carlo/grille resserrée = prérequis d'adoption, D42) ; le filtre de volatilité ATR est réfuté sur les pavages non-choisis (biais de sélection D36). Aucune adoption, prod reste paper. Le moteur gagne deux mécanismes A/B-ables : `entryPullbackRsiMax` et `entryMaxAtrPct` (défauts 0 = off))
-- **Sprint courant** : Sprint 8-septies — 4e famille de signaux (sortie temporelle « stagnation » — time-stop sur position qui ne fait plus de plus-haut —, filtre de gap sur les entrées ; même protocole trois pavages) — décision utilisateur du 2026-07-03
+- **Sprint courant** : Sprint 8-septies (redéfini le 2026-07-04) — Données longues & confirmation du pullback (export total-return ~1999+ avec dot-com/2008, confirmation hors-protocole du candidat D42 sur 4 volets, garde-fou multiple-testing D43 ; la « 4e famille » initiale part au backlog) — décision utilisateur du 2026-07-04
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -853,20 +853,87 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   au backlog. Suite décidée avec l'utilisateur : **Sprint 8-septies**
   (4e famille de signaux — le pullback attend sa confirmation).
 
-# 🟣 SPRINT 8-SEPTIES — 4e famille de signaux — **sprint courant**
+# 🟣 SPRINT 8-SEPTIES (redéfini le 2026-07-04) — Données longues & confirmation du pullback — **sprint courant**
 
-> Décision utilisateur (2026-07-03) à la clôture du Sprint 8-sexies :
-> continuer la recherche par une 4e famille pendant que le pullback (premier
-> candidat vivant, D42) attend sa confirmation hors-protocole. Pistes jamais
-> testées : le TEMPS (une position qui ne fait plus de plus-haut consomme du
-> capital sans payer — time-stop) et les GAPS d'ouverture (ne pas courir
-> après un gap). Discipline inchangée : flags additifs A/B-ables (défaut =
-> comportement actuel, goldens intacts), verdicts OOS sur les TROIS pavages
-> (canonique 700/400, fin 500/300, décalé 500/400 offset 90), configs
-> explicites (D33), trades poolés figés (D34), deltas figés, mécanismes
-> jugés SEULS, masquage anticipé dès la rédaction et ACTIVATION vérifiée
-> avant d'interpréter (D41), mini-grilles re-dérivées à l'exécution
-> (pas de copie — leçon 8-ter).
+> **RE-PRIORISATION (décision utilisateur du 2026-07-04)** : le contenu
+> initial de ce sprint (« 4e famille de signaux », items 8z.x) part au
+> BACKLOG sans avoir démarré (aucun code écrit). Motif chiffré : la
+> trajectoire mesurée sur quatre familles de flags donne au MIEUX
+> +0,4/+1,5 pt (pullback) contre un déficit d'alpha de −7/−13 pts selon le
+> pavage — l'empilement de flags sur la chaîne plafonne. Les leviers
+> re-priorisés, dans l'ordre : (1) la DONNÉE — le harnais juge tout sur
+> 1790 barres 2019-2026, régime quasi uniquement haussier : faible
+> puissance statistique (D34/D35) et aucun vrai marché baissier là où le
+> filtre de régime doit payer → export total-return depuis la cotation
+> (~1999+, dot-com et 2008 inclus) ; (2) statuer VITE sur le seul candidat
+> vivant — la confirmation hors-protocole du pullback (D42) devient CE
+> sprint ; (3) le prototype de rotation multi-actifs (T4 : le coût dominant
+> est le temps en cash) visé au sprint suivant ; (4) un garde-fou
+> multiple-testing (D43). Discipline inchangée : configs explicites (D33),
+> trades poolés figés (D34), activation vérifiée (D41), verdicts
+> verrouillés, commits atomiques. Les CSV 2019-2026 restent INTACTS
+> (aucun verrou historique ne bouge) : les données longues vivent à côté
+> (`*_max.csv`).
+
+- [ ] **8d.1** **Export total-return historique max (~1999+)** : script
+  committé `scripts/export_total_return.py` (python3 stdlib uniquement,
+  Yahoo v8 chart avec User-Agent navigateur — vérifié accessible depuis
+  l'environnement —, `period2` FIGÉ au 2026-07-01 pour la reproductibilité
+  des comptes et l'anti-barre-en-formation) → `QQQ_max.csv`, `SPY_max.csv`,
+  `IWM_max.csv`, `MDY_max.csv` à la racine, format existant
+  `Date,Open,High,Low,Close,Adj Close,Volume` (chaque actif depuis sa
+  cotation : QQQ 1999-03, IWM 2000-05, SPY/MDY avant). Compile-defs
+  `SWINGBOT_*_MAX_CSV` sur `integration_tests` et `validate` (modèle des
+  defs existantes du CMakeLists). **Acceptation** : `auditTotalReturnCsv`
+  (`include/backtest/DataQuality.hpp`) passe sur les 4 fichiers (Adj ≠
+  Close — dividendes réels), comptes de barres FIGÉS + garde de densité
+  vs jours de bourse attendus (solde le backlog D31), B&H QQQ_max figé
+  (dot-com et 2008 inclus — première donnée honnête sur les régimes
+  baissiers).
+- [ ] **8d.2** **Pavages longs + référence chaîne v2 sur données max** :
+  pavages LONGS sur ~6 800 barres QQQ_max (dimensionnés à l'exécution en
+  respectant D35 : warmup ~201 barres ≪ OOS) — un canonique-long et un
+  décalé-long (offset, aucune borne commune). Verrouiller la référence :
+  chaîne v2 (config explicite D33, modèle `cfgChaineV2()` de
+  `tests/integration/test_pullback_volatility_integration.cpp`) — alpha
+  OOS moyen + trades poolés FIGÉS (D34) sur les deux pavages. Première
+  mesure du bot incluant deux vrais marchés baissiers.
+- [ ] **8d.3** **Confirmation hors-protocole du pullback (D42)** : nouveau
+  fichier `tests/integration/test_pullback_confirmation_integration.cpp`
+  (modèle 8-ter : le candidat est jugé HORS du protocole qui l'a choisi) +
+  section 11 du CLI `validate`. Quatre volets verrouillés : (a)
+  **multi-actifs** SPY/IWM/MDY (pavage fin 2019-2026, duels chaîne vs
+  chaîne+pullback RSI ≤ 40 « s'ajoute », un verrou par actif — modèle
+  8b.2) ; (b) **grille resserrée** RSI ∈ {35, 40, 45} « s'ajoute » (pavage
+  fin QQQ, mesures + argmax figés — stabilité à la maille, D39) ; (c)
+  **Monte-Carlo** des trades OOS poolés (pavage canonique QQQ, chaîne vs
+  pullback, p50/p95 CAGR et drawdown figés — modèle 8t.2) ; (d) **données
+  longues** : duels sur les DEUX pavages longs de 8d.2. **Critère de
+  confirmation (consigné dans le fichier de verdict)** : pullback ≥ chaîne
+  sur les deux pavages longs ET ≥ chaîne sur ≥ 2 actifs sur 3 ET argmax de
+  grille stable (40 ou plateau plat) ET Monte-Carlo non dégradé — sinon
+  « non confirmé » (résultat valide, leçon 8-ter).
+- [ ] **8d.4** **Garde-fou statistique — multiple testing (D43, docs
+  uniquement)** : registre des hypothèses jugées depuis le Sprint 8
+  (recompté depuis le changelog : familles, variantes, combos de grilles)
+  + règle adoptée : toute adoption future exige la confirmation
+  hors-protocole COMPLÈTE (généralisation D42 : données longues +
+  multi-actifs + grille resserrée + Monte-Carlo) — plus on tire
+  d'hypothèses, plus le « meilleur » est un artefact probable (D36
+  systématisé). AUCUNE modification de `prompt-*.md` ni de DoD de prompt
+  (règle intangible) ; si un amendement semblait utile, le PROPOSER en
+  diff à la rétrospective.
+- [ ] **8d.5** **Gate d'adoption (Décision requise)** : décision
+  utilisateur posée AVEC les chiffres de 8d.3 — si confirmé : adoption du
+  pullback comme défaut (`SwingConfig::entryPullbackRsiMax` 0 → 40,
+  câblage ConfigLoader + `config/prod.json` gouverné avec re-baseline
+  documentée, goldens re-figés — commits séparés) ; sinon : consigner sans
+  adopter (le mécanisme reste flag additif défaut 0). La prod reste paper
+  dans TOUS les cas (l'alpha absolu attendu reste négatif même confirmé).
+
+> **Backlog — reporté sans démarrage (décision utilisateur 2026-07-04) :
+> « 4e famille de signaux » (contenu initial du 8-septies), ré-ouvrable
+> tel quel après la confirmation du pullback et le prototype rotation :**
 
 - [ ] **8z.1** **Sortie temporelle « stagnation » (time-stop)** : flag
   `SwingConfig::exitIfNoNewHighN` (défaut 0 = désactivé) ; en position, si
