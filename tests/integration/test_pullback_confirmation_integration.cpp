@@ -385,20 +385,21 @@ TEST(PullbackConfirmationIntegration, PullbackMonteCarloCanonicalIsLocked) {
               << "  8d.3c — Monte-Carlo canonique QQQ (graine 42, 2000 chemins)\n"
               << "  chaine   CAGR p50 " << rC.cagrP50 << " DD p95 " << rC.ddP95 << "\n"
               << "  pullback CAGR p50 " << rP.cagrP50 << " DD p95 " << rP.ddP95 << "\n";
-    // Figé le 2026-07-04 (graine 42, 2000 chemins — reproductible au bit près,
-    // modèle 8t.2). Le pullback AMÉLIORE le CAGR médian (+0,93 pt) MAIS
-    // DÉGRADE gravement le drawdown de queue : DD p95 10,80 → 19,27 %
-    // (+8,47 pt, quasi doublé). Acheter les creux ajoute des trades
-    // (11 vs 10 sur le canonique) qui augmentent le risque de queue. C'est
-    // le VOLET DISQUALIFIANT : le critère « Monte-Carlo non dégradé » ÉCHOUE.
-    EXPECT_NEAR(rC.cagrP50, 7.3353, 1e-3);
-    EXPECT_NEAR(rC.ddP95,  10.8001, 1e-3);
-    EXPECT_NEAR(rP.cagrP50, 8.2653, 1e-3);
-    EXPECT_NEAR(rP.ddP95,  19.2742, 1e-3);
-    // Verrou du fait disqualifiant : le drawdown de queue du pullback est
+    // RE-BASELINE 2026-07-04 (Sprint 8-octies, item 8o.1, D45) : le MC pondère
+    // désormais chaque trade par sa fraction de capital déployée (~40 % pour la
+    // chaîne). Les valeurs CHUTENT (l'ancien MC assumait 100 % de déploiement,
+    // surestimant tout) mais le VERDICT QUALITATIF TIENT : le pullback améliore
+    // le CAGR médian (2,80 → 3,21) et DÉGRADE le drawdown de queue
+    // (DD p95 4,28 → 7,88, soit ~1,8×). Acheter les creux volatils reste plus
+    // risqué. C'est le VOLET DISQUALIFIANT (le vrai levier = 8o.2 vol-sizing).
+    EXPECT_NEAR(rC.cagrP50, 2.7984, 1e-3);
+    EXPECT_NEAR(rC.ddP95,   4.2758, 1e-3);
+    EXPECT_NEAR(rP.cagrP50, 3.2094, 1e-3);
+    EXPECT_NEAR(rP.ddP95,   7.8821, 1e-3);
+    // Verrou du fait disqualifiant : le drawdown de queue du pullback reste
     // NETTEMENT pire que celui de la chaîne (va à l'encontre de la DoD
-    // risque/rendement — < 5 pts d'écart avec DD réduit de 50 %).
-    EXPECT_GT(rP.ddP95, rC.ddP95 + 5.0);
+    // risque/rendement).
+    EXPECT_GT(rP.ddP95, rC.ddP95 * 1.5);     // ~1,8× le DD de la chaîne
     EXPECT_GT(rP.cagrP50, rC.cagrP50);       // le CAGR, lui, s'améliore
 }
 
@@ -475,29 +476,31 @@ double alphaLongShift(const SwingConfig& c) {
 TEST(PullbackConfirmationIntegration, PullbackAttenuationVariantsAreLocked) {
     struct Variante { const char* nom; SwingConfig cfg;
                       double ddP95; double aCanon; double aShift; };
-    // Figé le 2026-07-04. AUCUNE variante ne REUSSIT (DD p95 ≤ 12,80 ET alpha ≥
-    // chaîne sur les deux pavages longs). Le seul levier qui casse le drawdown
-    // est le gating ATR ≤ 0,015 : DD p95 19,27 → 7,12 (SOUS la chaîne !) — mais
-    // il perd l'alpha sur le canonique-long (−17,83 < −17,30). Le stade serré
-    // ne bouge PAS le DD canonique (le stop ne mord pas sur 2019-2026, le
-    // trailing 3 % tire d'abord) tout en rabotant l'alpha long. LEÇON (D44) :
-    // l'alpha du pullback ET son drawdown viennent des MÊMES achats de creux
-    // en régime volatil — les deux leviers testés ne les séparent pas.
+    // RE-BASELINE 2026-07-04 (item 8o.1, D45 : MC size-aware). Les DD chutent
+    // (déploiement ~40 %) mais le VERDICT D44 TIENT : AUCUNE variante ne REUSSIT
+    // (DD p95 ≤ chaîne+2 = 6,28 ET alpha ≥ chaîne sur les deux pavages longs).
+    // Le seul levier qui casse le drawdown est le gating ATR ≤ 0,015 : DD p95
+    // 7,88 → 2,82 (sous la chaîne 4,28) — mais il perd l'alpha sur le
+    // canonique-long (−17,83 < −17,30). Le stop serré ne réduit pas le DD
+    // (le trailing 3 % tire d'abord) et rabote l'alpha. LEÇON (D44) : l'alpha
+    // du pullback ET son drawdown viennent des MÊMES achats de creux volatils —
+    // ces deux leviers config-only ne les séparent pas (le vrai levier =
+    // vol-sizing 8o.2). Alpha inchangé vs avant D45 (backtest non modifié).
     Variante variantes[] = {
-        {"pullback nu",        cfgPullback(),          19.2742, -17.1682, -10.0033},
-        {"+ ATR<=0.015",       cfgPullbackAtr(0.015),   7.1217, -17.8340, -10.0269},
-        {"+ ATR<=0.025",       cfgPullbackAtr(0.025),  21.0907, -16.9849, -10.4046},
-        {"+ stop 0.03",        cfgPullbackStop(0.03),  19.2742, -16.0649,  -8.1484},
-        {"+ stop 0.04",        cfgPullbackStop(0.04),  19.2742, -16.7756,  -9.3481},
+        {"pullback nu",        cfgPullback(),           7.8821, -17.1682, -10.0033},
+        {"+ ATR<=0.015",       cfgPullbackAtr(0.015),   2.8169, -17.8340, -10.0269},
+        {"+ ATR<=0.025",       cfgPullbackAtr(0.025),   8.6996, -16.9849, -10.4046},
+        {"+ stop 0.03",        cfgPullbackStop(0.03),  12.6751, -16.0649,  -8.1484},
+        {"+ stop 0.04",        cfgPullbackStop(0.04),   9.4605, -16.7756,  -9.3481},
     };
     std::cout << std::fixed << std::setprecision(4)
-              << "  8d.6 — attenuation du drawdown (reference chaine : DD p95 10,80 ;"
+              << "  8d.6 — attenuation du drawdown (reference chaine : DD p95 4,28 ;"
               << " alpha long -17,30 / -11,05)\n";
     for (auto& v : variantes) {
         const double dd = ddP95Canonical(v.cfg);
         const double aC = alphaLongCanon(v.cfg);
         const double aS = alphaLongShift(v.cfg);
-        const bool ddOk    = dd <= 12.80;
+        const bool ddOk    = dd <= 6.28;
         const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
         std::cout << "  " << std::left << std::setw(16) << v.nom << std::right
                   << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")
@@ -520,32 +523,32 @@ TEST(PullbackConfirmationIntegration, PullbackAttenuationVariantsAreLocked) {
 TEST(PullbackConfirmationIntegration, PullbackThirdLeverVariantsAreLocked) {
     struct Variante { const char* nom; SwingConfig cfg;
                       double ddP95; double aCanon; double aShift; };
-    // Figé le 2026-07-04. AUCUNE variante ne réussit — le découplage config-only
-    // est ÉPUISÉ (D44 renforcé) :
-    //   • riskPerTradePct : DD p95 STRICTEMENT inchangé (19,2742 aux deux
-    //     crans) — le sizing scale l'équité uniformément, le drawdown en % est
-    //     invariant d'échelle. Levier INOPÉRANT pour le risque de queue.
-    //   • ATR 0,018 / 0,020 : DD p95 PIRE que le pullback nu (21,96 / 25,09) —
-    //     desserrer le gate au-delà de 0,015 aggrave le risque. Le 0,015 de
-    //     8d.6 était une falaise étroite et isolée (voisins tous pires) →
-    //     suspect de sur-ajustement (D36), pas un plateau exploitable.
-    // Conclusion : le seul vrai levier restant serait un position-sizing
-    // MODULÉ par la volatilité (réduire la taille SEULEMENT en régime volatil)
-    // = code moteur, hors config → backlog (item de sprint moteur, pas un flag).
+    // RE-BASELINE 2026-07-04 (item 8o.1, D45 : MC size-aware). NUANCE IMPORTANTE :
+    // sous le MC size-blind, riskPerTradePct paraissait « invariant d'échelle »
+    // (DD figé à 19,27) — c'était un ARTEFACT du MC aveugle à la taille (D45).
+    // Corrigé, riskPerTradePct RÉDUIT bien le DD (3,64 à 0,010 ; 5,38 à 0,015 vs
+    // chaîne 4,28) — mais au prix de l'alpha (−17,83 / −17,49 < −17,30). Le
+    // sweep ATR 0,018/0,020 réduit peu le DD et garde l'alpha, sans passer.
+    // VERDICT D44 INCHANGÉ : aucune variante n'atteint DD ≤ chaîne+2 (6,28) ET
+    // alpha ≥ chaîne — mais parce que réduire la taille UNIFORMÉMENT coûte
+    // l'alpha proportionnellement. Le vrai levier reste le sizing MODULÉ par la
+    // volatilité (réduire SEULEMENT en régime volatil) — c'est l'objet de 8o.2,
+    // enfin mesurable maintenant que le MC voit la taille. Alpha inchangé vs
+    // avant D45 (backtest non modifié).
     Variante variantes[] = {
-        {"risk 0.010",   cfgPullbackRisk(0.010), 19.2742, -17.8252, -11.3039},
-        {"risk 0.015",   cfgPullbackRisk(0.015), 19.2742, -17.4898, -10.6775},
-        {"ATR<=0.018",   cfgPullbackAtr(0.018),  21.9595, -16.8470, -10.0722},
-        {"ATR<=0.020",   cfgPullbackAtr(0.020),  25.0858, -17.0015, -10.5339},
+        {"risk 0.010",   cfgPullbackRisk(0.010),  3.6367, -17.8252, -11.3039},
+        {"risk 0.015",   cfgPullbackRisk(0.015),  5.3756, -17.4898, -10.6775},
+        {"ATR<=0.018",   cfgPullbackAtr(0.018),   9.0866, -16.8470, -10.0722},
+        {"ATR<=0.020",   cfgPullbackAtr(0.020),  10.4691, -17.0015, -10.5339},
     };
     std::cout << std::fixed << std::setprecision(4)
-              << "  8d.7 — 3e levier (reference chaine : DD p95 10,80 ;"
+              << "  8d.7 — 3e levier (reference chaine : DD p95 4,28 ;"
               << " alpha long -17,30 / -11,05)\n";
     for (auto& v : variantes) {
         const double dd = ddP95Canonical(v.cfg);
         const double aC = alphaLongCanon(v.cfg);
         const double aS = alphaLongShift(v.cfg);
-        const bool ddOk    = dd <= 12.80;
+        const bool ddOk    = dd <= 6.28;
         const bool alphaOk = aC >= -17.3033 && aS >= -11.0503;
         std::cout << "  " << std::left << std::setw(14) << v.nom << std::right
                   << " : DD p95 " << dd << " (" << (ddOk ? "OK" : "--")

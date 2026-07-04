@@ -281,10 +281,13 @@ TEST(CandidateValidationIntegration, CandidateMonteCarloOosVerdictIsLocked) {
 
     // Verdict figé : le candidat réduit le risque mais PAS au niveau de
     // rendement exigé — acceptation 8t.2 NON satisfaite (p50 CAGR < chaîne).
-    EXPECT_NEAR(rChaine.cagrP50,   6.5959, 1e-3);
-    EXPECT_NEAR(rChaine.ddP50,     7.9267, 1e-3);
-    EXPECT_NEAR(rCandidat.cagrP50, 4.4140, 1e-3);
-    EXPECT_NEAR(rCandidat.ddP50,   5.3181, 1e-3);
-    EXPECT_LT(rCandidat.cagrP50, rChaine.cagrP50);  // NON CONFIRMÉ (4,41 < 6,60)
+    // RE-BASELINE 2026-07-04 (item 8o.1, D45 : MC size-aware — pondération par
+    // la fraction déployée ~40 %). Les valeurs chutent mais le verdict TIENT :
+    // candidat CAGR p50 < chaîne (1,76 < 2,56) et DD ≤ chaîne.
+    EXPECT_NEAR(rChaine.cagrP50,   2.5578, 1e-3);
+    EXPECT_NEAR(rChaine.ddP50,     2.9649, 1e-3);
+    EXPECT_NEAR(rCandidat.cagrP50, 1.7642, 1e-3);
+    EXPECT_NEAR(rCandidat.ddP50,   1.9442, 1e-3);
+    EXPECT_LT(rCandidat.cagrP50, rChaine.cagrP50);  // NON CONFIRMÉ (1,76 < 2,56)
     EXPECT_LE(rCandidat.ddP95,   rChaine.ddP95);    // seul acquis : moins de risque
 }

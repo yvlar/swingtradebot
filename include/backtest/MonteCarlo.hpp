@@ -38,10 +38,18 @@ public:
         McResult r;
         if (trades.empty() || paths_ == 0) return r;
 
-        // Rendements multiplicatifs par trade observés.
+        // Rendements multiplicatifs par trade PORTÉS AU PORTEFEUILLE (D45,
+        // item 8o.1) : deployedFraction × pnlPct. Le pnlPct est le rendement
+        // de la POSITION (indépendant de la taille) ; le multiplier par la
+        // fraction de capital déployée à l'entrée reflète la vraie
+        // contribution au portefeuille. L'ancien code utilisait pnlPct seul
+        // (= 100 % de déploiement supposé), aveugle à la taille de position
+        // (d'où l'invariance du DD au sizing, constat D45). Défaut
+        // deployedFraction = 1.0 → TradeRecords synthétiques inchangés.
         std::vector<double> rets;
         rets.reserve(trades.size());
-        for (const auto& t : trades) rets.push_back(t.pnlPct / 100.0);
+        for (const auto& t : trades)
+            rets.push_back(t.deployedFraction * t.pnlPct / 100.0);
 
         std::mt19937 rng(seed_);
         std::uniform_int_distribution<size_t> pick(0, rets.size() - 1);

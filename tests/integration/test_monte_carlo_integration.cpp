@@ -70,6 +70,12 @@ TEST(MonteCarloIntegration, DistributionFromQqqProdBacktestTrades) {
     // cohérent avec le golden in-sample +19,33 %). Toute dérive des trades du
     // backtest (data, stratégie) ferait bouger ces médianes ; le golden de
     // backtest les attraperait d'abord.
-    EXPECT_NEAR(r.cagrP50,  6.9504, 1e-3);
-    EXPECT_NEAR(r.ddP50,    8.5920, 1e-3);
+    // RE-BASELINE 2026-07-04 (Sprint 8-octies, item 8o.1, D45) : le MC pondère
+    // désormais chaque trade par sa fraction de capital DÉPLOYÉE (deployedFraction)
+    // au lieu de supposer 100 % de déploiement. La chaîne ne déploie que ~40 %
+    // (sizing par le risque), donc CAGR et DD médians CHUTENT d'autant :
+    // 6,9504 → 2,7787 et 8,5920 → 3,3031. L'ancien MC surestimait le risque ET
+    // le rendement — c'est le correctif qui rend le vol-sizing MESURABLE (8o.2).
+    EXPECT_NEAR(r.cagrP50,  2.7787, 1e-3);
+    EXPECT_NEAR(r.ddP50,    3.3031, 1e-3);
 }

@@ -78,6 +78,27 @@ TEST(MonteCarloUnit, SingleTradeIsDegenerate) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Sizing (item 8o.1, D45) : deployedFraction pondère le rendement
+//  porté au portefeuille. Une perte de 10 % SUR LA POSITION avec 50 %
+//  de capital déployé = −5 % sur le portefeuille.
+// ════════════════════════════════════════════════════════════
+TEST(MonteCarloUnit, DeployedFractionScalesPortfolioReturn) {
+    TradeRecord t;
+    t.pnlPct           = -10.0;   // rendement de la POSITION
+    t.deployedFraction = 0.5;     // seule la moitié du capital est investie
+    // Chemin dégénéré (1 trade) : capital × (1 + 0,5 × −0,10) = × 0,95.
+    const auto r = MonteCarlo(10'000.0, 42, 100).run({ t }, /*years=*/2.0);
+    EXPECT_NEAR(r.ddP50, 5.0, 1e-9);   // drawdown = 5 %, pas 10 %
+    const double cagr = (std::pow(0.95, 1.0 / 2.0) - 1.0) * 100.0;
+    EXPECT_NEAR(r.cagrP50, cagr, 1e-9);
+
+    // Contrôle : le défaut deployedFraction = 1.0 reproduit l'ancien
+    // comportement (rétro-compatibilité des TradeRecords synthétiques).
+    const auto rFull = MonteCarlo(10'000.0, 42, 100).run({ tr(-10.0) }, 2.0);
+    EXPECT_NEAR(rFull.ddP50, 10.0, 1e-9);
+}
+
+// ════════════════════════════════════════════════════════════
 //  Les percentiles sont toujours ordonnés
 // ════════════════════════════════════════════════════════════
 TEST(MonteCarloUnit, PercentileOrderingHolds) {
