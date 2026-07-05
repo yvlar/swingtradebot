@@ -23,6 +23,7 @@
 #include "backtest/GridOptimizer.hpp"
 #include "backtest/MonteCarlo.hpp"
 #include "backtest/DataQuality.hpp"
+#include "backtest/RotationBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -457,6 +458,67 @@ int main() {
     std::cout << "  VERDICT 8o.3 : le vol-sizing REDUIT le DD du pullback (7,88 -> 6,51 a ref 0,015)\n"
               << "  au prix d'un cheveu d'alpha, mais ne le ramene PAS au niveau chaine (4,28) : premiere\n"
               << "  frontiere DD/alpha favorable, decouplage PARTIEL — decision d'adoption au gate 8o.4.\n";
+
+    // ── 13. ROTATION MULTI-ACTIFS (Sprint 8-nonies) ─────────────────────────
+    // Moteur SÉPARÉ de la chaîne : détenir le régime le plus fort parmi
+    // QQQ/SPY/IWM/MDY (données longues), cash sinon. Verrous CI dans
+    // test_rotation_oos_integration.cpp.
+    titre("13. ROTATION MULTI-ACTIFS (QQQ/SPY/IWM/MDY, historique max — 8n)");
+    {
+        const std::vector<std::string> csvs = {
+            SWINGBOT_QQQ_MAX_CSV, SWINGBOT_SPY_MAX_CSV,
+            SWINGBOT_IWM_MAX_CSV, SWINGBOT_MDY_MAX_CSV };
+        RotationConfig rc;  // SMA200, coûts par défaut (comm 0,1 % + 2,5 bps/côté)
+        RotationBacktester rot(rc, csvs);
+        const auto& axe = rot.axis();
+        std::cout << "\n  Axe commun aligne : " << axe.dates.front() << " -> "
+                  << axe.dates.back() << " (" << axe.size() << " barres, "
+                  << axe.assets() << " actifs)\n";
+
+        const auto rr = rot.run();
+        std::cout << std::fixed << std::setprecision(2)
+                  << "  Run complet : rotation " << rr.totalReturnPct << " % vs meilleur B&H "
+                  << rr.bestBuyHoldPct << " % (B&L) et panier equipondere "
+                  << rr.basketReturnPct << " %\n"
+                  << "    alpha vs meilleur = " << rr.alphaVsBest
+                  << " | alpha vs panier = " << rr.alphaVsBasket
+                  << " | DD max = " << rr.maxDrawdownPct << " %\n"
+                  << "    CAGR = " << rr.cagrPct << " % | Calmar = " << rr.calmarRatio
+                  << " | bascules = " << rr.switchCount
+                  << " | temps investi = " << rr.pctTimeInvested << " %\n";
+
+        std::cout << "\n  Verdict OUT-OF-SAMPLE (alpha moyen par pavage) :\n";
+        struct Pav { const char* nom; size_t is, oos, step, off; };
+        const Pav pavs[] = { {"canonique", 700, 400, 400, 0},
+                             {"fin",       500, 300, 300, 0},
+                             {"decale",    700, 400, 400, 90} };
+        for (const auto& p : pavs) {
+            const auto ws = RotationWalkForward(rc, csvs, p.is, p.oos, p.step, p.off).run();
+            double aBest = 0.0, aBasket = 0.0;
+            std::vector<TradeRecord> pool; double years = 0.0;
+            for (const auto& w : ws) {
+                aBest += w.oos.alphaVsBest; aBasket += w.oos.alphaVsBasket;
+                pool.insert(pool.end(), w.oos.trades.begin(), w.oos.trades.end());
+                if (w.oos.equityDates.size() >= 2) {
+                    const long d0 = daysFromCivil(w.oos.equityDates.front());
+                    const long d1 = daysFromCivil(w.oos.equityDates.back());
+                    if (d1 > d0) years += static_cast<double>(d1 - d0) / 365.25;
+                }
+            }
+            const double n = ws.empty() ? 1.0 : static_cast<double>(ws.size());
+            std::cout << "  -> " << std::left << std::setw(10) << p.nom << std::right
+                      << " : " << ws.size() << " fenetres, alpha vs meilleur "
+                      << aBest / n << " | vs panier " << aBasket / n;
+            if (!pool.empty()) {
+                const auto mc = MonteCarlo(10'000.0, 42, 2000).run(pool, years);
+                std::cout << " | MC DD p95 " << mc.ddP95 << " %";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "  VERDICT 8n.2 : AUCUN EDGE — la rotation ne bat NI le meilleur B&H NI le\n"
+                  << "  panier, net de couts, sur les 3 pavages ; le timing de regime whipsaw et les\n"
+                  << "  couts detruisent de la valeur, drawdown de queue massif (~55 %). Prod paper.\n";
+    }
 
     std::cout << "\n";
     return 0;

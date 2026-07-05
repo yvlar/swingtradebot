@@ -130,6 +130,7 @@ add_executable(unit_tests
         tests/unit/test_walk_forward_unit.cpp
         tests/unit/test_grid_optimizer_unit.cpp
         tests/unit/test_monte_carlo_unit.cpp
+        tests/unit/test_rotation_backtester_unit.cpp
         tests/unit/test_config_loader_unit.cpp
         tests/unit/test_live_gate_unit.cpp
         ${BOT_SOURCES}
@@ -166,6 +167,7 @@ add_executable(integration_tests
         tests/integration/test_signal_families_integration.cpp
         tests/integration/test_pullback_volatility_integration.cpp
         tests/integration/test_pullback_confirmation_integration.cpp
+        tests/integration/test_rotation_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
