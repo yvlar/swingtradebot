@@ -9,9 +9,23 @@
 
 namespace trading {
 
+// ─── Famille de stratégie (Sprint 10) ─────────────────────────────────────────
+// Le moteur porte DEUX familles de signal, sélectionnées par `SwingConfig::mode`.
+// TrendFollow = comportement historique (croisement EMA + RSI + régime, Sprints
+// 1→8-octies). MeanReversion = famille CONTRARIAN (Sprint 10) : acheter la
+// faiblesse (survente) et sortir au retour à la moyenne — la prémisse INVERSE du
+// trend-following, dont aucun edge OOS n'a été démontré (les deux axes mono-actif
+// et rotation sont soldés). Défaut = TrendFollow → les goldens restent
+// byte-identiques (le mode MeanReversion n'est jamais atteint par la config prod).
+    enum class StrategyMode { TrendFollow, MeanReversion };
+
 // ─── Configuration de la stratégie ────────────────────────────────────────────
     struct SwingConfig {
         std::string symbol        = "QQQ";
+        // Famille de signal (Sprint 10) : voir StrategyMode. Défaut TrendFollow =
+        // comportement historique ; les champs mr* ci-dessous ne sont consultés
+        // QUE si mode == MeanReversion (donc sans effet sur les goldens prod).
+        StrategyMode mode         = StrategyMode::TrendFollow;
         int    emaFast            = 9;
         int    emaSlow            = 21;
         int    rsiPeriod          = 14;
@@ -87,6 +101,20 @@ namespace trading {
         // recherche 8o.3 — pas de défaut actif tant que l'amélioration OOS
         // n'est pas démontrée.
         double volSizingAtrRef         = 0.0;
+        // ── Paramètres de la famille MEAN-REVERSION (Sprint 10, mode ─────────
+        // MeanReversion uniquement) ──────────────────────────────────────────
+        // Entrée contrarian : à plat, régime haussier confirmé (réutilise
+        // smaTrendPeriod — « acheter le creux DANS une tendance ») et RSI ≤ ce
+        // seuil (survente) → BUY. ≤ 0 = désactivé (aucune entrée MR). Défaut 30
+        // = survente classique. Sans effet en mode TrendFollow.
+        double mrRsiEntryMax      = 30.0;
+        // Sortie mean-reversion : en position, RSI ≥ ce seuil (retour à la
+        // moyenne) → SELL. Les sorties ne sont JAMAIS gatées par le régime (la
+        // SMA ne gate que les achats — convention verrouillée) ; les stops et le
+        // trailing du RiskManager restent la couche de sortie de sécurité. ≤ 0 =
+        // désactivé (sortie laissée aux seuls stops). Défaut 55. Sans effet en
+        // mode TrendFollow.
+        double mrRsiExitMin       = 55.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -190,6 +218,51 @@ namespace trading {
             // explicitement (B3.2 : sinon le bot reste muet pour toujours).
             const bool historiqueInsuffisant = config_.smaTrendPeriod > 1
                 && n < static_cast<size_t>(config_.smaTrendPeriod);
+
+            // ── Famille MEAN-REVERSION (Sprint 10) ────────────────────────────
+            // Prémisse INVERSE du trend-following : acheter la FAIBLESSE
+            // (survente) et sortir au RETOUR À LA MOYENNE. Bloc entièrement
+            // séparé et à retour immédiat : en mode MeanReversion on ne retombe
+            // JAMAIS dans la logique de croisement EMA ci-dessous (le mode
+            // TrendFollow, défaut, saute ce bloc → goldens byte-identiques).
+            // Réutilise le RSI et le filtre de régime déjà calculés ; les stops
+            // et le trailing (RiskManager) restent la couche de sortie de
+            // sécurité, inchangés.
+            if (config_.mode == StrategyMode::MeanReversion) {
+                // Sortie d'abord (les sorties gardent la priorité et ne sont
+                // jamais gatées par le régime) : RSI revenu au niveau de sortie
+                // → retour à la moyenne. Mutuellement exclusif de l'entrée tant
+                // que mrRsiExitMin > mrRsiEntryMax (RSI ne peut pas être à la
+                // fois ≤ entrée et ≥ sortie).
+                if (config_.mrRsiExitMin > 0.0 && lastRsi >= config_.mrRsiExitMin)
+                    return makeSignal(SignalType::SELL, bars,
+                                      "Mean-reversion : RSI " +
+                                      std::to_string(static_cast<int>(lastRsi)) +
+                                      " >= sortie " +
+                                      std::to_string(static_cast<int>(config_.mrRsiExitMin)) +
+                                      " (retour à la moyenne)");
+                // Entrée contrarian : régime haussier confirmé et RSI en survente
+                // → acheter le creux DANS la tendance (smaTrendPeriod ≤ 1 =
+                // filtre désactivé, base de comparaison OOS du filtre).
+                if (config_.mrRsiEntryMax > 0.0 && regimeUp
+                    && lastRsi <= config_.mrRsiEntryMax)
+                    return makeSignal(SignalType::BUY, bars,
+                                      "Mean-reversion : RSI " +
+                                      std::to_string(static_cast<int>(lastRsi)) +
+                                      " <= entrée " +
+                                      std::to_string(static_cast<int>(config_.mrRsiEntryMax)) +
+                                      " | regime up (achat du creux)");
+                if (historiqueInsuffisant)
+                    return makeSignal(SignalType::HOLD, bars,
+                                      "Régime inconnu : historique insuffisant (" +
+                                      std::to_string(n) + "/" +
+                                      std::to_string(config_.smaTrendPeriod) +
+                                      " barres) — aucune entrée possible");
+                return makeSignal(SignalType::HOLD, bars,
+                                  "Mean-reversion : RSI " +
+                                  std::to_string(static_cast<int>(lastRsi)) +
+                                  " neutre");
+            }
 
             // Détection du croisement
             // warmup=emaSlow : ignore les croisements pendant la convergence des EMA
