@@ -9,13 +9,13 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 88        | 68                           |
+| Architecture | 89        | 68                           |
 | Qualité      | 93        | 60                           |
 | FinTech      | 88        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-04 (Sprint 8-octies — position-sizing modulé par la volatilité. **Découverte D45** (avant tout code) : le Monte-Carlo était AVEUGLE à la taille de position → corrigé (8o.1, `deployedFraction`) — l'ancien MC surestimait tout d'un facteur ~2,5 (la chaîne ne déploie que ~40 %) ; garde-fou de risque désormais CORRECT. Le vol-sizing (8o.2) donne un **découplage PARTIEL** du pullback : DD p95 7,88 → 6,51 à faible coût d'alpha (première frontière DD/alpha favorable) mais insuffisant (n'atteint pas le seuil, alpha absolu toujours négatif) → décision utilisateur : **NON adopté**, prod paper. Cinq axes de la chaîne mono-actif soldés ; cap sur la ROTATION multi-actifs — Sprint 8-nonies)
-- **Sprint courant** : Sprint 8-nonies — Rotation multi-actifs / détention par régime (être investi dans l'actif au régime le plus fort parmi QQQ/SPY/IWM/MDY, cash en régime baissier — premier axe à viser l'alpha ABSOLU, la cause racine T4 du déficit ; jugé sur données longues) — décision utilisateur du 2026-07-04
+- **Dernière mise à jour** : 2026-07-05 (Sprint 8-nonies — rotation multi-actifs / détention par régime. Nouveau moteur SÉPARÉ de la chaîne (`RotationBacktester`) : détenir le régime le plus fort parmi QQQ/SPY/IWM/MDY (distance relative au SMA200), cash sinon, bascule quand l'actif de tête change ; jugé sur données longues total-return (axe commun aligné 2000-05-26 → 2026-07-01, 6562 barres, borné par IWM), 3 pavages, coûts de bascule inclus. **VERDICT : AUCUN EDGE** — la rotation NE BAT NI le meilleur B&H (B&L) NI le panier équipondéré, net de coûts, sur les 3 pavages (alpha OOS vs meilleur B&H −11,6/−10,1/−13,3 ; vs panier −2,7/−5,9/−7,1) et sous-performe LOURDEMENT sur tout l'historique (+186 % vs best +1836 %, panier +1120 %) avec un drawdown de queue massif (MC size-aware DD p95 ~55 %, DD plein 44,7 %). Le timing de régime whipsaw + les 472 coûts de bascule détruisent de la valeur : la rotation est même PIRE que le panier passif (D46). La chaîne mono-actif ET la rotation multi-actifs sont désormais SOLDÉES → décision de suite requise (redéfinition d'objectif). Prod paper, verrou live intact)
+- **Sprint courant** : Sprint 9 — **Décision de suite requise** (les deux axes de recherche d'alpha — chaîne mono-actif et rotation multi-actifs — sont soldés sans edge démontré). Quatre options soumises à l'utilisateur (l'AskUserQuestion interactif a échoué côté harnais, la décision reste OUVERTE) : (a) **redéfinir l'objectif** vers « rendement type B&H géré en risque » puis mise en prod ; (b) une **variante de rotation** (métrique de pente/momentum, rebalancement mensuel pour couper le cash drag des bascules) avant de solder ; (c) une **famille de stratégie réellement différente** (mean-reversion, ciblage de volatilité, diversifiant non-actions) ; (d) **durcissement production** (runtime du bot paper, monitoring, docs), la recherche d'edge parquée. Recommandation : (a). Aucun item ne démarre sans réponse (« Décision requise »)
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -51,11 +51,12 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. |
-- **État des tests** : 623/623 verts (517 unitaires + 106 intégration) — et la
+> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. |
+- **État des tests** : 640/640 verts (528 unitaires + 112 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +7 au Sprint 8-octies (616 → 623 : vol-sizing +
-  Monte-Carlo size-aware D45), aucune dérive hors cycle. Détail au changelog.
+  suites concurrentes. +17 au Sprint 8-nonies (623 → 640 : moteur de rotation +
+  11 tests RotationBacktesterUnit + 6 RotationOosIntegration), aucune dérive
+  hors cycle (baseline d'ouverture 623 conforme). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1092,7 +1093,7 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > (confirmation hors-protocole avant toute adoption), prod paper tant que
 > l'edge n'est pas démontré.
 
-- [ ] **8n.1** **Moteur de rotation (au niveau harnais, sans toucher la chaîne)** :
+- [x] **8n.1** (→ `970f90d` moteur + `d9ef6cd` tests) **Moteur de rotation (au niveau harnais, sans toucher la chaîne)** :
   un `RotationBacktester` (ou extension de `WalkForward`) qui, à chaque barre,
   classe les N actifs par force de régime (ex. rendement SMA200-relatif, ou
   pente de SMA) et détient le meilleur si son régime est haussier, sinon cash.
@@ -1101,13 +1102,13 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   (runRange) et les 4 CSV `*_max.csv`. **Acceptation** : tests unitaires du
   classement de régime (calculés à la main sur séries synthétiques) ;
   reproductibilité (mêmes dates → même choix).
-- [ ] **8n.2** **Verdict OOS : la rotation bat-elle le B&L (best buy-and-hold)
+- [x] **8n.2** (→ `1978b56` + CLI `7bc7cf4` ; **VERDICT : AUCUN EDGE** — voir changelog) **Verdict OOS : la rotation bat-elle le B&L (best buy-and-hold)
   net de coûts ?** La référence n'est plus « alpha vs QQQ B&H » mais vs le
   MEILLEUR actif détenu passivement, ET vs un panier équipondéré. Walk-forward
   sur données longues (dot-com/2008 = le test décisif d'un filtre de régime),
   3 pavages, coûts de rotation inclus (chaque bascule paie slippage+spread).
   Verrous D33/D34, alpha + DD p95 (MC size-aware) + Calmar figés.
-- [ ] **8n.3** **Décision de suite (Décision requise)** : si la rotation
+- [x] **8n.3** (branche « sinon » : aucun alpha positif → consigné, aucune adoption ; redéfinition d'objectif = Décision requise Sprint 9) **Décision de suite (Décision requise)** : si la rotation
   démontre un alpha OOS positif net de coûts (enfin un edge !) → confirmation
   hors-protocole complète (D42/D43) puis mise en prod (Sprint 9) ; sinon
   consigner — la stratégie mono-actif ET la rotation seraient soldées, et la
@@ -1182,8 +1183,101 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D43 | 🟡 | (Sprint 8-septies) **Multiple-testing : plus on juge d'hypothèses, plus le « meilleur » est un artefact probable.** Depuis le Sprint 8, le protocole a jugé un grand nombre d'hypothèses (paramètres 8b.1, trailing 8q, structure/breakout 8s, pullback/volatilité 8y, + les variantes d'atténuation 8d.6/8d.7). Chaque « gagnant » d'une sélection sur les mêmes fenêtres est suspect (D36 en est un cas). **Règle adoptée** : toute adoption future exige la confirmation hors-protocole COMPLÈTE (généralisation D42 : données longues + multi-actifs + grille resserrée + Monte-Carlo, PAS seulement le pavage de choix) — c'est exactement ce qui a distingué le pullback (alpha confirmé) du candidat 8b.1 (réfuté). Aucune modification des `prompt-*.md` (règle intangible) : la règle vit dans la ROADMAP | Consigné (règle de DoD des verdicts) ; appliqué dès 8d.3 |
 | D44 | 🟠 | (Sprint 8-septies) **L'alpha et le drawdown du pullback sont COUPLÉS — ils viennent des mêmes achats de creux en régime volatil.** Le pullback confirme son alpha (D42) mais double le drawdown de queue (DD p95 10,80 → 19,27 %, 8d.3c). Trois leviers config-only ont échoué à les séparer (8d.6/8d.7) : le gating ATR ne casse le DD qu'à une valeur ISOLÉE (0,015, voisins pires → sur-ajustement probable) et au prix de l'alpha ; le stop serré ne bouge pas le DD (le trailing 3 % tire d'abord) ; `riskPerTradePct` est INVARIANT d'échelle sur le drawdown en % (il scale l'équité uniformément). **Conclusion : le découplage config-only est épuisé ; le vrai levier est un position-sizing MODULÉ par la volatilité (code moteur), qui réduirait la taille seulement quand la volatilité est haute.** Décision utilisateur (2026-07-04) : pullback NON adopté, vol-sizing au backlog (Sprint 8-octies) | ⚠️ Le sous-constat « riskPerTradePct invariant d'échelle » s'est révélé être un ARTEFACT du MC aveugle à la taille (D45) : corrigé, riskPerTradePct RÉDUIT bien le DD (mais coûte l'alpha). Le vol-sizing a été exploré au Sprint 8-octies : découplage PARTIEL (DD 7,88 → 6,51 à faible coût d'alpha) mais insuffisant → non adopté. Le fond de D44 (alpha/risque du pullback difficiles à séparer) TIENT |
 | D45 | 🟠 | (Sprint 8-octies) **Le Monte-Carlo était AVEUGLE à la taille de position.** `MonteCarlo::run` bootstrappait `pnlPct` (rendement de la POSITION, indépendant de la taille) en le composant sur l'équité PLEINE — donc tout schéma de sizing (riskPerTradePct, vol-sizing) y était INERTE (cause de l'invariance du DD constatée en 8d.7, prise à tort pour une propriété d'échelle en D44). Détecté par exploration AVANT d'écrire le vol-sizing (leçon D41). **Correctif (8o.1, `b64ffd7`)** : `TradeRecord::deployedFraction` (capital investi / équité à l'entrée, calculé par PaperBroker) ; le MC bootstrappe `deployedFraction × pnlPct`. Le MC reflète enfin la taille — et révèle que l'ancien SURESTIMAIT tout (la chaîne ne déploie que ~40 % : DD p95 8d.3c 19,27 → 7,88, chaîne 10,80 → 4,28). Re-baseline documentée des valeurs MC (goldens backtest intacts). C'est ce correctif qui a rendu le vol-sizing (8o.2/8o.3) MESURABLE | ✅ Corrigé au Sprint 8-octies (8o.1) ; garde-fou : MonteCarloUnit teste désormais la pondération par deployedFraction |
+| D46 | 🟠 | (Sprint 8-nonies) **La rotation par régime détruit de la valeur — PIRE que le panier passif, net de coûts.** Sur données longues (2000-2026, QQQ/SPY/IWM/MDY total-return, axe commun aligné 6562 barres), détenir l'actif au SMA200-régime le plus fort (bascule quand l'actif de tête change) rend +186 % vs meilleur B&H +1836 % et panier équipondéré +1120 % ; alpha OOS négatif vs les DEUX références sur les 3 pavages (−11,6/−10,1/−13,3 vs meilleur ; −2,7/−5,9/−7,1 vs panier) et DD de queue MC size-aware ~55 %. Cause : le timing de régime whipsaw (achète après la hausse, vend après la baisse) + les 472 coûts de bascule ; un filtre SMA200 ne surperforme pas une simple diversification statique sur des actifs corrélés. Les DEUX axes de recherche d'alpha (mono-actif + rotation) sont soldés. | Consigné (verrous `RotationOosIntegration`) ; décision de suite = Décision requise Sprint 9 (redéfinition d'objectif) |
 
 ## Changelog
+
+### Sprint 8-nonies — Rotation multi-actifs / détention par régime (2026-07-05)
+
+**Contexte** : changement de paradigme (décision utilisateur 2026-07-04) — les
+cinq axes de la chaîne mono-actif sont soldés sans edge ; on attaque la cause
+racine T4 (cash drag, long-only mono-actif) par une ROTATION : détenir l'actif
+au régime le plus fort parmi QQQ/SPY/IWM/MDY, cash en régime baissier, jugé sur
+données longues total-return. Décisions de conception (utilisateur, 2026-07-05) :
+métrique de force = distance relative au SMA200 ((close−SMA)/SMA) ; règle de
+bascule = « hold until rank-1 changes » (réévaluation quotidienne, pas de
+rebalancement calendaire).
+
+**Baseline à l'ouverture** : **623/623 verte** (conforme au tableau de bord,
+`ctest -N` = 623, aucune dérive). Environnement : Linux, paquets système (chemin
+CI, sans vcpkg), build −Werror sans warning.
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `970f90d` feat : moteur de rotation multi-actifs (RotationBacktester) (item 8n.1)
+- `d9ef6cd` test : tests unitaires classement/alignement/reproductibilité (item 8n.1)
+- `1978b56` test : verrous OOS rotation vs meilleur B&H et panier, MC size-aware, Calmar (item 8n.2)
+- `7bc7cf4` feat : section rotation dans le harnais validate (item 8n)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 623 → **640** (+17 : 528 unitaires + 112 intégration). Nouvelle suite
+`RotationBacktesterUnit` (11 : alignement sur dates communes, classement de régime
+main-calculé, run complet 10000·200/143 ≈ 13986,01, reproductibilité au bit près,
+coûts de bascule, cash sans trade) ; nouvelle suite `RotationOosIntegration` (6 :
+axe commun figé, 3 pavages alpha vs meilleur B&H ET panier, MC size-aware DD p95,
+run complet/Calmar). **Goldens backtest byte-identiques** (moteur SÉPARÉ de la
+chaîne — aucun défaut, config prod ni golden existant touché).
+
+**Interfaces ajoutées** (additives, header-only) : `include/backtest/
+RotationBacktester.hpp` — `RotationConfig`, `AlignedAxis`, `RotationResult`,
+fonctions pures `alignOnCommonDates`/`rankStrongest`, `RotationBacktester`
+(run/runRange/axis, seam `fromAxis`), `RotationWalkForward`. Réutilise CsvDataFeed,
+l'indicateur SMA, TradeRecord (deployedFraction=1.0) et MonteCarlo. Section 13 du
+CLI `validate`.
+
+**Verdict OUT-OF-SAMPLE de la rotation** (données longues, axe commun 2000-05-26 →
+2026-07-01, 6562 barres, borné par IWM) :
+- **AUCUN EDGE** : alpha OOS moyen vs le MEILLEUR B&H mono-actif (B&L) −11,61
+  (canonique) / −10,07 (fin) / −13,33 (décalé) ; vs le PANIER équipondéré −2,73 /
+  −5,90 / −7,15 — négatif vs les DEUX références sur les TROIS pavages.
+- Run complet 2000-2026 : rotation +186,38 % vs meilleur B&H +1836,10 % (QQQ) et
+  panier +1119,81 % → alpha −1649,72 / −933,43 ; DD plein 44,68 %, CAGR 4,11 %,
+  Calmar 0,09, 472 bascules, temps investi 80,66 %.
+- **Risque** (Monte-Carlo size-aware, graine 42) : DD p95 ~55 % (canonique 55,08 ;
+  décalé 55,48 ; fin 70,05) — drawdown de queue MASSIF, bien pire que le passif.
+- **Constat clé (D46)** : la rotation est PIRE que le panier passif — le timing de
+  régime whipsaw (achète après la hausse, vend après la baisse) plus les coûts de
+  472 bascules détruisent de la valeur nette. Un filtre de régime SMA200 ne suffit
+  pas à surperformer une simple diversification statique sur des actifs corrélés.
+
+**Verdict de clôture (8n.3, branche « sinon »)** : la rotation ne démontre AUCUN
+alpha OOS positif → **AUCUNE adoption**, consigné. Les DEUX grands axes de
+recherche d'alpha — chaîne mono-actif (Sprints 8 → 8-octies) ET rotation
+multi-actifs (8-nonies) — sont désormais SOLDÉS sans edge démontré. La question
+devient explicitement produit : « ce moteur peut-il battre le B&H, ou l'accepte-t-on
+comme un outil de gestion du risque à rendement B&H ? » — **Décision requise**
+portée au Sprint 9 (4 options au tableau de bord ; l'AskUserQuestion du harnais
+étant indisponible cette session, la décision reste OUVERTE et aucun item ne
+démarre sans réponse). Fichiers gouvernés intacts (`config/prod.json`,
+`prompt-*.md`, CLAUDE.md live-safety), `liveTradingApproved` = false, verrou
+`LiveTradingStaysDisapprovedUntilEdgeDoD` intact. Prod paper.
+
+**Rétrospective** :
+1. *Découpage* : bon. 8n.1 (moteur) → 8n.2 (verdict) → 8n.3 (décision), linéaire,
+   additif, aucune dépendance ratée. Construire un moteur SÉPARÉ de la chaîne
+   (plutôt qu'étendre WalkForward/SwingStrategy) a gardé les 623 goldens
+   byte-identiques et rendu chaque commit trivialement sûr ; réutilisation propre de
+   CsvDataFeed/SMA/TradeRecord/MonteCarlo comme prévu.
+2. *Prompts du workflow* : suffisants, AUCUNE improvisation, AUCUN diff proposé.
+   Note opérationnelle (hors prompts) : l'outil AskUserQuestion du harnais a échoué
+   de façon répétée (permission-stream) → la décision de suite 8n.3 n'a pas pu être
+   capturée interactivement ; elle est consignée comme Décision requise OUVERTE
+   plutôt que tranchée seule (respect du garde-fou « décision produit = utilisateur »).
+3. *À détecter plus tôt / garde-fou* : l'item 8n.2 exigeait à juste titre les DEUX
+   références (meilleur B&H ET panier) — sans le panier, on aurait conclu « perd
+   contre le meilleur actif » et manqué le constat plus tranchant (D46 : perd même
+   contre une diversification naïve). Les verrous D34 (compte de trades) ont
+   fonctionné. Candidat backlog : documenter que, pour une stratégie SANS ajustement
+   (règle fixe), les fenêtres IS d'un walk-forward sont vestigiales (seul l'OOS juge).
+4. *Notes /100* : **Architecture 88 → 89** (capacité réutilisable et testée :
+   alignement inter-actifs par dates communes + moteur de rotation + walk-forward,
+   100 % additif). Qualité 93 (=, 640 verts, négatif discipliné correctement
+   verrouillé). FinTech 88 (=, connaissance acquise — T4 attaqué, la rotation
+   destructrice de valeur — mais aucune capacité de gain ajoutée). Production 72 (=).
+   **Rentabilité 28 (=)** : aucun edge ; le second grand axe soldé comme le premier,
+   incertitude rétrécie, capacité démontrée à gagner de l'argent inchangée.
+
+**Découvertes** : D46 (rotation par régime pire que le panier passif — timing +
+coûts destructeurs ; les deux axes de recherche d'alpha soldés).
 
 ### Sprint 8-octies — Position-sizing modulé par la volatilité (2026-07-04)
 
