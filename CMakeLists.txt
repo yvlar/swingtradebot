@@ -130,6 +130,7 @@ add_executable(unit_tests
         tests/unit/test_walk_forward_unit.cpp
         tests/unit/test_grid_optimizer_unit.cpp
         tests/unit/test_monte_carlo_unit.cpp
+        tests/unit/test_rotation_backtester_unit.cpp
         tests/unit/test_config_loader_unit.cpp
         tests/unit/test_live_gate_unit.cpp
         ${BOT_SOURCES}

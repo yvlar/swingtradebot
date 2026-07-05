@@ -140,6 +140,14 @@ public:
         axis_ = alignOnCommonDates(series);
     }
 
+    // Seam de test : construit un moteur sur un axe déjà aligné (données
+    // synthétiques en mémoire, sans CSV). Utile aussi si l'axe est déjà connu.
+    static RotationBacktester fromAxis(RotationConfig cfg, AlignedAxis axis) {
+        RotationBacktester rb(std::move(cfg), std::vector<std::string>{});
+        rb.axis_ = std::move(axis);
+        return rb;
+    }
+
     RotationResult run() { return runRange(0, axis_.size()); }
 
     // Rotation sur la sous-fenêtre [startIdx, endIdx) de l'axe commun. Le SMA est
