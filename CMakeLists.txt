@@ -169,6 +169,7 @@ add_executable(integration_tests
         tests/integration/test_pullback_volatility_integration.cpp
         tests/integration/test_pullback_confirmation_integration.cpp
         tests/integration/test_rotation_oos_integration.cpp
+        tests/integration/test_mean_reversion_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})

@@ -520,6 +520,69 @@ int main() {
                   << "  couts detruisent de la valeur, drawdown de queue massif (~55 %). Prod paper.\n";
     }
 
+    // ── 14. FAMILLE MEAN-REVERSION (Sprint 10) ──────────────────────────────
+    // Première famille de signal RÉELLEMENT différente (contrarian : acheter la
+    // survente, sortir au retour à la moyenne) — l'INVERSE du trend-following.
+    // Jugée en OOS comme toutes les précédentes. Verrous CI dans
+    // test_mean_reversion_oos_integration.cpp.
+    titre("14. FAMILLE MEAN-REVERSION (contrarian RSI, QQQ + multi-actifs — 10.2)");
+    {
+        auto mrChain = []() {
+            SwingConfig c;
+            c.symbol = "QQQ";
+            c.mode = StrategyMode::MeanReversion;
+            c.mrRsiEntryMax = 30.0; c.mrRsiExitMin = 55.0;
+            c.stopLossPct = 0.05; c.takeProfitPct = 0.0; c.trailingStopPct = 0.03;
+            c.riskPerTradePct = 0.02; c.minHoldDays = 3; c.smaTrendPeriod = 200;
+            return c;
+        };
+        auto meanOos = [](const std::vector<WfWindow>& w) {
+            if (w.empty()) return 0.0;
+            double s = 0.0; for (const auto& x : w) s += x.oos.alpha;
+            return s / static_cast<double>(w.size());
+        };
+        auto nbTrades = [](const std::vector<WfWindow>& w) {
+            size_t n = 0; for (const auto& x : w) n += x.oos.trades.size(); return n;
+        };
+
+        Backtester btmr(mrChain(), qqq, 10'000.0, 0.001);
+        const auto bkmr = btmr.run();
+        std::cout << std::fixed << std::setprecision(2)
+                  << "\n  Backtest plein QQQ : rendement " << bkmr.totalReturnPct
+                  << " % vs B&H " << bkmr.buyHoldReturnPct << " % | trades " << bkmr.trades.size()
+                  << " | temps investi " << bkmr.pctTimeInvested << " %\n";
+
+        const auto wc = WalkForward(mrChain(), qqq, 700, 400, 400).run();
+        const auto wf = WalkForward(mrChain(), qqq, 500, 300, 300).run();
+        std::cout << std::setprecision(4)
+                  << "  Alpha OOS moyen : canonique " << meanOos(wc)
+                  << " (trades " << nbTrades(wc) << ") | fin " << meanOos(wf)
+                  << " (trades " << nbTrades(wf) << ")\n";
+
+        std::cout << "  Multi-actifs (pavage fin) :";
+        const std::pair<const char*, const char*> actifs[] = {
+            {"SPY", SWINGBOT_SPY_CSV}, {"IWM", SWINGBOT_IWM_CSV}, {"MDY", SWINGBOT_MDY_CSV} };
+        for (const auto& a : actifs) {
+            SwingConfig c = mrChain(); c.symbol = a.first;
+            const auto w = WalkForward(c, a.second, 500, 300, 300).run();
+            std::cout << "  " << a.first << " " << meanOos(w);
+        }
+        std::cout << "\n";
+
+        double best = -1e9, bE = 0, bX = 0;
+        for (double e : {25.0, 30.0, 35.0}) for (double x : {50.0, 55.0, 60.0}) {
+            SwingConfig c = mrChain(); c.mrRsiEntryMax = e; c.mrRsiExitMin = x;
+            const double a = meanOos(WalkForward(c, qqq, 500, 300, 300).run());
+            if (a > best) { best = a; bE = e; bX = x; }
+        }
+        std::cout << "  Balayage de seuils : meilleur entry<=" << bE << " / exit>=" << bX
+                  << " -> alpha OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        std::cout << "  VERDICT 10.2 : AUCUN EDGE — alpha OOS negatif partout, la chaine MR en\n"
+                  << "  regime ne declenche presque pas (cash drag, D34) ; aucun seuil ne bat le\n"
+                  << "  B&H. Gate de confirmation 10.3 FERME. Prod paper.\n";
+    }
+
     std::cout << "\n";
     return 0;
 }
