@@ -26,6 +26,7 @@
 #include "backtest/RotationBacktester.hpp"
 #include "backtest/PairsBacktester.hpp"
 #include "backtest/VolRegimeBacktester.hpp"
+#include "backtest/VixRegimeBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -794,6 +795,81 @@ int main() {
                   << "  sur le Sharpe (dSharpe < 0) sur les 3 pavages, les 4 actifs et tous les\n"
                   << "  reglages. Le cash drag T4 coute plus que la reduction de DD (< 50 %) ne\n"
                   << "  rapporte. Gate FERME. Prod paper. Les CINQ familles sont soldees sans edge.\n";
+    }
+
+    // ── 18. FAMILLE VIX-REGIME (Sprint 14) ──────────────────────────────────
+    // 5e famille, variante à données EXTERNES (décision utilisateur (c'), backlog
+    // D50) : régime de volatilité IMPLICITE. On TRADE QQQ mais on gate l'exposition
+    // sur le niveau du ^VIX (vol implicite, exogène, anticipatrice) vs sa médiane
+    // glissante. Moteur SÉPARÉ (VixRegimeBacktester, 2 séries alignées QQQ+VIX),
+    // jugé sur le delta de Sharpe OOS vs B&H. Verrous CI dans
+    // test_vix_regime_oos_integration.cpp.
+    titre("18. FAMILLE VIX-REGIME (vol implicite ^VIX, QQQ long/cash, 3 pavages + balayage — 14.2)");
+    {
+        auto cfgVix = []() {
+            VixRegimeConfig c;
+            c.refLookback = 126; c.thresholdMult = 1.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggV { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                            dd = 0.0, bhdd = 0.0; size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VixWindow>& ws) {
+            AggV a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n; }
+            return a;
+        };
+        const std::vector<std::string> qv = { SWINGBOT_QQQ_MAX_CSV, SWINGBOT_VIX_MAX_CSV };
+
+        const auto ac = agrege(VixRegimeWalkForward(cfgVix(), qv, 750, 500, 500).run());
+        const auto af = agrege(VixRegimeWalkForward(cfgVix(), qv, 550, 400, 400).run());
+        const auto as = agrege(VixRegimeWalkForward(cfgVix(), qv, 750, 500, 500, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  dSharpe OOS vs B&H (QQQ gate VIX) : canon " << ac.dSharpe()
+                  << " (strat " << ac.sharpe << " vs B&H " << ac.bhSharpe
+                  << ", trades " << ac.trades << ")\n"
+                  << "                                     fin   " << af.dSharpe()
+                  << " (strat " << af.sharpe << " vs B&H " << af.bhSharpe
+                  << ", trades " << af.trades << ")\n"
+                  << "                                     decale " << as.dSharpe()
+                  << " (strat " << as.sharpe << " vs B&H " << as.bhSharpe
+                  << ", trades " << as.trades << ")\n";
+        std::cout << "  DD reduit (canon) : DD strat " << ac.dd << " % vs DD B&H "
+                  << ac.bhdd << " % (reduit mais < 50 %, clause DoD NON atteinte)\n";
+
+        std::cout << "  Multi-univers (fin, tous gates sur le MEME VIX) :";
+        const std::pair<const char*, const char*> univ[] = {
+            {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+            {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+        for (const auto& u : univ) {
+            const auto agg = agrege(VixRegimeWalkForward(cfgVix(),
+                { u.second, SWINGBOT_VIX_MAX_CSV }, 550, 400, 400).run());
+            std::cout << "  " << u.first << " dS=" << agg.dSharpe();
+        }
+        std::cout << "\n";
+
+        double best = -1e9; int bR = 0; double bM = 0.0;
+        for (int rl : {63, 126, 252}) for (double mm : {0.8, 1.0, 1.2}) {
+            VixRegimeConfig c = cfgVix(); c.refLookback = rl; c.thresholdMult = mm;
+            const double ds = agrege(VixRegimeWalkForward(c, qv, 550, 400, 400).run()).dSharpe();
+            if (ds > best) { best = ds; bR = rl; bM = mm; }
+        }
+        std::cout << "  Balayage refLookback x seuil : meilleur rl=" << bR << " / m=" << bM
+                  << " -> dSharpe OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        std::cout << "  VERDICT 14.2 : AUCUN EDGE — la vol IMPLICITE (VIX) ne fait pas mieux que\n"
+                  << "  la vol REALISEE (Sprint 13). Le filtre TRADE massivement (195-227 stints\n"
+                  << "  OOS) et gagne de l'argent (Sharpe > 0) mais SOUS le B&H sur le Sharpe\n"
+                  << "  (dSharpe < 0) sur les 3 pavages, les 4 actifs et tous les reglages. Gate\n"
+                  << "  FERME. Prod paper. La 5e famille (deux variantes) est soldee sans edge.\n";
     }
 
     std::cout << "\n";
