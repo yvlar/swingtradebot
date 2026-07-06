@@ -178,6 +178,7 @@ add_executable(integration_tests
         tests/integration/test_mean_reversion_oos_integration.cpp
         tests/integration/test_pairs_oos_integration.cpp
         tests/integration/test_vol_regime_oos_integration.cpp
+        tests/integration/test_vix_regime_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
