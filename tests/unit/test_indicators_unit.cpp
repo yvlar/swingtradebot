@@ -277,3 +277,55 @@ TEST(IndicatorsUnit, ComputeBarsDefaultMatchesComputeOnClosesRsi) {
 
     EXPECT_EQ(rsi.computeBars(bars), rsi.compute(closes));
 }
+
+// ════════════════════════════════════════════════════════════
+//  RollingStdDev — écart-type de population glissant (Sprint 11)
+//  Brique du z-score de la variante mean-reversion. Valeurs
+//  vérifiées à la main (σ = √(E[x²] − E[x]²)).
+// ════════════════════════════════════════════════════════════
+
+TEST(IndicatorsUnit, RollingStdDevThrowsOnInvalidPeriod) {
+    EXPECT_THROW(RollingStdDev(0),  std::invalid_argument);
+    EXPECT_THROW(RollingStdDev(-2), std::invalid_argument);
+}
+
+// Série plus courte que la période → vide (convention SMA).
+TEST(IndicatorsUnit, RollingStdDevTooShortReturnsEmpty) {
+    RollingStdDev sd(5);
+    std::vector<double> prices = {1.0, 2.0, 3.0};
+    EXPECT_TRUE(sd.compute(prices).empty());
+}
+
+// Cas d'école : σ de population de {2,4,4,4,5,5,7,9} = 2.0 exactement
+// (moyenne 5, variance 32/8 = 4). result[period-1] porte la valeur.
+TEST(IndicatorsUnit, RollingStdDevTextbookPopulationValue) {
+    RollingStdDev sd(8);
+    std::vector<double> prices = {2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0};
+    auto r = sd.compute(prices);
+    ASSERT_EQ(r.size(), prices.size());
+    EXPECT_EQ(r[0], 0.0);          // warmup
+    EXPECT_NEAR(r[7], 2.0, 1e-9);
+}
+
+// Série plate → écart-type nul partout (aucun bruit d'arrondi négatif).
+TEST(IndicatorsUnit, RollingStdDevFlatSeriesIsZero) {
+    RollingStdDev sd(4);
+    std::vector<double> prices = {7.0, 7.0, 7.0, 7.0, 7.0, 7.0};
+    auto r = sd.compute(prices);
+    ASSERT_EQ(r.size(), prices.size());
+    for (size_t i = 3; i < r.size(); ++i) EXPECT_NEAR(r[i], 0.0, 1e-12);
+}
+
+// Fenêtre glissante : trois fenêtres calculées à la main.
+//   [1,2,3] σ=√(2/3)=0.8164966 ; [2,3,4] σ=√(2/3) ; [3,4,6] σ=√(14/9)=1.2472191.
+TEST(IndicatorsUnit, RollingStdDevSlidingWindowHandComputed) {
+    RollingStdDev sd(3);
+    std::vector<double> prices = {1.0, 2.0, 3.0, 4.0, 6.0};
+    auto r = sd.compute(prices);
+    ASSERT_EQ(r.size(), 5u);
+    EXPECT_EQ(r[0], 0.0);
+    EXPECT_EQ(r[1], 0.0);
+    EXPECT_NEAR(r[2], 0.81649658, 1e-7);
+    EXPECT_NEAR(r[3], 0.81649658, 1e-7);
+    EXPECT_NEAR(r[4], 1.24721913, 1e-7);
+}

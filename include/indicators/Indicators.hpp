@@ -3,6 +3,8 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <cmath>
+#include <algorithm>
 
 namespace trading {
 
@@ -84,6 +86,64 @@ namespace trading {
         int period() const { return period_; }
 
     private:
+        int period_;
+    };
+
+// ─── RollingStdDev — écart-type glissant (bande de Bollinger / z-score) ────────
+// Écart-type de POPULATION sur une fenêtre glissante de `period` clôtures. Sert
+// de brique au z-score de la variante mean-reversion (Sprint 11) :
+//   z = (clôture − SMA(period)) / RollingStdDev(period).
+// Calqué sur SMA (même convention de sortie : vecteur aligné sur `prices`,
+// warmup = 0.0 jusqu'à `period-1`, vide si la série est plus courte que
+// `period`). Somme glissante des valeurs ET des carrés → O(n).
+    class RollingStdDev final : public IIndicator<double> {
+    public:
+        explicit RollingStdDev(int period) : period_(period) {
+            if (period <= 0)
+                throw std::invalid_argument("RollingStdDev period must be > 0");
+        }
+
+        std::vector<double> compute(const std::vector<double>& prices) const override {
+            if (prices.size() < static_cast<size_t>(period_))
+                return {};
+
+            std::vector<double> result(prices.size(), 0.0);
+
+            // Seed : somme et somme des carrés des `period` premières valeurs
+            double sum = 0.0, sumSq = 0.0;
+            for (int i = 0; i < period_; ++i) {
+                sum   += prices[i];
+                sumSq += prices[i] * prices[i];
+            }
+            result[period_ - 1] = stddev_(sum, sumSq);
+
+            for (size_t i = period_; i < prices.size(); ++i) {
+                const double in  = prices[i];
+                const double out = prices[i - period_];
+                sum   += in - out;
+                sumSq += in * in - out * out;
+                result[i] = stddev_(sum, sumSq);
+            }
+
+            return result;
+        }
+
+        std::string name() const override {
+            return "StdDev(" + std::to_string(period_) + ")";
+        }
+
+        int period() const { return period_; }
+
+    private:
+        // σ = √(E[x²] − E[x]²) sur le fenêtrage courant. Variance bornée à 0 :
+        // les arrondis de la somme glissante peuvent la rendre légèrement
+        // négative sur une série quasi plate.
+        double stddev_(double sum, double sumSq) const {
+            const double mean = sum / period_;
+            const double var  = std::max(0.0, sumSq / period_ - mean * mean);
+            return std::sqrt(var);
+        }
+
         int period_;
     };
 
