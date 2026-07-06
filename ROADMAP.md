@@ -9,13 +9,13 @@
 
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
-| Architecture | 89        | 68                           |
+| Architecture | 90        | 68                           |
 | Qualité      | 93        | 60                           |
 | FinTech      | 88        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-06 (Sprint 11 — **variante mean-reversion qui TRADE réellement** (décision utilisateur 10.4 = a). Le 1er jet MR (RSI ≤ 30 en régime, Sprint 10) ne tradait qu'1 fois en OOS → la FAMILLE n'était pas jugée, seul ce réglage restrictif l'était (D47). Nouvelle entrée **z-score / Bollinger** (achat de la clôture sous la bande basse, `z = (close−SMA)/σ ≤ −k`), additive au mode MeanReversion, indicateur `RollingStdDev` neuf → goldens byte-identiques. **VERDICT 11.2 : la variante TRADE (3 trades OOS canon / 4 fin, jusqu'à 23 sans filtre de régime) MAIS AUCUN EDGE** — alpha OOS négatif partout : QQQ canonique −15,35 / fin −9,87 ; multi-actifs SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur du balayage {10,20}×{1,5;2;2,5} = period 10 / k 2,5 à −9,15. Retirer le filtre de régime fait trader bien plus (4 → 23) mais EMPIRE l'alpha (−9,87 → −15,68). D47 LEVÉ : la famille MR est désormais VRAIMENT jugée (elle trade, toujours pas d'edge) → soldée comme les 2 axes précédents. Gate de confirmation (11.3) FERMÉ. Prod paper, verrou live intact. **10.4 tranchée (a) ; 11.4 = 4e famille d'alpha** (décision utilisateur capturée cette session))
-- **Sprint courant** : Sprint 12 — **4e famille d'alpha** (décision utilisateur 11.4). Les TROIS familles de signal sont soldées sans edge OOS : chaîne mono-actif trend-following (Sprints 8→8-octies), rotation multi-actifs (8-nonies), mean-reversion contrarian (Sprints 10-11, désormais VRAIMENT jugée). L'utilisateur choisit de continuer la recherche d'edge sur une famille NEUVE plutôt que de parquer/durcir la prod. **Décision d'ouverture requise** : famille précise (candidates au tableau des options — ciblage/vol targeting, RSI(2) de Connors, pairs-trading, ou diversifiant non-actions [gros chantier data d'abord]). Discipline inchangée : jugée en OOS via le harnais Sprint 7, verdicts verrouillés, configs champ par champ (D33), trades poolés (D34), aucune adoption sans confirmation hors-protocole complète (D42/D43). Prod reste paper tant qu'aucun edge OOS n'est démontré
+- **Dernière mise à jour** : 2026-07-06 (Sprint 12 — **4e famille d'alpha : PAIRS-TRADING market-neutral** (décision utilisateur 11.4). Seule famille ORTHOGONALE après les 3 familles directionnelles soldées : z-score du spread log(QQQ)−log(SPY), position dollar-neutral 0,5/0,5, jugé en OOS via un moteur SÉPARÉ `PairsBacktester` (calqué sur RotationBacktester, offline, ne touche NI la prod NI aucun golden). **VERDICT 12.2 : AUCUN EDGE** — la famille TRADE massivement (209-212 A/R OOS, D47 largement satisfait) mais Sharpe OOS négatif partout : canon −1,18 / fin −1,20 / décalé −1,16 ; 4 paires QQQ/SPY −1,20, QQQ/IWM −0,67, QQQ/MDY −1,01, SPY/IWM −0,88 ; meilleur du balayage {10,20}×{1,5;2;2,5} = z=10/k=2,5 à −0,44 ; MC size-aware CAGR médian −3,62 %, DD p95 68 %. La clause DoD « DD réduit ≥ 50 % » est techniquement atteinte (DD strat ~7 % vs DD B&H jambe 0 ~22 %) mais SANS INTÉRÊT (ret < 0) — le spread log naïf β=1 sur fenêtre courte est du bruit, pas un couple coïntégré (D49). Gate de confirmation FERMÉ. Prod paper, verrou live intact. **Les QUATRE familles d'alpha sont désormais soldées sans edge OOS.**)
+- **Sprint courant** : Sprint 13 — **Décision de suite requise** (les 4 familles d'alpha pré-définies sont soldées sans edge OOS : trend-following mono-actif, rotation multi-actifs, mean-reversion, pairs-trading). Le moteur est sûr, correct et bien testé (679 verts) ; ce qui manque est un EDGE démontré, et les pistes techniques simples sur ETFs US sont épuisées. **Décision d'ouverture requise** (candidates) : (a) **parquer la prod paper en l'état + durcir l'opérationnel** (viser la note Production, D18/D19/D25 au backlog) ; (b) **raffiner le pairs-trading proprement** — vraie cointégration Engle-Granger + hedge ratio roulant (le spread log β=1 de D49 n'était pas testé pour la stationnarité) ; (c) **5e famille NEUVE** (ex. données alternatives / régime de volatilité / surface d'options — gros chantier data) ; (d) **documenter la conclusion** (les stratégies techniques simples n'ont pas d'edge OOS net de coûts) et clore la recherche d'edge. Discipline inchangée : jugée en OOS via le harnais Sprint 7, verdicts verrouillés (D33/D34/D47), aucune adoption sans confirmation hors-protocole complète (D42/D43). Prod reste paper tant qu'aucun edge OOS n'est démontré
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -51,13 +51,13 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. |
-- **État des tests** : 664/664 verts (543 unitaires + 121 intégration) — et la
+> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. Le Sprint 12 **consolide sans ajouter (=)** : la 4e famille (pairs-trading market-neutral, la seule ORTHOGONALE) TRADE massivement (209-212 A/R OOS, D47 satisfait) mais n'a AUCUN edge — Sharpe OOS négatif sur les 3 pavages, les 4 paires et tous les réglages (D49) ; le spread log naïf β=1 sur fenêtre courte est du bruit. Les QUATRE familles d'alpha pré-définies sont soldées ; la note reste à 28, mais l'incertitude a encore rétréci (on SAIT que les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide). La note ne bougera qu'avec une piste NON technique (données alternatives) ou une vraie cointégration testée, pas un raffinement de plus. |
+- **État des tests** : 679/679 verts (551 unitaires + 128 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +14 au Sprint 11 (650 → 664 : indicateur `RollingStdDev`
-  + 5 tests IndicatorsUnit ; entrée z-score MR + 5 tests MeanReversionUnit ;
-  4 verrous OOS MeanReversionOosIntegration.ZScore*), aucune dérive hors cycle
-  (baseline d'ouverture 650 conforme, `ctest -N`=650). Détail au changelog.
+  suites concurrentes. +15 au Sprint 12 (664 → 679 : moteur `PairsBacktester`
+  + 8 tests PairsBacktesterUnit ; 7 verrous OOS PairsOosIntegration), aucune
+  dérive hors cycle (baseline d'ouverture 664 conforme, `ctest -N`=664).
+  Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1256,6 +1256,69 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 
 ---
 
+# 🟣 SPRINT 12 — 4e famille d'alpha : PAIRS-TRADING market-neutral ✅ (clos le 2026-07-06, verdict : la famille TRADE massivement mais reste sans edge)
+
+> Décision utilisateur 11.4 = PAIRS-TRADING. Les TROIS familles précédentes
+> (trend-following mono-actif, rotation multi-actifs, mean-reversion) sont soldées
+> sans edge OOS — toutes DIRECTIONNELLES sur un QQQ structurellement haussier
+> (D48 : « acheter les creux hors tendance perd »). Le pairs-trading est la seule
+> famille ORTHOGONALE : on ne parie pas sur la hausse d'un actif mais sur le
+> RETOUR À LA MOYENNE de l'ÉCART entre deux actifs corrélés (long une jambe, short
+> l'autre, dollar-neutral). Meilleure chance d'un edge RÉEL ; coût le plus élevé
+> (tout le harnais est mono-symbole). Jugée en OOS comme toutes les précédentes,
+> via un moteur SÉPARÉ (calqué sur RotationBacktester, Sprint 8-nonies) qui ne
+> touche NI la prod NI aucun golden.
+
+- [x] **12.1** **Moteur `PairsBacktester` + `PairsWalkForward`** → `620c7aa`
+  Nouveau `include/backtest/PairsBacktester.hpp` (header-only, moteur offline
+  séparé). Signal = z-score du spread log `s = log(P0) − log(P1)` sur fenêtre
+  glissante (réutilise `SMA` + `RollingStdDev`) ; position dollar-neutral 0,5/0,5
+  (long P0/short P1 sur `z ≤ −entryK`, inverse sur `z ≥ +entryK`, sortie au retour
+  à la moyenne, bande d'hystérésis `[exitZ, entryK]`). Anti-look-ahead (décision
+  close[i], rendement i→i+1), ré-amorçage du spread/z par fenêtre (anti-leak),
+  coûts par côté sur les DEUX jambes. **Correction clé vs rotation** : `pnlPct`
+  dérivé de l'équité COMPOSÉE barre par barre (pas d'un ratio de prix — faux pour
+  2 jambes) ; `deployedFraction = 1.0`. Réutilise `alignOnCommonDates`,
+  `TradeRecord`, `MonteCarlo`. Simplifications documentées (brut = 1,0,
+  constant-mix, coût d'emprunt short ignoré, β=1 ≠ beta-neutral). **8 tests
+  PairsBacktesterUnit** via `fromAxis` synthétique, scénarios déterministes
+  calculés à la main (zWindow=2 → z = signe de la variation) : spread log, garde
+  positivité, arité ≠ 2 neutre, spread plat sans trade, P&L long/short exacts,
+  deux allers-retours + cash plat entre les deux, fenêtre < warmup. Goldens
+  byte-identiques.
+- [x] **12.2** **Juger la famille en OOS** → `1d25b67`
+  **7 verrous `PairsOosIntegration`** (axe commun, 3 pavages canonique/fin/décalé,
+  Monte-Carlo size-aware, multi-paires, balayage) sur données longues `*_max.csv`,
+  config champ par champ (D33), trades poolés (D34), garde `EXPECT_GT(> 1)` (D47),
+  clause DoD « DD réduit ≥ 50 % » vérifiable (DD stratégie ET DD B&H jambe 0
+  figés). **VERDICT : AUCUN EDGE.** La famille TRADE massivement (209-212 A/R OOS —
+  D47 largement satisfait, la famille est VRAIMENT jugée) mais le **Sharpe OOS est
+  NÉGATIF partout** : canonique −1,18 / fin −1,20 / décalé −1,16 ; multi-paires
+  QQQ/SPY −1,20, QQQ/IWM −0,67, QQQ/MDY −1,01, SPY/IWM −0,88 ; meilleur du balayage
+  {10,20}×{1,5;2;2,5} = z=10/k=2,5 à −0,44. MC size-aware : CAGR médian −3,62 %,
+  DD p95 68,1 %. La clause « DD réduit ≥ 50 % » est techniquement atteinte (DD
+  stratégie ~7 % vs DD B&H jambe 0 ~22 %) mais SANS INTÉRÊT : le rendement est
+  négatif. Axe commun QQQ/SPY = 6870 barres (1999-03-10 → 2026-07-01, borné par
+  QQQ), distinct des 6562 de la rotation (D49).
+- [x] **12.3** **Section 16 du CLI `validate`** → `8bb0166`
+  Inspection humaine (non golden) : Sharpe OOS QQQ/SPY sur les 3 pavages, clause
+  DoD DD, multi-paires, balayage avec drapeau CANDIDAT, verdict. Chiffres
+  cohérents avec les verrous 12.2.
+
+> **Definition of Done du Sprint 12** (en plus de la DoD standard) : la famille
+> market-neutral produit un **rendement ajusté du risque ABSOLU positif** (Sharpe
+> OOS > 0, DD faible) net de coûts — un market-neutral (bêta ~0) ne bat pas un
+> indice long, on le juge donc sur le Sharpe, pas sur l'alpha vs B&H. Cadrage sur
+> la clause DoD EXISTANTE « DD réduit ≥ 50 % » sans reformuler le texte gouverné.
+> **VERDICT DE CLÔTURE : DoD NON ATTEINTE** — Sharpe OOS négatif partout ; la prod
+> reste paper, `liveTradingApproved` = false, verrou
+> `LiveTradingStaysDisapprovedUntilEdgeDoD` intact. Acquis : la famille
+> market-neutral est VRAIMENT jugée (elle trade ~210 fois OOS) et confirmée sans
+> edge — le spread log naïf β=1 sur fenêtre courte est du bruit. Les **QUATRE**
+> familles de signal sont désormais soldées sans edge OOS.
+
+---
+
 ## Découvertes (Phase 0, 2026-06-10)
 
 | # | Gravité | Constat | Affectation |
@@ -1308,8 +1371,99 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D46 | 🟠 | (Sprint 8-nonies) **La rotation par régime détruit de la valeur — PIRE que le panier passif, net de coûts.** Sur données longues (2000-2026, QQQ/SPY/IWM/MDY total-return, axe commun aligné 6562 barres), détenir l'actif au SMA200-régime le plus fort (bascule quand l'actif de tête change) rend +186 % vs meilleur B&H +1836 % et panier équipondéré +1120 % ; alpha OOS négatif vs les DEUX références sur les 3 pavages (−11,6/−10,1/−13,3 vs meilleur ; −2,7/−5,9/−7,1 vs panier) et DD de queue MC size-aware ~55 %. Cause : le timing de régime whipsaw (achète après la hausse, vend après la baisse) + les 472 coûts de bascule ; un filtre SMA200 ne surperforme pas une simple diversification statique sur des actifs corrélés. Les DEUX axes de recherche d'alpha (mono-actif + rotation) sont soldés. | Consigné (verrous `RotationOosIntegration`) ; décision de suite = Décision requise Sprint 9 (redéfinition d'objectif) |
 | D47 | 🟡 | (Sprint 10) **Le 1er jet mean-reversion n'a PAS d'edge OOS — mais surtout il ne trade quasi pas, donc la famille n'est pas vraiment jugée.** L'entrée contrarian « RSI ≤ 30 ET prix > SMA200 » est doublement restrictive : un creux assez profond pour RSI ≤ 30 casse souvent le régime SMA200 (le prix passe sous la SMA) → 1 seul trade OOS poolé, 1,45 % de temps investi sur tout QQQ. L'alpha OOS négatif (−8,56 fin) est donc majoritairement du cash drag (piège D34, comme la base 8.1). Le balayage de seuils {25,30,35}×{50,55,60} ne produit AUCUN candidat > 0. Leçon : avant de conclure « la famille MR est sans edge », il faut un réglage qui TRADE réellement (entrée moins restrictive : Bollinger/z-score, ou retrait du filtre SMA200) — sinon on ne juge que la rareté des signaux, pas leur qualité. **Écart au plan** : `GridOptimizer` non étendu aux axes MR (l'ajout de 2 axes cassait le verrou `GridOptimizerUnit.AxisSensitivityRanksMostSensitiveAxis`, `sens.size()==8`) ; le balayage réutilise `WalkForward`. | ✅ LEVÉ au Sprint 11 (10.4 tranchée (a), `f3c3b70`/`dc64657`) : l'entrée z-score/Bollinger TRADE réellement (3-4 trades OOS, jusqu'à 23 sans filtre) → la famille est enfin jugée. Verdict confirmé sans edge (voir D48) : le sous-échantillonnage n'était pas la cause de l'absence d'alpha |
 | D48 | 🟡 | (Sprint 11) **La famille mean-reversion est confirmée SANS edge OOS une fois qu'elle TRADE réellement — le sous-échantillonnage de D47 masquait, mais n'expliquait pas, l'absence d'alpha.** La variante z-score/Bollinger (achat `z ≤ −k` sous la bande basse) déclenche 3-4 trades OOS (canonique/fin) et jusqu'à 23 sans filtre de régime — un vrai échantillon, contre 1 trade pour le 1er jet RSI ≤ 30. Malgré ça, alpha OOS négatif partout (QQQ −15,35/−9,87 ; SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur balayage −9,15). Constat clé : **retirer le filtre de régime fait TRADER bien plus (4 → 23) mais DÉGRADE l'alpha (−9,87 → −15,68)** — acheter les creux hors d'une tendance haussière (« attraper un couteau qui tombe ») perd de l'argent, ce qui est cohérent avec le fait que QQQ est structurellement haussier (le trend-following y est la bonne prémisse, pas le contrarian). Les TROIS familles de signal (trend-following mono-actif, rotation, mean-reversion) sont désormais soldées sans edge. | Consigné (verrous `MeanReversionOosIntegration.ZScore*`) ; décision de suite 11.4 = **4e famille d'alpha** (Sprint 12, décision utilisateur) |
+| D49 | 🟡 | (Sprint 12) **La 4e famille — pairs-trading market-neutral — TRADE massivement mais n'a AUCUN edge OOS ; le spread log naïf β=1 sur fenêtre courte est du bruit.** Contrairement au mean-reversion (D47), le sous-échantillonnage n'est PAS en cause : la stratégie déclenche 209-212 allers-retours OOS (D47 largement satisfait). Malgré ça, **Sharpe OOS NÉGATIF sur les 3 pavages** (canon −1,18 / fin −1,20 / décalé −1,16), les **4 paires** (QQQ/SPY −1,20 ; QQQ/IWM −0,67 ; QQQ/MDY −1,01 ; SPY/IWM −0,88) et **tous les réglages** du balayage {10,20}×{1,5;2;2,5} (meilleur z=10/k=2,5 = −0,44) ; MC size-aware CAGR médian −3,62 %, DD p95 68,1 %. Constat market-neutral : la clause DoD « DD réduit ≥ 50 % » est **techniquement atteinte** (DD stratégie ~7 % vs DD B&H jambe 0 ~22 %) mais SANS INTÉRÊT — un livre qui perd de l'argent à faible volatilité reste perdant. Cause probable : le spread log(P0)−log(P1) avec β=1 n'est PAS testé pour la stationnarité/cointégration ; un z-score sur fenêtre glissante courte de-mean localement un spread non stationnaire → trades de bruit. Les **QUATRE** familles de signal sont désormais soldées sans edge OOS. Piste de raffinement non explorée (backlog) : cointégration Engle-Granger + hedge ratio roulant (vraie paire, pas spread naïf). | Consigné (verrous `PairsOosIntegration`) ; décision de suite = **Décision requise Sprint 13** (4 familles soldées : parquer/durcir la prod, raffiner le pairs-trading, ou 5e famille) |
 
 ## Changelog
+
+### Sprint 12 — 4e famille d'alpha : pairs-trading market-neutral (2026-07-06)
+
+**Contexte** : décision utilisateur 11.4 = PAIRS-TRADING. Les trois familles
+précédentes (trend-following mono-actif, rotation, mean-reversion) sont soldées
+sans edge — toutes DIRECTIONNELLES sur un QQQ structurellement haussier. Le
+pairs-trading est la seule famille ORTHOGONALE (valeur relative / market-neutral :
+long une jambe, short l'autre, pari sur le retour à la moyenne de l'écart). Jugée
+en OOS via un moteur SÉPARÉ (calqué sur RotationBacktester, offline, ne touche ni
+la prod ni aucun golden).
+
+**Baseline à l'ouverture** : **664/664 verte** (conforme au tableau de bord,
+`ctest -N`=664, aucune dérive D20). Environnement : Linux, paquets système
+(chemin CI, sans vcpkg), build −Werror sans warning.
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `620c7aa` feat(pairs) : moteur PairsBacktester + PairsWalkForward (item 12.1)
+- `1d25b67` test(pairs) : verrou de verdict OOS market-neutral (item 12.2)
+- `8bb0166` feat(pairs) : section 16 validate PAIRS-TRADING (item 12.3)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 664 → **679** (+15 : 551 unitaires + 128 intégration). +8
+PairsBacktesterUnit (fonction pure logSpread + garde positivité, arité ≠ 2 neutre,
+spread plat sans trade, P&L long/short exacts calculés à la main, deux
+allers-retours + cash plat, fenêtre < warmup) ; +7 PairsOosIntegration (axe commun
+QQQ/SPY verrouillé, 3 pavages canonique/fin/décalé, Monte-Carlo size-aware,
+multi-paires, balayage). **Goldens backtest byte-identiques** (moteur séparé,
+config prod ni golden existant touché).
+
+**Interfaces ajoutées** (additives, header-only) : `include/backtest/PairsBacktester.hpp`
+— `PairsConfig` (zWindow, entryK, exitZ, coûts), `PairsResult` (totalReturn,
+Sharpe/Sortino, DD stratégie ET DD B&H jambe 0, alphaVsLeg0/Basket de continuité),
+`PairsBacktester` (run/runRange, seam `fromAxis`), `PairsWalkForward`, fonction pure
+`logSpread`. Réutilise `alignOnCommonDates`/`AlignedAxis` (RotationBacktester), `SMA`,
+`RollingStdDev`, `TradeRecord`, `MonteCarlo`. Section 16 du CLI `validate`.
+
+**Verdict OUT-OF-SAMPLE** :
+- **La famille TRADE massivement** (D47 largement satisfait) : 209-212 allers-retours
+  OOS — un vrai échantillon, la famille est VRAIMENT jugée.
+- **MAIS AUCUN EDGE** : Sharpe OOS négatif partout — canonique **−1,18** / fin
+  **−1,20** / décalé **−1,16** ; multi-paires QQQ/SPY −1,20, QQQ/IWM −0,67, QQQ/MDY
+  −1,01, SPY/IWM −0,88 ; meilleur du balayage {10,20}×{1,5;2;2,5} = z=10/k=2,5 à
+  **−0,44**. MC size-aware : CAGR médian **−3,62 %**, DD p95 **68,1 %**. Aucun
+  candidat Sharpe > 0 → gate de confirmation FERMÉ.
+- **Constat market-neutral (D49)** : la clause DoD « DD réduit ≥ 50 % » est
+  techniquement atteinte (DD stratégie ~7 % vs DD B&H jambe 0 ~22 %) mais sans
+  intérêt (rendement négatif). Cause probable : spread log β=1 non testé pour la
+  stationnarité/cointégration → z-score sur fenêtre courte = trades de bruit.
+- Axe commun QQQ/SPY = 6870 barres (1999-03-10 → 2026-07-01, borné par QQQ),
+  distinct des 6562 de la rotation (bornée par IWM).
+
+**Verdict de clôture** : DoD NON atteinte (Sharpe OOS négatif partout) → prod
+paper, `liveTradingApproved` = false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD`
+intact. Fichiers gouvernés (`config/prod.json`, `prompt-*.md`, CLAUDE.md
+live-safety) intacts. **Les QUATRE familles d'alpha sont soldées sans edge OOS.**
+Décision de suite = **Décision requise Sprint 13**.
+
+**Rétrospective** :
+1. *Découpage* : bon. 12.1 (moteur + unit tests TDD) → 12.2 (verrou de verdict OOS,
+   « rouge d'abord » sentinelle → mesure → figée) → 12.3 (CLI), linéaire et additif.
+   Le choix de calquer PairsBacktester sur RotationBacktester (moteur offline séparé
+   plutôt qu'un mode de SwingStrategy) a gardé les goldens byte-identiques et évité de
+   forcer la position 2-jambes market-neutral dans un moteur long-only mono-symbole —
+   décision de conception validée par revue avant écriture. La correction critique
+   (pnlPct dérivé de l'équité composée, pas d'un ratio de prix — faux pour 2 jambes) a
+   été identifiée AVANT l'implémentation, pas après un test rouge. Aucune dépendance
+   ratée.
+2. *Prompts du workflow* : suffisants, AUCUN diff proposé. Le point de décision produit
+   (11.4 = quelle famille) et le cadrage du verdict market-neutral (mapper sur la clause
+   DoD existante « DD réduit ≥ 50 % » sans reformuler le texte gouverné) ont été traités
+   dans les règles existantes (décision utilisateur + garde-fou live). `AskUserQuestion`
+   a fonctionné pour capturer la décision 11.4.
+3. *À détecter plus tôt / garde-fou* : le point de contrôle central — « la famille
+   trade-t-elle réellement ? » (D47) — est encodé dans les verrous
+   (`EXPECT_GT(pool, 1u)`, ~210 A/R). Nouveau : la clause DoD market-neutral « DD réduit
+   ≥ 50 % » est rendue AUTO-VÉRIFIABLE par le gel du DD stratégie ET du DD B&H jambe 0
+   (`EXPECT_LT(meanMaxDd, 0.5*meanLeg0Dd)`), ce qui distingue « DD réellement réduit mais
+   ret < 0 » d'un vrai edge de risque. Candidat backlog (noté D49) : tester la
+   stationnarité/cointégration du spread AVANT de conclure — le spread log naïf β=1
+   n'était pas un vrai couple coïntégré, d'où des trades de bruit ; un test
+   d'Engle-Granger + hedge ratio roulant serait le raffinement honnête si le
+   pairs-trading est re-visité.
+4. *Notes /100* : Architecture 89 → **90** (+1 : 2e moteur offline séparé propre,
+   réutilise l'infra d'alignement multi-actifs sans la dupliquer — la séparation
+   moteur-de-recherche / prod tient) ; Qualité 93 (=) ; FinTech 88 (=) ; Production 72
+   (=). **Rentabilité 28 (=)** : la 4e et dernière famille pré-définie est jugée et
+   soldée sans edge ; la capacité démontrée à gagner de l'argent est inchangée, mais
+   l'incertitude a rétréci (on SAIT maintenant que les quatre familles techniques
+   simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide,
+   pas un artefact).
 
 ### Sprint 11 — Variante mean-reversion z-score / Bollinger (2026-07-06)
 
