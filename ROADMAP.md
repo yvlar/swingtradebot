@@ -14,8 +14,8 @@
 | FinTech      | 88        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-05 (Sprint 10 — 1re famille de signal RÉELLEMENT différente : **mean-reversion** (contrarian). Décision utilisateur (c) à l'ouverture : après solde des DEUX axes d'alpha (chaîne mono-actif + rotation), attaquer une famille neuve. Mode additif `StrategyMode { TrendFollow, MeanReversion }` dans `SwingConfig` (acheter la survente RSI ≤ seuil en régime haussier, sortir au retour à la moyenne) → goldens byte-identiques. **VERDICT 10.2 : AUCUN EDGE** — la famille MR ne bat pas le B&H en OOS : alpha OOS moyen QQQ canonique −13,11 / fin −8,56 ; multi-actifs SPY −6,93 / IWM −4,35 / MDY −2,79 ; meilleur seuil du balayage (entry ≤ 30 / exit ≥ 60) −8,38. De plus la chaîne MR en régime ne déclenche PRESQUE PAS (1 trade OOS poolé, 1,45 % de temps investi sur tout QQQ) → verdict majoritairement du cash drag (piège D34, D47). Gate de confirmation hors-protocole (10.3) FERMÉ. Prod paper, verrou live intact. **10.4 Décision de suite = Décision requise OUVERTE** — l'AskUserQuestion du harnais a de nouveau échoué (permission-stream), la décision est consignée, non tranchée seule)
-- **Sprint courant** : Sprint 10 — **Décision de suite requise (10.4)** : la famille mean-reversion (1er jet RSI ≤ 30 en régime) est sans edge OOS MAIS a à peine tradé — la FAMILLE n'est pas vraiment épuisée, seulement ce réglage restrictif. Trois options soumises à l'utilisateur (AskUserQuestion indisponible cette session, décision OUVERTE) : (a) **variante MR qui trade réellement** (entrée Bollinger/z-score au lieu de RSI ≤ 30, et/ou retrait du filtre SMA200 pour trader plus souvent — le 1er jet n'a quasi pas tradé) ; (b) **solder MR**, autre famille (ciblage de volatilité, ou diversifiant non-actions — gros chantier data) ; (c) **parquer la recherche → durcissement prod** (9.2 lookback unifié, 9.4 re-calibration, monitoring, docs). Recommandation : (a). Aucun item de code ne démarre sans réponse (« Décision requise »)
+- **Dernière mise à jour** : 2026-07-06 (Sprint 11 — **variante mean-reversion qui TRADE réellement** (décision utilisateur 10.4 = a). Le 1er jet MR (RSI ≤ 30 en régime, Sprint 10) ne tradait qu'1 fois en OOS → la FAMILLE n'était pas jugée, seul ce réglage restrictif l'était (D47). Nouvelle entrée **z-score / Bollinger** (achat de la clôture sous la bande basse, `z = (close−SMA)/σ ≤ −k`), additive au mode MeanReversion, indicateur `RollingStdDev` neuf → goldens byte-identiques. **VERDICT 11.2 : la variante TRADE (3 trades OOS canon / 4 fin, jusqu'à 23 sans filtre de régime) MAIS AUCUN EDGE** — alpha OOS négatif partout : QQQ canonique −15,35 / fin −9,87 ; multi-actifs SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur du balayage {10,20}×{1,5;2;2,5} = period 10 / k 2,5 à −9,15. Retirer le filtre de régime fait trader bien plus (4 → 23) mais EMPIRE l'alpha (−9,87 → −15,68). D47 LEVÉ : la famille MR est désormais VRAIMENT jugée (elle trade, toujours pas d'edge) → soldée comme les 2 axes précédents. Gate de confirmation (11.3) FERMÉ. Prod paper, verrou live intact. **10.4 tranchée (a) ; 11.4 = 4e famille d'alpha** (décision utilisateur capturée cette session))
+- **Sprint courant** : Sprint 12 — **4e famille d'alpha** (décision utilisateur 11.4). Les TROIS familles de signal sont soldées sans edge OOS : chaîne mono-actif trend-following (Sprints 8→8-octies), rotation multi-actifs (8-nonies), mean-reversion contrarian (Sprints 10-11, désormais VRAIMENT jugée). L'utilisateur choisit de continuer la recherche d'edge sur une famille NEUVE plutôt que de parquer/durcir la prod. **Décision d'ouverture requise** : famille précise (candidates au tableau des options — ciblage/vol targeting, RSI(2) de Connors, pairs-trading, ou diversifiant non-actions [gros chantier data d'abord]). Discipline inchangée : jugée en OOS via le harnais Sprint 7, verdicts verrouillés, configs champ par champ (D33), trades poolés (D34), aucune adoption sans confirmation hors-protocole complète (D42/D43). Prod reste paper tant qu'aucun edge OOS n'est démontré
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -51,12 +51,13 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. |
-- **État des tests** : 650/650 verts (533 unitaires + 117 intégration) — et la
+> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. |
+- **État des tests** : 664/664 verts (543 unitaires + 121 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +10 au Sprint 10 (640 → 650 : mode mean-reversion +
-  5 tests MeanReversionUnit + 5 MeanReversionOosIntegration), aucune dérive
-  hors cycle (baseline d'ouverture 640 conforme, `ctest -N`=640). Détail au changelog.
+  suites concurrentes. +14 au Sprint 11 (650 → 664 : indicateur `RollingStdDev`
+  + 5 tests IndicatorsUnit ; entrée z-score MR + 5 tests MeanReversionUnit ;
+  4 verrous OOS MeanReversionOosIntegration.ZScore*), aucune dérive hors cycle
+  (baseline d'ouverture 650 conforme, `ctest -N`=650). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1172,17 +1173,15 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
   Condition d'ouverture : un candidat alpha OOS > 0 en 10.2. Aucun seuil MR n'a produit
   d'alpha positif (meilleur −8,38) → branche « sinon » appliquée : pas de confirmation,
   pas d'adoption, prod reste paper. Résultat valide.
-- [ ] **10.4** **Décision de suite (Décision requise — OUVERTE)**
+- [x] **10.4** **Décision de suite — TRANCHÉE (a)** le 2026-07-06
   Le 1er jet MR (RSI ≤ 30 en régime) est sans edge OOS MAIS a à peine tradé : la FAMILLE
-  n'est pas vraiment épuisée, seulement ce réglage restrictif. L'`AskUserQuestion` du
-  harnais a échoué de façon répétée cette session (permission-stream — panne connue,
-  déjà rencontrée au 8-nonies) → décision consignée OUVERTE (garde-fou « décision
-  produit = utilisateur », précédent 8n.3), NON tranchée seule. **3 options** :
+  n'est pas vraiment épuisée, seulement ce réglage restrictif. 3 options soumises :
   (a) **variante MR qui trade réellement** (entrée Bollinger/z-score au lieu de RSI ≤ 30,
-  et/ou retrait du filtre SMA200) — recommandée ; (b) **solder MR**, autre famille
-  (ciblage de volatilité ; ou diversifiant non-actions, gros chantier data d'abord) ;
-  (c) **parquer la recherche → durcissement prod** (9.2 lookback unifié, 9.4 re-calibration,
-  monitoring, docs).
+  et/ou retrait du filtre SMA200) — recommandée ; (b) **solder MR**, autre famille ;
+  (c) **parquer la recherche → durcissement prod**. **Décision utilisateur : (a)**
+  (l'`AskUserQuestion`, en panne au Sprint 10, a fonctionné cette session) → a ouvert
+  le **Sprint 11** (variante z-score/Bollinger). Résultat du Sprint 11 : la variante
+  TRADE réellement mais reste sans edge → D47 levé, famille MR soldée (voir Sprint 11).
 
 > **Definition of Done du Sprint 10** (en plus de la DoD standard) : identique aux
 > familles précédentes — la famille retenue **bat le B&H net de coûts en OOS** OU le
@@ -1190,6 +1189,70 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 > démontré », on ne déploie PAS (résultat valide). **VERDICT DE CLÔTURE : DoD NON
 > ATTEINTE** — le 1er jet mean-reversion n'a aucun alpha OOS ; la prod reste paper,
 > `liveTradingApproved` = false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` intact.
+
+---
+
+# 🟣 SPRINT 11 — Variante mean-reversion qui TRADE réellement (z-score / Bollinger) ✅ (clos le 2026-07-06, verdict : la famille TRADE mais reste sans edge)
+
+> Décision utilisateur 10.4 = (a) : le 1er jet MR (RSI ≤ 30 EN régime SMA200, Sprint 10)
+> ne tradait qu'1 fois en OOS (1,45 % de temps investi) — un creux assez profond pour
+> RSI ≤ 30 casse souvent le régime SMA200. Le verdict « pas d'edge » était donc
+> majoritairement du cash drag (D47) : la FAMILLE mean-reversion n'était pas vraiment
+> jugée, seul ce réglage restrictif l'était. Ce sprint construit une variante qui TRADE
+> réellement — entrée **z-score / Bollinger** (achat de la clôture sous la bande basse,
+> `z = (close − SMA)/σ ≤ −k`), moins couplée au régime — pour obtenir un échantillon de
+> trades OOS réel et enfin juger la famille. Jugée en OOS comme toutes les précédentes
+> (harnais Sprint 7, verdicts verrouillés, D33/D34/D35). Point de départ :
+> `SwingStrategy::evaluate` bloc MeanReversion (`include/strategies/SwingStrategy.hpp`).
+
+- [x] **11.0** **Écart-type glissant `RollingStdDev`** (prérequis z-score) → `bda2991`
+  Nouvel `IIndicator<double>` calqué sur `SMA` : écart-type de population sur fenêtre
+  glissante (somme glissante des valeurs ET des carrés, O(n)), même convention de sortie
+  (vecteur aligné, warmup 0.0, vide si trop court). Brique du z-score. 5 tests
+  IndicatorsUnit calculés à la main (cas d'école σ=2,0, série plate → 0, fenêtre
+  glissante, série trop courte → vide, période invalide → throw). Aucun golden touché.
+- [x] **11.1** **Entrée z-score / Bollinger (mode MeanReversion)** → `f3c3b70`
+  Champs additifs `SwingConfig::mrBandPeriod` / `mrBandEntryK` / `mrBandExitZ` (défauts
+  0 = désactivé → repli exact sur l'entrée RSI Sprint 10). Bloc z-score séparé dans
+  `evaluate` : achat en régime haussier confirmé quand `z ≤ −k` (clôture sous la bande
+  basse), sortie au retour à la moyenne (`z ≥ mrBandExitZ`, défaut 0). Indicateurs de
+  bande (SMA + `RollingStdDev`) construits par `create()` seulement si mrBandPeriod > 0,
+  injectés via des paramètres de ctor defaultés à nullptr (schéma `atr_`) → sites
+  d'appel historiques inchangés. Priorité sortie-avant-entrée et non-gate des sorties
+  par le régime préservées ; bande incalculable (σ nul) → repli RSI fail-safe.
+  **5 tests MeanReversionUnit** (achat sous la bande basse, divergence vs trend-following
+  sur les mêmes barres, sortie au retour à la moyenne, régime ON bloque / OFF autorise
+  = levier « retrait SMA200 », défauts désactivés). **Goldens byte-identiques.**
+- [x] **11.2** **Juger la variante qui TRADE en OOS** → `dc64657`
+  4 verrous `MeanReversionOosIntegration.ZScore*` (chaîne canonique + fin avec contrôle
+  `nbTradesOos > 1`, régime ON/OFF, multi-actifs SPY/IWM/MDY, balayage
+  {10,20}×{1,5;2;2,5}) + section 15 du CLI `validate`. **VERDICT : la variante TRADE
+  réellement** (3 trades OOS canonique / 4 fin, jusqu'à 23 sans filtre — D47 levé, la
+  famille est enfin exercée) **MAIS AUCUN EDGE** : alpha OOS négatif partout — QQQ
+  canonique −15,35 / fin −9,87 ; SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur du balayage
+  (period 10 / k 2,5) −9,15. Retirer le filtre de régime fait trader bien plus (4 → 23)
+  mais EMPIRE l'alpha (−9,87 → −15,68 : acheter les creux hors tendance perd).
+- [x] **11.3** **Confirmation hors-protocole (GATÉE)** → gate FERMÉ, aucun code
+  Condition d'ouverture : un candidat alpha OOS > 0 en 11.2. Aucun réglage z-score n'a
+  produit d'alpha positif (meilleur −9,15) → branche « sinon » : pas de confirmation,
+  pas d'adoption, prod reste paper. Résultat valide.
+- [x] **10.4/11.4** **Décision de suite → 4e famille d'alpha** (décision utilisateur
+  2026-07-06). Les TROIS familles de signal sont désormais soldées sans edge OOS
+  (trend-following mono-actif, rotation multi-actifs, mean-reversion — cette dernière
+  VRAIMENT jugée maintenant qu'elle trade). L'utilisateur choisit de continuer la
+  recherche d'edge sur une famille NEUVE (plutôt que parquer/durcir la prod) → **Sprint
+  12**, famille précise = décision d'ouverture (vol targeting / RSI(2) Connors /
+  pairs-trading / diversifiant non-actions).
+
+> **Definition of Done du Sprint 11** (en plus de la DoD standard) : identique aux
+> familles précédentes — la variante **bat le B&H net de coûts en OOS** OU le
+> sous-performe de **< 5 pts** avec **drawdown réduit ≥ 50 %**. Sinon « pas d'edge
+> démontré », on ne déploie PAS (résultat valide). **VERDICT DE CLÔTURE : DoD NON
+> ATTEINTE** — la variante z-score TRADE réellement mais n'a aucun alpha OOS positif ;
+> la prod reste paper, `liveTradingApproved` = false, verrou
+> `LiveTradingStaysDisapprovedUntilEdgeDoD` intact. Acquis positif : D47 levé — la
+> famille mean-reversion est désormais VRAIMENT jugée (elle trade jusqu'à 23 fois OOS)
+> et confirmée sans edge, pas seulement sous-échantillonnée.
 
 ---
 
@@ -1243,9 +1306,90 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D44 | 🟠 | (Sprint 8-septies) **L'alpha et le drawdown du pullback sont COUPLÉS — ils viennent des mêmes achats de creux en régime volatil.** Le pullback confirme son alpha (D42) mais double le drawdown de queue (DD p95 10,80 → 19,27 %, 8d.3c). Trois leviers config-only ont échoué à les séparer (8d.6/8d.7) : le gating ATR ne casse le DD qu'à une valeur ISOLÉE (0,015, voisins pires → sur-ajustement probable) et au prix de l'alpha ; le stop serré ne bouge pas le DD (le trailing 3 % tire d'abord) ; `riskPerTradePct` est INVARIANT d'échelle sur le drawdown en % (il scale l'équité uniformément). **Conclusion : le découplage config-only est épuisé ; le vrai levier est un position-sizing MODULÉ par la volatilité (code moteur), qui réduirait la taille seulement quand la volatilité est haute.** Décision utilisateur (2026-07-04) : pullback NON adopté, vol-sizing au backlog (Sprint 8-octies) | ⚠️ Le sous-constat « riskPerTradePct invariant d'échelle » s'est révélé être un ARTEFACT du MC aveugle à la taille (D45) : corrigé, riskPerTradePct RÉDUIT bien le DD (mais coûte l'alpha). Le vol-sizing a été exploré au Sprint 8-octies : découplage PARTIEL (DD 7,88 → 6,51 à faible coût d'alpha) mais insuffisant → non adopté. Le fond de D44 (alpha/risque du pullback difficiles à séparer) TIENT |
 | D45 | 🟠 | (Sprint 8-octies) **Le Monte-Carlo était AVEUGLE à la taille de position.** `MonteCarlo::run` bootstrappait `pnlPct` (rendement de la POSITION, indépendant de la taille) en le composant sur l'équité PLEINE — donc tout schéma de sizing (riskPerTradePct, vol-sizing) y était INERTE (cause de l'invariance du DD constatée en 8d.7, prise à tort pour une propriété d'échelle en D44). Détecté par exploration AVANT d'écrire le vol-sizing (leçon D41). **Correctif (8o.1, `b64ffd7`)** : `TradeRecord::deployedFraction` (capital investi / équité à l'entrée, calculé par PaperBroker) ; le MC bootstrappe `deployedFraction × pnlPct`. Le MC reflète enfin la taille — et révèle que l'ancien SURESTIMAIT tout (la chaîne ne déploie que ~40 % : DD p95 8d.3c 19,27 → 7,88, chaîne 10,80 → 4,28). Re-baseline documentée des valeurs MC (goldens backtest intacts). C'est ce correctif qui a rendu le vol-sizing (8o.2/8o.3) MESURABLE | ✅ Corrigé au Sprint 8-octies (8o.1) ; garde-fou : MonteCarloUnit teste désormais la pondération par deployedFraction |
 | D46 | 🟠 | (Sprint 8-nonies) **La rotation par régime détruit de la valeur — PIRE que le panier passif, net de coûts.** Sur données longues (2000-2026, QQQ/SPY/IWM/MDY total-return, axe commun aligné 6562 barres), détenir l'actif au SMA200-régime le plus fort (bascule quand l'actif de tête change) rend +186 % vs meilleur B&H +1836 % et panier équipondéré +1120 % ; alpha OOS négatif vs les DEUX références sur les 3 pavages (−11,6/−10,1/−13,3 vs meilleur ; −2,7/−5,9/−7,1 vs panier) et DD de queue MC size-aware ~55 %. Cause : le timing de régime whipsaw (achète après la hausse, vend après la baisse) + les 472 coûts de bascule ; un filtre SMA200 ne surperforme pas une simple diversification statique sur des actifs corrélés. Les DEUX axes de recherche d'alpha (mono-actif + rotation) sont soldés. | Consigné (verrous `RotationOosIntegration`) ; décision de suite = Décision requise Sprint 9 (redéfinition d'objectif) |
-| D47 | 🟡 | (Sprint 10) **Le 1er jet mean-reversion n'a PAS d'edge OOS — mais surtout il ne trade quasi pas, donc la famille n'est pas vraiment jugée.** L'entrée contrarian « RSI ≤ 30 ET prix > SMA200 » est doublement restrictive : un creux assez profond pour RSI ≤ 30 casse souvent le régime SMA200 (le prix passe sous la SMA) → 1 seul trade OOS poolé, 1,45 % de temps investi sur tout QQQ. L'alpha OOS négatif (−8,56 fin) est donc majoritairement du cash drag (piège D34, comme la base 8.1). Le balayage de seuils {25,30,35}×{50,55,60} ne produit AUCUN candidat > 0. Leçon : avant de conclure « la famille MR est sans edge », il faut un réglage qui TRADE réellement (entrée moins restrictive : Bollinger/z-score, ou retrait du filtre SMA200) — sinon on ne juge que la rareté des signaux, pas leur qualité. **Écart au plan** : `GridOptimizer` non étendu aux axes MR (l'ajout de 2 axes cassait le verrou `GridOptimizerUnit.AxisSensitivityRanksMostSensitiveAxis`, `sens.size()==8`) ; le balayage réutilise `WalkForward`. | Consigné (verrous `MeanReversionOosIntegration`) ; décision de suite = **Décision requise OUVERTE** (10.4), 3 options au tableau de bord |
+| D47 | 🟡 | (Sprint 10) **Le 1er jet mean-reversion n'a PAS d'edge OOS — mais surtout il ne trade quasi pas, donc la famille n'est pas vraiment jugée.** L'entrée contrarian « RSI ≤ 30 ET prix > SMA200 » est doublement restrictive : un creux assez profond pour RSI ≤ 30 casse souvent le régime SMA200 (le prix passe sous la SMA) → 1 seul trade OOS poolé, 1,45 % de temps investi sur tout QQQ. L'alpha OOS négatif (−8,56 fin) est donc majoritairement du cash drag (piège D34, comme la base 8.1). Le balayage de seuils {25,30,35}×{50,55,60} ne produit AUCUN candidat > 0. Leçon : avant de conclure « la famille MR est sans edge », il faut un réglage qui TRADE réellement (entrée moins restrictive : Bollinger/z-score, ou retrait du filtre SMA200) — sinon on ne juge que la rareté des signaux, pas leur qualité. **Écart au plan** : `GridOptimizer` non étendu aux axes MR (l'ajout de 2 axes cassait le verrou `GridOptimizerUnit.AxisSensitivityRanksMostSensitiveAxis`, `sens.size()==8`) ; le balayage réutilise `WalkForward`. | ✅ LEVÉ au Sprint 11 (10.4 tranchée (a), `f3c3b70`/`dc64657`) : l'entrée z-score/Bollinger TRADE réellement (3-4 trades OOS, jusqu'à 23 sans filtre) → la famille est enfin jugée. Verdict confirmé sans edge (voir D48) : le sous-échantillonnage n'était pas la cause de l'absence d'alpha |
+| D48 | 🟡 | (Sprint 11) **La famille mean-reversion est confirmée SANS edge OOS une fois qu'elle TRADE réellement — le sous-échantillonnage de D47 masquait, mais n'expliquait pas, l'absence d'alpha.** La variante z-score/Bollinger (achat `z ≤ −k` sous la bande basse) déclenche 3-4 trades OOS (canonique/fin) et jusqu'à 23 sans filtre de régime — un vrai échantillon, contre 1 trade pour le 1er jet RSI ≤ 30. Malgré ça, alpha OOS négatif partout (QQQ −15,35/−9,87 ; SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur balayage −9,15). Constat clé : **retirer le filtre de régime fait TRADER bien plus (4 → 23) mais DÉGRADE l'alpha (−9,87 → −15,68)** — acheter les creux hors d'une tendance haussière (« attraper un couteau qui tombe ») perd de l'argent, ce qui est cohérent avec le fait que QQQ est structurellement haussier (le trend-following y est la bonne prémisse, pas le contrarian). Les TROIS familles de signal (trend-following mono-actif, rotation, mean-reversion) sont désormais soldées sans edge. | Consigné (verrous `MeanReversionOosIntegration.ZScore*`) ; décision de suite 11.4 = **4e famille d'alpha** (Sprint 12, décision utilisateur) |
 
 ## Changelog
+
+### Sprint 11 — Variante mean-reversion z-score / Bollinger (2026-07-06)
+
+**Contexte** : décision utilisateur 10.4 = (a) (l'`AskUserQuestion`, en panne au
+Sprint 10, a fonctionné cette session) : le 1er jet MR (RSI ≤ 30 en régime) ne
+tradait qu'1 fois en OOS — la FAMILLE mean-reversion n'était pas jugée, seul ce
+réglage restrictif l'était (D47). Construire une variante qui TRADE réellement
+(entrée z-score/Bollinger, moins couplée au régime) pour enfin juger la famille.
+
+**Baseline à l'ouverture** : **650/650 verte** (conforme au tableau de bord,
+`ctest -N`=650, aucune dérive). Environnement : Linux, paquets système (chemin CI,
+sans vcpkg), build −Werror sans warning.
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `bda2991` feat(indicateurs) : écart-type glissant RollingStdDev (brique z-score, item 11.0)
+- `f3c3b70` feat(strategie) : entrée z-score/Bollinger pour la famille mean-reversion (item 11.1)
+- `dc64657` test(validation) : verdict OOS de la variante z-score MR — TRADE mais AUCUN edge (item 11.2)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 650 → **664** (+14 : 543 unitaires + 121 intégration). Nouvelle brique
+`RollingStdDev` + 5 tests IndicatorsUnit (cas d'école σ=2,0, série plate → 0, fenêtre
+glissante, série trop courte, période invalide) ; 5 tests MeanReversionUnit (achat sous
+la bande basse, divergence vs trend-following, sortie au retour à la moyenne, régime
+ON bloque / OFF autorise, défauts désactivés) ; 4 verrous
+MeanReversionOosIntegration.ZScore* (chaîne canonique+fin avec contrôle nbTradesOos > 1,
+régime ON/OFF, multi-actifs, balayage). **Goldens backtest byte-identiques** (mode défaut
+= TrendFollow + champs mrBand* = 0 — aucun défaut, config prod ni golden existant touché).
+
+**Interfaces ajoutées** (additives, header-only) : indicateur `RollingStdDev`
+(Indicators.hpp) ; `SwingConfig::mrBandPeriod` / `mrBandEntryK` / `mrBandExitZ` ; bloc
+z-score séparé dans `SwingStrategy::evaluate` (mode MeanReversion) ; indicateurs de bande
+construits par `create()` seulement si mrBandPeriod > 0 (ctor params defaultés à nullptr,
+schéma `atr_`). Section 15 du CLI `validate`.
+
+**Verdict OUT-OF-SAMPLE de la variante z-score** :
+- **La variante TRADE réellement** (D47 levé) : 3 trades OOS canonique / 4 fin, jusqu'à
+  **23** sans filtre de régime — contre 1 seul pour le 1er jet RSI ≤ 30. La famille est
+  enfin exercée.
+- **MAIS AUCUN EDGE** : alpha OOS négatif partout — QQQ canonique **−15,35** (3 trades)
+  / fin **−9,87** (4) ; multi-actifs SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur du
+  balayage {10,20}×{1,5;2;2,5} = period 10 / k 2,5 à **−9,15** (3 trades). Aucun candidat
+  > 0 → gate de confirmation (11.3) FERMÉ.
+- **Constat clé (D48)** : retirer le filtre de régime fait TRADER bien plus (4 → 23) mais
+  DÉGRADE l'alpha (−9,87 → −15,68) — acheter les creux hors tendance perd. Cohérent avec
+  un QQQ structurellement haussier (le trend-following est la bonne prémisse, pas le
+  contrarian). Les TROIS familles de signal sont soldées sans edge.
+
+**Verdict de clôture** : DoD NON atteinte (aucun alpha OOS positif) → prod paper,
+`liveTradingApproved` = false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` intact.
+Fichiers gouvernés (`config/prod.json`, `prompt-*.md`, CLAUDE.md live-safety) intacts.
+**Décision de suite 11.4 = 4e famille d'alpha** (décision utilisateur) → Sprint 12.
+
+**Rétrospective** :
+1. *Découpage* : bon. 11.0 (brique indicateur) → 11.1 (signal) → 11.2 (verdict) → 11.3
+   (gate) → 11.4 (décision), linéaire et additif. Le choix de loger la variante DANS le
+   mode MeanReversion existant (nouveaux champs `mrBand*`, bloc z-score séparé) plutôt
+   qu'une nouvelle famille a gardé les goldens byte-identiques et chaque commit
+   trivialement sûr. `RollingStdDev` calqué sur `SMA` : réutilisation propre de la
+   convention de sortie. Aucune dépendance ratée.
+2. *Prompts du workflow* : suffisants, AUCUN diff proposé. Note opérationnelle (hors
+   prompts) : l'`AskUserQuestion` du harnais a d'abord réussi (décision 10.4 = a),
+   permettant de démarrer le sprint, puis a échoué une fois (permission-stream — panne
+   connue, D-note Sprint 10/8-nonies) avant de re-fonctionner à la clôture pour capturer
+   la décision 11.4. Les deux décisions produit ont donc bien été prises par
+   l'utilisateur (garde-fou « décision produit = utilisateur » respecté), aucune tranchée
+   seule.
+3. *À détecter plus tôt / garde-fou* : le point de contrôle central du sprint —
+   « la variante trade-t-elle réellement ? » (D47) — a été explicitement encodé dans les
+   verrous (`EXPECT_GT(nbTradesOos, 1)`), ce qui distingue désormais un verdict « pas
+   d'edge » d'un artefact de cash drag (D34/D47). Candidat backlog (déjà noté à D47) :
+   `WalkForward`/`MeanReversion` pourrait AVERTIR si le temps investi OOS < seuil, pour
+   attraper automatiquement un futur verdict jugé sur trop peu de trades.
+4. *Notes /100* : **Architecture 89 (=)** (capacité additive : variante de signal +
+   nouvel indicateur dans le même moteur, harnais réutilisé tel quel). **Qualité 93 (=)**
+   (664 verts, négatif discipliné verrouillé avec contrôle du nombre de trades, goldens
+   intacts). **FinTech 88 (=)** (connaissance acquise — la 3e famille est VRAIMENT jugée
+   et soldée — mais aucune capacité de gain ajoutée). **Production 72 (=)**.
+   **Rentabilité 28 (=)** : toujours aucun edge ; la variante trade mais reste négative.
+   L'incertitude a rétréci (on SAIT que le mean-reversion n'a pas d'edge, D48 levant D47)
+   sans que la capacité démontrée de gain change.
 
 ### Sprint 10 — Famille mean-reversion (contrarian) (2026-07-05)
 
