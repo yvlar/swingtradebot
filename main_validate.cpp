@@ -583,6 +583,70 @@ int main() {
                   << "  B&H. Gate de confirmation 10.3 FERME. Prod paper.\n";
     }
 
+    // ── 15. VARIANTE MEAN-REVERSION Z-SCORE / BOLLINGER (Sprint 11) ──────────
+    // Décision 10.4 = (a) : le 1er jet MR (RSI ≤ 30 en régime) ne tradait qu'1
+    // fois en OOS (cash drag, D47) — la FAMILLE n'était pas jugée. L'entrée
+    // z-score achète la clôture sous la bande basse de Bollinger, moins couplée
+    // au régime → elle TRADE réellement. Verrous CI dans
+    // test_mean_reversion_oos_integration.cpp (ZScore*).
+    titre("15. VARIANTE MEAN-REVERSION Z-SCORE (Bollinger, QQQ + multi-actifs — 11.2)");
+    {
+        auto mrZChain = []() {
+            SwingConfig c;
+            c.symbol = "QQQ";
+            c.mode = StrategyMode::MeanReversion;
+            c.mrBandPeriod = 20; c.mrBandEntryK = 2.0; c.mrBandExitZ = 0.0;
+            c.stopLossPct = 0.05; c.takeProfitPct = 0.0; c.trailingStopPct = 0.03;
+            c.riskPerTradePct = 0.02; c.minHoldDays = 3; c.smaTrendPeriod = 200;
+            return c;
+        };
+        auto meanOos = [](const std::vector<WfWindow>& w) {
+            if (w.empty()) return 0.0;
+            double s = 0.0; for (const auto& x : w) s += x.oos.alpha;
+            return s / static_cast<double>(w.size());
+        };
+        auto nbTrades = [](const std::vector<WfWindow>& w) {
+            size_t n = 0; for (const auto& x : w) n += x.oos.trades.size(); return n;
+        };
+
+        const auto wc = WalkForward(mrZChain(), qqq, 700, 400, 400).run();
+        const auto wf = WalkForward(mrZChain(), qqq, 500, 300, 300).run();
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  Alpha OOS moyen : canonique " << meanOos(wc)
+                  << " (trades " << nbTrades(wc) << ") | fin " << meanOos(wf)
+                  << " (trades " << nbTrades(wf) << ")\n";
+
+        SwingConfig off = mrZChain(); off.smaTrendPeriod = 1;
+        const auto woff = WalkForward(off, qqq, 500, 300, 300).run();
+        std::cout << "  Filtre de regime (fin) : ON " << meanOos(wf)
+                  << " (trades " << nbTrades(wf) << ") | OFF " << meanOos(woff)
+                  << " (trades " << nbTrades(woff) << ")\n";
+
+        std::cout << "  Multi-actifs (pavage fin) :";
+        const std::pair<const char*, const char*> actifs[] = {
+            {"SPY", SWINGBOT_SPY_CSV}, {"IWM", SWINGBOT_IWM_CSV}, {"MDY", SWINGBOT_MDY_CSV} };
+        for (const auto& a : actifs) {
+            SwingConfig c = mrZChain(); c.symbol = a.first;
+            const auto w = WalkForward(c, a.second, 500, 300, 300).run();
+            std::cout << "  " << a.first << " " << meanOos(w);
+        }
+        std::cout << "\n";
+
+        double best = -1e9; int bP = 0; double bK = 0.0;
+        for (int p : {10, 20}) for (double k : {1.5, 2.0, 2.5}) {
+            SwingConfig c = mrZChain(); c.mrBandPeriod = p; c.mrBandEntryK = k;
+            const double a = meanOos(WalkForward(c, qqq, 500, 300, 300).run());
+            if (a > best) { best = a; bP = p; bK = k; }
+        }
+        std::cout << "  Balayage periode x k : meilleur period=" << bP << " / k=" << bK
+                  << " -> alpha OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        std::cout << "  VERDICT 11.2 : la variante z-score TRADE reellement (3/4 trades OOS vs 1\n"
+                  << "  pour le 1er jet RSI, D47 leve) mais AUCUN EDGE — alpha OOS negatif sur les\n"
+                  << "  deux pavages, les 3 actifs et tous les reglages ; retirer le filtre fait\n"
+                  << "  trader plus (23) mais empire l'alpha. Gate 11.3 FERME. Prod paper.\n";
+    }
+
     std::cout << "\n";
     return 0;
 }
