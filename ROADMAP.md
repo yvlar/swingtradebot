@@ -14,8 +14,8 @@
 | FinTech      | 88        | 38                           |
 | Production   | 72        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-06 (Sprint 13 — **5e famille d'alpha : VOL-REGIME / volatility-managed exposure** (décision utilisateur (c) : famille NEUVE au-delà des signaux de prix simples). Filtre binaire long/cash modulé par le RÉGIME DE VOLATILITÉ réalisée (long si vol réalisée 20 j ≤ seuil × médiane glissante 126 j, sinon cash — hypothèse Moreira & Muir 2017), jugé en OOS via un moteur SÉPARÉ `VolRegimeBacktester` (calqué sur Rotation/Pairs, offline, ne touche NI la prod NI aucun golden). **VERDICT 13.2 : AUCUN EDGE ajusté du risque** — le filtre TRADE réellement (107-135 stints OOS, D47 satisfait) et son Sharpe est POSITIF (0,52 canon / 0,23 fin / 0,61 décalé) mais SOUS le Sharpe du Buy & Hold (1,09 / 0,77 / 1,04) sur les 3 pavages, les 4 actifs (QQQ/SPY/IWM/MDY) et les 9 réglages du balayage {10,20,42}×{0,8;1;1,2} (meilleur vl=42/seuil=1,2 = dSharpe −0,16 < 0). Le filtre RÉDUIT le drawdown (14,5 vs 18,1 %) mais de < 50 % (clause DoD NON atteinte, contraste avec le pairs-trading) et au prix d'un alpha négatif (cash drag T4/D48) ; MC size-aware cagrP50 +5,03 % (la strat gagne de l'argent, moins efficacement que le B&H). Gate de confirmation FERMÉ. Prod paper, verrou live intact. **Les CINQ familles d'alpha pré-définies sont désormais soldées sans edge OOS (D50).**)
-- **Sprint courant** : Sprint 14 — **Décision de suite requise** (CINQ familles d'alpha soldées sans edge OOS : trend-following mono-actif, rotation multi-actifs, mean-reversion, pairs-trading, vol-regime). Le moteur reste sûr, correct et bien testé (694 verts) ; la variante la plus faisable offline de la piste (c) « famille neuve » (régime de volatilité réalisée) est explorée — sans edge. **Décision d'ouverture requise** (candidates restantes) : (a) **parquer la prod paper + durcir l'opérationnel** (viser la note Production ; D18 interface ATR true-range, D19 lookback unifié, D25 flap intra-journalier au backlog) ; (b) **raffiner le pairs-trading proprement** (vraie cointégration Engle-Granger + hedge ratio roulant, D49) ; (c') **autre variante de 5e famille à données EXTERNES** (VIX/vol implicite — backlog D50 ; données alternatives ; surface d'options — gros chantier data, aucune donnée dans le dépôt aujourd'hui) ; (d) **documenter la conclusion** (les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — 5 familles de connaissance négative) et clore la recherche d'edge. Discipline inchangée : jugée en OOS via le harnais Sprint 7, verdicts verrouillés (D33/D34/D47), aucune adoption sans confirmation hors-protocole complète (D42/D43). Prod reste paper tant qu'aucun edge OOS n'est démontré
+- **Dernière mise à jour** : 2026-07-06 (Sprint 14 — **5e famille, variante à données EXTERNES : VIX-REGIME / volatilité IMPLICITE** (décision utilisateur (c'), backlog D50). On TRADE QQQ mais on gate l'exposition sur le niveau du ^VIX (vol implicite, exogène, anticipatrice — 9192 barres 1990+, fetchées via `scripts/export_total_return.py` étendu) vs sa médiane glissante, au lieu de la vol RÉALISÉE du Sprint 13. Moteur SÉPARÉ `VixRegimeBacktester` (2 séries alignées QQQ+VIX via `alignOnCommonDates`, offline, ne touche NI la prod NI aucun golden). **VERDICT 14.2 : AUCUN EDGE ajusté du risque** — la vol IMPLICITE ne fait PAS mieux que la réalisée : le filtre TRADE massivement (195-227 stints OOS, D47) et son Sharpe est POSITIF (0,55 canon / 0,42 fin / 0,45 décalé) mais SOUS le Sharpe du B&H (1,06 / 0,87 / 0,98) sur les 3 pavages, les 4 actifs gatés sur le MÊME VIX (QQQ 0,42, SPY −0,01, IWM 0,38, MDY 0,28, tous < leur B&H) et les 9 réglages du balayage {63,126,252}×{0,8;1;1,2} (meilleur rl=126/seuil=1,2 = dSharpe −0,22 < 0). DD réduit (13,4 vs 18,6 %) mais < 50 %, alpha vs B&H négatif (cash drag T4/D48) ; MC size-aware cagrP50 +5,15 %. Gate FERMÉ. Prod paper, verrou live intact. **Les DEUX variantes de la 5e famille (vol réalisée + vol implicite) sont soldées sans edge (D51).**)
+- **Sprint courant** : Sprint 15 — **Décision de suite requise** (les 5 familles d'alpha, dont les DEUX variantes vol-regime réalisée+implicite, sont soldées sans edge OOS). Le moteur reste sûr, correct et bien testé (708 verts). La recherche d'edge par signaux techniques ET par régime de volatilité (réalisée puis implicite/exogène) est épuisée sans résultat. **Décision d'ouverture requise** (candidates restantes) : (a) **parquer la prod paper + durcir l'opérationnel** (viser la note Production ; D18 interface ATR true-range, D19 lookback unifié, D25 flap intra-journalier au backlog) ; (b) **raffiner le pairs-trading proprement** (vraie cointégration Engle-Granger + hedge ratio roulant, D49) ; (c'') **variante de 5e famille encore plus lourde** (scaling continu Moreira-Muir sur le VIX ; term-structure VIX/VIX3M ; données alternatives / surface d'options — gros chantier data) ; (d) **documenter la conclusion** (aucune stratégie technique ni de régime de vol n'a d'edge OOS net de coûts sur ETFs US — 5 familles / 6 variantes de connaissance négative) et clore la recherche d'edge. Recommandation forte vers (a)/(d) : les pistes techniques et de vol sont épuisées. Discipline inchangée : jugée en OOS via le harnais Sprint 7, verdicts verrouillés (D33/D34/D47), aucune adoption sans confirmation hors-protocole complète (D42/D43). Prod reste paper tant qu'aucun edge OOS n'est démontré
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -51,14 +51,13 @@
 >
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
-> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. Le Sprint 12 **consolide sans ajouter (=)** : la 4e famille (pairs-trading market-neutral, la seule ORTHOGONALE) TRADE massivement (209-212 A/R OOS, D47 satisfait) mais n'a AUCUN edge — Sharpe OOS négatif sur les 3 pavages, les 4 paires et tous les réglages (D49) ; le spread log naïf β=1 sur fenêtre courte est du bruit. Les QUATRE familles d'alpha pré-définies sont soldées ; la note reste à 28, mais l'incertitude a encore rétréci (on SAIT que les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide). Le Sprint 13 **consolide sans ajouter (=)** : la 5e famille explorée (vol-regime / volatility-managed, la variante (c) la plus faisable offline) TRADE réellement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages du balayage (D50) ; le filtre réduit le DD de < 50 % et l'alpha vs B&H reste négatif (cash drag). La note reste à 28, les CINQ familles techniques simples étant désormais soldées (connaissance négative encore renforcée). La note ne bougera qu'avec une piste NON technique (données alternatives) ou une vraie cointégration testée, pas un raffinement de plus. |
-- **État des tests** : 694/694 verts (560 unitaires + 134 intégration) — et la
+> | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. Le Sprint 12 **consolide sans ajouter (=)** : la 4e famille (pairs-trading market-neutral, la seule ORTHOGONALE) TRADE massivement (209-212 A/R OOS, D47 satisfait) mais n'a AUCUN edge — Sharpe OOS négatif sur les 3 pavages, les 4 paires et tous les réglages (D49) ; le spread log naïf β=1 sur fenêtre courte est du bruit. Les QUATRE familles d'alpha pré-définies sont soldées ; la note reste à 28, mais l'incertitude a encore rétréci (on SAIT que les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide). Le Sprint 13 **consolide sans ajouter (=)** : la 5e famille explorée (vol-regime / volatility-managed, la variante (c) la plus faisable offline) TRADE réellement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages du balayage (D50) ; le filtre réduit le DD de < 50 % et l'alpha vs B&H reste négatif (cash drag). La note reste à 28, les CINQ familles techniques simples étant désormais soldées (connaissance négative encore renforcée). Le Sprint 14 **consolide sans ajouter (=)** : la variante à données EXTERNES de la 5e famille (VIX-regime, vol IMPLICITE) TRADE massivement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages (D51) ; la vol implicite (anticipatrice, exogène) ne fait pas mieux que la réalisée. La note reste à 28 ; les DEUX variantes de régime de vol (réalisée + implicite) sont soldées, la connaissance négative se renforce encore. La note ne bougera qu'avec une piste NON technique (données alternatives) ou une vraie cointégration testée, pas un raffinement de plus. |
+- **État des tests** : 708/708 verts (567 unitaires + 141 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes. +15 au Sprint 13 (679 → 694 : moteur `VolRegimeBacktester`
-  + 8 tests VolRegimeBacktesterUnit ; 7 verrous OOS VolRegimeOosIntegration). La
-  décomposition réelle est **560 + 134** ; le tableau de bord affichait « 551 + 128 »
-  au Sprint 12 (décalé d'une unité dans chaque sens, total 679 exact — dérive
-  cosmétique D20 recalée ici sur `ctest -N`). Détail au changelog.
+  suites concurrentes. +14 au Sprint 14 (694 → 708 : moteur `VixRegimeBacktester`
+  + 7 tests VixRegimeBacktesterUnit ; 7 verrous OOS VixRegimeOosIntegration), plus
+  le jeu de données `VIX_max.csv` (9192 barres, item 14.0). Aucune dérive hors
+  cycle. Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1374,8 +1373,108 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D48 | 🟡 | (Sprint 11) **La famille mean-reversion est confirmée SANS edge OOS une fois qu'elle TRADE réellement — le sous-échantillonnage de D47 masquait, mais n'expliquait pas, l'absence d'alpha.** La variante z-score/Bollinger (achat `z ≤ −k` sous la bande basse) déclenche 3-4 trades OOS (canonique/fin) et jusqu'à 23 sans filtre de régime — un vrai échantillon, contre 1 trade pour le 1er jet RSI ≤ 30. Malgré ça, alpha OOS négatif partout (QQQ −15,35/−9,87 ; SPY −7,78 / IWM −5,14 / MDY −3,36 ; meilleur balayage −9,15). Constat clé : **retirer le filtre de régime fait TRADER bien plus (4 → 23) mais DÉGRADE l'alpha (−9,87 → −15,68)** — acheter les creux hors d'une tendance haussière (« attraper un couteau qui tombe ») perd de l'argent, ce qui est cohérent avec le fait que QQQ est structurellement haussier (le trend-following y est la bonne prémisse, pas le contrarian). Les TROIS familles de signal (trend-following mono-actif, rotation, mean-reversion) sont désormais soldées sans edge. | Consigné (verrous `MeanReversionOosIntegration.ZScore*`) ; décision de suite 11.4 = **4e famille d'alpha** (Sprint 12, décision utilisateur) |
 | D49 | 🟡 | (Sprint 12) **La 4e famille — pairs-trading market-neutral — TRADE massivement mais n'a AUCUN edge OOS ; le spread log naïf β=1 sur fenêtre courte est du bruit.** Contrairement au mean-reversion (D47), le sous-échantillonnage n'est PAS en cause : la stratégie déclenche 209-212 allers-retours OOS (D47 largement satisfait). Malgré ça, **Sharpe OOS NÉGATIF sur les 3 pavages** (canon −1,18 / fin −1,20 / décalé −1,16), les **4 paires** (QQQ/SPY −1,20 ; QQQ/IWM −0,67 ; QQQ/MDY −1,01 ; SPY/IWM −0,88) et **tous les réglages** du balayage {10,20}×{1,5;2;2,5} (meilleur z=10/k=2,5 = −0,44) ; MC size-aware CAGR médian −3,62 %, DD p95 68,1 %. Constat market-neutral : la clause DoD « DD réduit ≥ 50 % » est **techniquement atteinte** (DD stratégie ~7 % vs DD B&H jambe 0 ~22 %) mais SANS INTÉRÊT — un livre qui perd de l'argent à faible volatilité reste perdant. Cause probable : le spread log(P0)−log(P1) avec β=1 n'est PAS testé pour la stationnarité/cointégration ; un z-score sur fenêtre glissante courte de-mean localement un spread non stationnaire → trades de bruit. Les **QUATRE** familles de signal sont désormais soldées sans edge OOS. Piste de raffinement non explorée (backlog) : cointégration Engle-Granger + hedge ratio roulant (vraie paire, pas spread naïf). | Consigné (verrous `PairsOosIntegration`) ; décision de suite = **Décision requise Sprint 13** (4 familles soldées : parquer/durcir la prod, raffiner le pairs-trading, ou 5e famille) |
 | D50 | 🟡 | (Sprint 13) **La 5e famille — vol-regime / volatility-managed — TRADE réellement mais n'a AUCUN edge ajusté du risque ; le cash drag coûte plus que la réduction de DD ne rapporte.** Le filtre binaire long/cash (long si vol réalisée 20 j ≤ médiane glissante 126 j de cette vol) déclenche 107-135 stints OOS (D47 satisfait) et son Sharpe est POSITIF (0,52 canon / 0,23 fin / 0,61 décalé) — mais SOUS le Sharpe du B&H (1,09 / 0,77 / 1,04) sur les 3 pavages, les 4 actifs (dSharpe QQQ −0,54, SPY −0,62, IWM −0,39, MDY −0,68) et les 9 réglages du balayage {10,20,42}×{0,8;1;1,2} (meilleur vl=42/seuil=1,2 = dSharpe −0,16 < 0). Il réduit le drawdown (14,5 vs 18,1 %) mais de < 50 % seulement (clause DoD « DD réduit ≥ 50 % » NON atteinte, contraste avec le pairs-trading D49) et l'alpha vs B&H est négatif (sous-performe le rendement du B&H — cash drag T4/D48, cohérent avec un QQQ structurellement haussier). MC size-aware cagrP50 +5,03 % (gagne de l'argent, moins efficacement que le B&H). Les CINQ familles pré-définies sont soldées sans edge OOS. Pistes de 5e famille NON explorées (backlog) : volatilité IMPLICITE (VIX/VXN — nécessite un export de données, aucune dans le dépôt ; export_total_return.py rejette un indice sans dividende, D29) ; scaling continu w = cible/réalisée (Moreira-Muir strict, code moteur) ; données alternatives / surface d'options (gros chantier data). | Consigné (verrous `VolRegimeOosIntegration`) ; décision de suite = **Décision requise Sprint 14** (parquer/durcir la prod, raffiner le pairs-trading, autre 5e famille à données externes, ou documenter la conclusion) |
+| D51 | 🟡 | (Sprint 14) **La variante à données EXTERNES de la 5e famille (VIX-regime, volatilité IMPLICITE) n'a AUCUN edge ajusté du risque — la vol implicite ne fait pas mieux que la vol réalisée du Sprint 13.** Même moteur binaire long/cash, mais le signal de régime est le niveau du ^VIX (vol implicite, anticipatrice, EXOGÈNE — 9192 barres 1990+, fetchées via `export_total_return.py` étendu au caret ^ + fallback sans dividende, item 14.0) au lieu de la vol réalisée de QQQ. Le filtre TRADE massivement (195-227 stints OOS, plus que le VolRegime car le VIX croise sa médiane plus souvent, D47 satisfait) et son Sharpe est POSITIF (0,55/0,42/0,45) — mais SOUS le Sharpe du B&H (1,06/0,87/0,98) sur les 3 pavages, les 4 actifs gatés sur le MÊME VIX (QQQ 0,42, SPY −0,01, IWM 0,38, MDY 0,28) et les 9 réglages du balayage {63,126,252}×{0,8;1;1,2} (meilleur rl=126/seuil=1,2 = dSharpe −0,22 < 0). DD réduit (13,4 vs 18,6 %) mais < 50 % ; alpha vs B&H négatif (cash drag T4/D48). MC size-aware cagrP50 +5,15 %. Constat : sortir du marché en régime de vol haute (réalisée OU implicite) coûte plus en rendement manqué que ça ne rapporte en risque réduit, sur un QQQ structurellement haussier. Faisabilité notée : le fetch Yahoo ^VIX PASSE dans cet environnement (proxy egress autorise query2.finance.yahoo.com, HTTP 200), TLS via SSL_CERT_FILE=bundle CA du proxy. Pistes NON explorées (backlog) : scaling continu Moreira-Muir (w = cible/VIX, code moteur) ; term-structure VIX/VIX3M ; données alternatives / surface d'options. | Consigné (verrous `VixRegimeOosIntegration`) ; décision de suite = **Décision requise Sprint 15** (parquer/durcir la prod, raffiner le pairs-trading, variante encore plus lourde, ou documenter la conclusion) |
 
 ## Changelog
+
+### Sprint 14 — 5e famille (variante externe) : VIX-regime / vol implicite (2026-07-06)
+
+**Contexte** : décision utilisateur (c') = variante de 5e famille à données EXTERNES,
+après que le Sprint 13 (vol-regime sur vol RÉALISÉE) a été soldé sans edge. La seule
+variante buildable dans un sprint est le régime de volatilité IMPLICITE (^VIX) — le
+backlog D50 la nommait. On TRADE QQQ mais on gate l'exposition sur le NIVEAU du VIX
+(vol implicite, anticipatrice, EXOGÈNE) vs sa médiane glissante, au lieu de la vol
+réalisée dérivée du prix. Moteur SÉPARÉ (2 séries alignées QQQ+VIX, offline, ne touche
+ni la prod ni aucun golden).
+
+**Baseline à l'ouverture** : **694/694 verte** (build −Werror sans warning, Linux
+paquets système sans vcpkg, `ctest -N`=694, décomposition réelle 560 unitaires + 134
+intégration, aucune dérive). Conteneur réutilisé (dépendances déjà installées au
+Sprint 13).
+
+**Faisabilité des données (résolue)** : le VIX n'était PAS dans le dépôt. Vérifié :
+le proxy egress de cet environnement AUTORISE `query2.finance.yahoo.com` (HTTP 200) —
+le fetch passe (contrairement à la crainte initiale d'un blocage 403/407). TLS via
+`SSL_CERT_FILE=/root/.ccr/ca-bundle.crt` (le proxy re-termine TLS). `export_total_return.py`
+étendu (item 14.0) : encode le caret (^VIX → %5EVIX), nom de fichier sans caret,
+fallback vers le close quand le bloc `adjclose` est absent (un indice sans dividende).
+`VIX_max.csv` : 9192 barres 1990-01-02 → 2026-07-01, Adj Close == Close (attendu pour
+un indice ; VIX volontairement HORS de la liste `auditTotalReturnCsv` — c'est un signal,
+pas un actif total-return tradé).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `df13117` feat(data) : export VIX_max.csv (indice de vol implicite ^VIX, item 14.0)
+- `7f1ddaf` feat(vix-regime) : moteur VixRegimeBacktester + VixRegimeWalkForward (item 14.1)
+- `730f283` test(vix-regime) : verdict OOS verrouillé (item 14.2)
+- `c8b78e6` test(validation) : section 18 famille vix-regime + verdict figé (item 14.3)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 694 → **708** (+14 : 567 unitaires + 141 intégration). +7
+VixRegimeBacktesterUnit (arité 2 exigée, VIX plat = calme → long, seuil<1 gate le
+régime en cash (D33), VIX baissier → long P&L exact sur QQQ, VIX haussier → cash plat,
+deux stints + cash plat entre (D47), fenêtre < warmup) ; +7 VixRegimeOosIntegration
+(axe QQQ∩VIX verrouillé 6870 barres, 3 pavages, MC size-aware graine fixe, multi-univers
+4 actifs gatés sur le MÊME VIX, balayage). **Goldens backtest byte-identiques** (moteur
+séparé).
+
+**Interfaces ajoutées** (additives, header-only) : `include/backtest/VixRegimeBacktester.hpp`
+— `VixRegimeConfig` (refLookback, thresholdMult, coûts — PAS de volLookback : le VIX EST
+le signal, D33), `VixRegimeResult` (miroir de VolRegimeResult), `VixRegimeBacktester`
+(2 séries alignées via `alignOnCommonDates`, seam `fromAxis`, run/runRange/compute_),
+`VixRegimeWalkForward`. Réutilise `trailingMedian` (VolRegimeBacktester),
+`alignOnCommonDates`/`AlignedAxis` (RotationBacktester), `TradeRecord`, `MonteCarlo`,
+`CsvDataFeed`. Warmup réduit à refLookback−1 (le VIX est déjà un niveau de vol).
+Section 18 du CLI `validate`.
+
+**Verdict OUT-OF-SAMPLE** :
+- **La famille TRADE massivement** (D47) : 195-227 stints OOS (plus que le VolRegime :
+  le VIX croise sa médiane plus souvent que la vol réalisée, plus lisse).
+- **MAIS AUCUN EDGE ajusté du risque** : Sharpe stratégie POSITIF (0,55 canon / 0,42
+  fin / 0,45 décalé) mais SOUS le Sharpe du B&H (1,06 / 0,87 / 0,98) → dSharpe < 0 sur
+  les 3 pavages ; idem sur les 4 actifs gatés sur le MÊME VIX (QQQ 0,42, SPY −0,01,
+  IWM 0,38, MDY 0,28, tous < leur B&H) et les 9 réglages (meilleur rl=126/seuil=1,2 =
+  −0,22).
+- **Constat (D51)** : la vol IMPLICITE (anticipatrice, exogène) ne fait PAS mieux que la
+  vol réalisée du Sprint 13. DD réduit (13,4 vs 18,6 %) mais < 50 %, alpha vs B&H négatif.
+  Sortir du marché en régime de vol haute (réalisée OU implicite) coûte plus en rendement
+  manqué que ça ne rapporte en risque réduit, sur un QQQ structurellement haussier. MC
+  size-aware cagrP50 +5,15 %, DD p95 40,3 %.
+- Axe QQQ∩VIX = 6870 barres (borné par QQQ 1999 ; le VIX ~1990 déborde).
+
+**Verdict de clôture** : DoD NON atteinte (dSharpe OOS négatif partout) → prod paper,
+`liveTradingApproved` = false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` intact.
+Fichiers gouvernés intacts. **Les DEUX variantes de la 5e famille (vol réalisée + vol
+implicite) sont soldées sans edge OOS.** Décision de suite = **Décision requise Sprint 15**.
+
+**Rétrospective** :
+1. *Découpage* : bon, et un item de DONNÉES en tête (14.0) proprement isolé comme gate.
+   La grande incertitude (fetch Yahoo bloqué ou non) a été levée EN PREMIER par un test
+   de reachability read-only (HTTP 200) avant d'écrire le moteur — pas d'engagement à
+   l'aveugle. 14.1 (moteur 2-séries + unit tests) → 14.2 (verrou OOS) → 14.3 (CLI),
+   additif. Réutilisation massive du VolRegimeBacktester (Sprint 13) : `trailingMedian`,
+   coûts, métriques, MC size-aware — seul l'ingest 2-séries et le swap de signal sont
+   neufs, comme PairsBacktester a réutilisé RotationBacktester. Aucune dépendance ratée.
+2. *Prompts du workflow* : suffisants, AUCUN diff proposé. La décision (c') et la
+   sous-variante (VIX, seule faisable offline) ont été tranchées par la faisabilité +
+   décision utilisateur. `AskUserQuestion` ET `ExitPlanMode` sont restés en panne cette
+   session (« permission stream closed » ; ExitPlanMode a fini par passer à la 2e
+   tentative) — géré sans jamais improviser sur les fichiers gouvernés ni router autour
+   du proxy egress.
+3. *À détecter plus tôt / garde-fou* : le fetch d'une donnée EXTERNE introduit deux
+   risques que le reste du projet (offline) n'a pas — egress policy et format d'index
+   (pas d'adjclose). Anticipés : reachability testée d'abord, fallback `adjclose`→`close`
+   codé, `SSL_CERT_FILE` documenté. Garde-fou de fait : le VIX est tenu HORS de la liste
+   `auditTotalReturnCsv` (un indice DOIT avoir Adj==Close ; l'y inclure ferait crier le
+   garde-fou D29 à tort). Candidat backlog (D51) : le scaling continu (Moreira-Muir strict
+   sur le VIX) et la term-structure (VIX/VIX3M) restent non jugés — le premier jet ne juge
+   que le filtre binaire sur le niveau du VIX spot.
+4. *Notes /100* : Architecture 90 (=) : 4e moteur offline, réutilise l'ingest 2-séries et
+   l'infra vol du Sprint 13 sans les dupliquer. Qualité 93 (=). FinTech 88 (=) : une
+   hypothèse FinTech légitime (vol-managed sur vol IMPLICITE) correctement jugée, sans
+   edge. Production 72 (=). **Rentabilité 28 (=)** : la variante externe de la 5e famille
+   est jugée et soldée sans edge ; la capacité démontrée à gagner de l'argent est
+   inchangée, mais la connaissance négative se renforce (on SAIT que ni la vol réalisée ni
+   la vol implicite ne donnent d'edge ajusté du risque net de coûts sur ETFs US).
 
 ### Sprint 13 — 5e famille d'alpha : vol-regime / volatility-managed (2026-07-06)
 
