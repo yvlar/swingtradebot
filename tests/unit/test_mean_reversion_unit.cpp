@@ -46,6 +46,30 @@ namespace {
         return cfg;
     }
 
+    // ── Variante z-score / Bollinger (Sprint 11, item 11.1) ───────────────────
+    // Config MR avec l'entrée z-score active : achat quand la clôture perce la
+    // bande basse (z ≤ −k). `regime` = smaTrendPeriod (1 = filtre désactivé).
+    SwingConfig mrZScoreConfig(double k = 1.5, int regime = 1) {
+        SwingConfig cfg;
+        cfg.mode           = StrategyMode::MeanReversion;
+        cfg.mrBandPeriod   = 20;
+        cfg.mrBandEntryK   = k;
+        cfg.mrBandExitZ    = 0.0;   // sortie au retour à la moyenne
+        cfg.smaTrendPeriod = regime;
+        return cfg;
+    }
+
+    // Tendance haussière (100 → 139) puis creux marqué à la dernière barre : la
+    // clôture finale (110) perce nettement la bande basse de Bollinger(20)
+    // — z très négatif — tout en restant, sans filtre de régime, éligible à
+    // l'achat contrarian z-score.
+    std::vector<Bar> uptrend_then_dip() {
+        std::vector<Bar> bars;
+        for (int i = 0; i < 40; ++i) bars.push_back(make_bar(i, 100.0 + i));
+        bars.push_back(make_bar(40, 110.0));
+        return bars;
+    }
+
 } // namespace
 
 // ════════════════════════════════════════════════════════════
@@ -103,4 +127,62 @@ TEST(MeanReversionUnit, RegimeDownBlocksMeanReversionEntry) {
     auto strat = SwingStrategy::create(cfg);
     Signal s = strat->evaluate(strong_downtrend());
     EXPECT_NE(s.type, SignalType::BUY);   // survente mais régime baissier → pas d'achat
+}
+
+// ════════════════════════════════════════════════════════════
+//  Variante z-score / Bollinger (Sprint 11, item 11.1)
+//  L'entrée achète la faiblesse de PRIX (clôture sous la bande
+//  basse), moins couplée au RSI que le 1er jet MR (Sprint 10).
+// ════════════════════════════════════════════════════════════
+
+// Défauts : la variante z-score est DÉSACTIVÉE (aucun effet tant qu'on ne la
+// câble pas → goldens byte-identiques).
+TEST(MeanReversionUnit, ZScoreDefaultsDisabled) {
+    SwingConfig cfg;
+    EXPECT_EQ(cfg.mrBandPeriod, 0);
+    EXPECT_DOUBLE_EQ(cfg.mrBandEntryK, 0.0);
+    EXPECT_DOUBLE_EQ(cfg.mrBandExitZ,  0.0);
+}
+
+// Sans filtre de régime, un creux qui perce la bande basse déclenche l'ACHAT
+// z-score (raison explicite « z-score »).
+TEST(MeanReversionUnit, ZScoreEntryBuysBelowLowerBand) {
+    auto strat = SwingStrategy::create(mrZScoreConfig(1.5, /*regime=*/1));
+    Signal s = strat->evaluate(uptrend_then_dip());
+    EXPECT_EQ(s.type, SignalType::BUY);
+    EXPECT_NE(s.reason.find("z-score"), std::string::npos);
+}
+
+// Le trend-following NE PREND PAS d'entrée sur les mêmes barres (creux sous les
+// EMA, aucun croisement haussier) → preuve que la variante diverge réellement.
+TEST(MeanReversionUnit, ZScoreEntryDivergesFromTrendFollow) {
+    SwingConfig tf = mrZScoreConfig(1.5, 1);
+    tf.mode = StrategyMode::TrendFollow;
+    auto strat = SwingStrategy::create(tf);
+    Signal s = strat->evaluate(uptrend_then_dip());
+    EXPECT_NE(s.type, SignalType::BUY);
+}
+
+// Une hausse monotone laisse la clôture bien AU-DESSUS de sa bande-moyenne
+// (z ≥ 0) → SELL « retour à la moyenne » (la sortie n'est jamais gatée par le
+// régime).
+TEST(MeanReversionUnit, ZScoreExitSellsOnReturnToMean) {
+    auto strat = SwingStrategy::create(mrZScoreConfig(1.5, 1));
+    Signal s = strat->evaluate(strong_uptrend());
+    EXPECT_EQ(s.type, SignalType::SELL);
+    EXPECT_NE(s.reason.find("retour à la moyenne"), std::string::npos);
+}
+
+// Le filtre de régime gate l'entrée z-score comme il gate l'entrée RSI : au
+// creux le prix passe sous la SMA de régime → régime baissier → achat BLOQUÉ
+// (c'est le levier « retrait du filtre SMA200 » : regime OFF autorise l'entrée
+// que regime ON refuse ici).
+TEST(MeanReversionUnit, ZScoreRegimeDownBlocksEntry) {
+    auto stratOn  = SwingStrategy::create(mrZScoreConfig(1.5, /*regime=*/20));
+    Signal on  = stratOn->evaluate(uptrend_then_dip());
+    EXPECT_NE(on.type, SignalType::BUY);   // régime baissier au creux → pas d'achat
+
+    auto stratOff = SwingStrategy::create(mrZScoreConfig(1.5, /*regime=*/1));
+    Signal off = stratOff->evaluate(uptrend_then_dip());
+    EXPECT_EQ(off.type, SignalType::BUY);  // régime désactivé → l'achat passe
 }
