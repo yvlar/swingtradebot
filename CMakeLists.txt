@@ -135,6 +135,7 @@ add_executable(unit_tests
         tests/unit/test_config_loader_unit.cpp
         tests/unit/test_live_gate_unit.cpp
         tests/unit/test_mean_reversion_unit.cpp
+        tests/unit/test_vol_regime_backtester_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
