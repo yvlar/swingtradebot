@@ -59,6 +59,10 @@ build_log*.txt
 !SPY_max.csv
 !IWM_max.csv
 !MDY_max.csv
+# Indice de vol IMPLICITE ^VIX ~1990+ (Sprint 14, item 14.0) : versionné car les
+# verrous OOS de la famille vix-regime en dépendent. SIGNAL de régime, jamais
+# tradé ; Adj Close == Close (indice sans dividende).
+!VIX_max.csv
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/

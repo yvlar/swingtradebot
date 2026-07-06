@@ -71,6 +71,18 @@ struct BotState {
     bool          dry_run   = true;
     std::string   mode      = "paper";
 
+    // ── Santé opérationnelle (observabilité, item 15.1) ──
+    // Surface explicite de liveness pour distinguer un « process gelé » (déjà
+    // couvert par le HEALTHCHECK TCP du Dockerfile) d'un « process qui TOURNE mais
+    // silencieusement malsain » : cycles qui échouent en série, Gateway
+    // dé-authentifié, kill-switch armé. Ces faits sont calculés à chaque cycle par
+    // le composition root (main_ibkr.cpp) mais n'étaient jusqu'ici que loggés.
+    bool          last_cycle_healthy       = false;
+    long          last_healthy_cycle_epoch = 0;   // 0 = aucun cycle sain encore
+    bool          gateway_authenticated    = false;
+    bool          kill_switch_tripped      = false;
+    std::string   kill_switch_reason       = "";
+
     std::vector<SignalData>   signals;
     std::vector<PositionData> positions;
     std::vector<LogEntry>     logs;      // circulaire, max 100
@@ -100,6 +112,28 @@ struct BotState {
         stage = s;
     }
 
+    // ── Santé opérationnelle (item 15.1) ─────────────────
+
+    // Met à jour l'instantané de santé en un seul verrou (appelé une fois par
+    // cycle par le composition root avec les faits déjà calculés de la boucle).
+    void set_health(bool cycle_healthy, long healthy_epoch, bool gateway_auth,
+                    bool ks_tripped, const std::string& ks_reason) {
+        std::lock_guard<std::mutex> lk(mtx);
+        last_cycle_healthy       = cycle_healthy;
+        last_healthy_cycle_epoch = healthy_epoch;
+        gateway_authenticated    = gateway_auth;
+        kill_switch_tripped      = ks_tripped;
+        kill_switch_reason       = ks_reason;
+    }
+
+    // Objet JSON de santé. `now_epoch` (secondes depuis l'époque) est INJECTÉ pour
+    // que l'âge du dernier cycle sain soit testable sans horloge murale (patron du
+    // seam `now_()` d'IBKRDataFeed / `EnvReader` du watchdog). Thread-safe.
+    nlohmann::json health_json(long now_epoch) const {
+        std::lock_guard<std::mutex> lk(mtx);
+        return health_obj_locked_(now_epoch);
+    }
+
     // ── Sérialisation JSON (thread-safe) ─────────────────
     std::string to_json_str() const {
         std::lock_guard<std::mutex> lk(mtx);
@@ -123,7 +157,32 @@ struct BotState {
             {"signals",   signals},
             {"positions", positions},
             {"logs",      recent_logs},
+            {"health",    health_obj_locked_(now_epoch_())},
         };
         return j.dump();
+    }
+
+private:
+    // Suppose le lock DÉJÀ pris (appelé par health_json et to_json_str). Dérive
+    // `seconds_since_healthy_cycle` : -1 si aucun cycle sain, sinon max(0, now−ts)
+    // (borné à 0 en cas de dérive d'horloge, now < ts).
+    nlohmann::json health_obj_locked_(long now_epoch) const {
+        long age = -1;
+        if (last_healthy_cycle_epoch > 0)
+            age = now_epoch > last_healthy_cycle_epoch
+                ? now_epoch - last_healthy_cycle_epoch : 0;
+        return nlohmann::json{
+            {"last_cycle_healthy",          last_cycle_healthy},
+            {"last_healthy_cycle_epoch",    last_healthy_cycle_epoch},
+            {"seconds_since_healthy_cycle", age},
+            {"gateway_authenticated",       gateway_authenticated},
+            {"kill_switch_tripped",         kill_switch_tripped},
+            {"kill_switch_reason",          kill_switch_reason},
+        };
+    }
+
+    static long now_epoch_() {
+        return static_cast<long>(std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
     }
 };

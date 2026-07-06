@@ -262,13 +262,24 @@ int main(int argc, char* argv[]) {
     std::cout << "🟢 Bot démarré. Vérification toutes les 60 minutes.\n";
     std::cout << "   Ctrl+C pour arrêter proprement.\n\n";
 
+    // Instantané de santé (item 15.2) : horodatage du dernier cycle SAIN, pour
+    // exposer l'âge de la dernière santé (détecte un process qui tourne mais
+    // silencieusement malsain, au-delà du HEALTHCHECK TCP).
+    long lastHealthyEpoch = 0;
+    auto nowEpoch = []() {
+        return static_cast<long>(std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    };
+
     while (g_running) {
         try {
             // Supervision de l'auth Gateway (A3) : la session CP expire
             // (~24 h). Sans ré-auth, chaque appel échouerait en silence —
             // ici : cycle sauté, heartbeat RETENU → l'alerte watchdog part
             // après max_silence_sec, avec le diagnostic explicite.
-            if (!dataFeed->isAuthenticated()) {
+            const bool gwAuth = dataFeed->isAuthenticated();
+            bool cycleHealthy = false;
+            if (!gwAuth) {
                 botState.push_log("ERROR",
                     "CP Gateway non authentifié (session expirée ?) — "
                     "cycle sauté, ré-authentifier via https://localhost:5000");
@@ -277,7 +288,8 @@ int main(int argc, char* argv[]) {
                 bot.runOnce();
                 // Heartbeat SEULEMENT sur cycle sain (A2) : une panne
                 // feed/broker laisse le watchdog s'affamer → alerte.
-                if (bot.lastCycleHealthy()) {
+                cycleHealthy = bot.lastCycleHealthy();
+                if (cycleHealthy) {
                     watchdog.heartbeat();
                 } else {
                     botState.push_log("ERROR",
@@ -285,6 +297,12 @@ int main(int argc, char* argv[]) {
                         "alertera si la panne persiste)");
                 }
             }
+            // Instantané de santé (item 15.2) : le composition root a désormais
+            // tous les faits du cycle (auth, cycle sain, kill-switch de NIVEAU).
+            if (cycleHealthy) lastHealthyEpoch = nowEpoch();
+            const std::string haltReason = bot.currentHaltReason();
+            botState.set_health(cycleHealthy, lastHealthyEpoch, gwAuth,
+                                !haltReason.empty(), haltReason);
 
             // Synchronise BotState avec le compte IBKR — SAUTÉE sur panne
             // (A5) : {0,0,INACTIVE} écrasait equity=0 et diffusait une

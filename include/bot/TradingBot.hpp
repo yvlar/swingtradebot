@@ -349,6 +349,13 @@ public:
         haltObserver_ = std::move(obs);
     }
 
+    // Raison du kill-switch ARMÉ pour la séance courante (vide = non armé). Accès
+    // en lecture seule pour l'observabilité (item 15.1) : contrairement à
+    // haltObserver_ (déclenché sur front, dédupliqué), c'est un état de NIVEAU —
+    // `lastHaltNotified_` est remis à zéro au changement de jour de bourse. Aucun
+    // effet sur la logique de trading (getter pur, golden-safe).
+    const std::string& currentHaltReason() const { return lastHaltNotified_; }
+
 private:
     std::shared_ptr<IDataFeed>    dataFeed_;
     std::shared_ptr<IBroker>      broker_;
