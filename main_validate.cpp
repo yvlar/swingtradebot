@@ -25,6 +25,7 @@
 #include "backtest/DataQuality.hpp"
 #include "backtest/RotationBacktester.hpp"
 #include "backtest/PairsBacktester.hpp"
+#include "backtest/VolRegimeBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -718,6 +719,81 @@ int main() {
                   << "  D47 satisfait) mais Sharpe OOS negatif sur les 3 pavages, les 4 paires et\n"
                   << "  tous les reglages. Le spread sur fenetre courte est du bruit, pas un retour\n"
                   << "  a la moyenne exploitable net de couts. Gate FERME. Prod paper.\n";
+    }
+
+    // ── 17. FAMILLE VOL-REGIME (Sprint 13) ──────────────────────────────────
+    // 5e famille d'alpha (décision utilisateur (c) : famille NEUVE au-delà des
+    // signaux de prix simples). Filtre binaire long/cash modulé par le RÉGIME DE
+    // VOLATILITÉ (hypothèse Moreira & Muir 2017) : long l'actif quand la vol
+    // réalisée est CALME (≤ seuil × sa médiane glissante de référence), sinon
+    // cash. Moteur SÉPARÉ (VolRegimeBacktester), jugé sur le delta de Sharpe OOS
+    // vs Buy & Hold (le filtre est directionnel long/cash, donc comparable au
+    // B&H). Verrous CI dans test_vol_regime_oos_integration.cpp.
+    titre("17. FAMILLE VOL-REGIME (vol realisee, long/cash, 3 pavages + balayage — 13.2)");
+    {
+        auto cfgVol = []() {
+            VolRegimeConfig c;
+            c.volLookback = 20; c.refLookback = 126; c.thresholdMult = 1.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggV { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                            dd = 0.0, bhdd = 0.0; size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VolWindow>& ws) {
+            AggV a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n; }
+            return a;
+        };
+        const std::string qqq = SWINGBOT_QQQ_MAX_CSV;
+
+        const auto ac = agrege(VolRegimeWalkForward(cfgVol(), qqq, 750, 500, 500).run());
+        const auto af = agrege(VolRegimeWalkForward(cfgVol(), qqq, 550, 400, 400).run());
+        const auto as = agrege(VolRegimeWalkForward(cfgVol(), qqq, 750, 500, 500, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  dSharpe OOS vs B&H (QQQ) : canon " << ac.dSharpe()
+                  << " (strat " << ac.sharpe << " vs B&H " << ac.bhSharpe
+                  << ", trades " << ac.trades << ")\n"
+                  << "                             fin   " << af.dSharpe()
+                  << " (strat " << af.sharpe << " vs B&H " << af.bhSharpe
+                  << ", trades " << af.trades << ")\n"
+                  << "                             decale " << as.dSharpe()
+                  << " (strat " << as.sharpe << " vs B&H " << as.bhSharpe
+                  << ", trades " << as.trades << ")\n";
+        std::cout << "  DD reduit (canon) : DD strat " << ac.dd << " % vs DD B&H "
+                  << ac.bhdd << " % (reduit mais < 50 %, clause DoD NON atteinte)\n";
+
+        std::cout << "  Multi-univers (fin) :";
+        const std::pair<const char*, const char*> univ[] = {
+            {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+            {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+        for (const auto& u : univ) {
+            const auto agg = agrege(VolRegimeWalkForward(cfgVol(), u.second, 550, 400, 400).run());
+            std::cout << "  " << u.first << " dS=" << agg.dSharpe();
+        }
+        std::cout << "\n";
+
+        double best = -1e9; int bV = 0; double bM = 0.0;
+        for (int vl : {10, 20, 42}) for (double mm : {0.8, 1.0, 1.2}) {
+            VolRegimeConfig c = cfgVol(); c.volLookback = vl; c.thresholdMult = mm;
+            const double ds = agrege(VolRegimeWalkForward(c, qqq, 550, 400, 400).run()).dSharpe();
+            if (ds > best) { best = ds; bV = vl; bM = mm; }
+        }
+        std::cout << "  Balayage volLookback x seuil : meilleur vl=" << bV << " / m=" << bM
+                  << " -> dSharpe OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        std::cout << "  VERDICT 13.2 : AUCUN EDGE — le filtre TRADE reellement (~110-135 stints\n"
+                  << "  OOS, D47 satisfait) et gagne de l'argent (Sharpe > 0), mais SOUS le B&H\n"
+                  << "  sur le Sharpe (dSharpe < 0) sur les 3 pavages, les 4 actifs et tous les\n"
+                  << "  reglages. Le cash drag T4 coute plus que la reduction de DD (< 50 %) ne\n"
+                  << "  rapporte. Gate FERME. Prod paper. Les CINQ familles sont soldees sans edge.\n";
     }
 
     std::cout << "\n";
