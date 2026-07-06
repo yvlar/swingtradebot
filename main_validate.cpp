@@ -24,6 +24,7 @@
 #include "backtest/MonteCarlo.hpp"
 #include "backtest/DataQuality.hpp"
 #include "backtest/RotationBacktester.hpp"
+#include "backtest/PairsBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -645,6 +646,78 @@ int main() {
                   << "  pour le 1er jet RSI, D47 leve) mais AUCUN EDGE — alpha OOS negatif sur les\n"
                   << "  deux pavages, les 3 actifs et tous les reglages ; retirer le filtre fait\n"
                   << "  trader plus (23) mais empire l'alpha. Gate 11.3 FERME. Prod paper.\n";
+    }
+
+    // ── 16. FAMILLE PAIRS-TRADING (Sprint 12) ───────────────────────────────
+    // 4e famille d'alpha (décision utilisateur 11.4) : valeur relative /
+    // MARKET-NEUTRAL — la seule famille ORTHOGONALE après les trois familles
+    // directionnelles soldées sans edge. z-score du spread log(P0)-log(P1),
+    // position dollar-neutral 0,5/0,5. Moteur SÉPARÉ (PairsBacktester), jugé sur
+    // Sharpe OOS (un market-neutral ne bat pas un indice long). Verrous CI dans
+    // test_pairs_oos_integration.cpp.
+    titre("16. FAMILLE PAIRS-TRADING (spread market-neutral, multi-paires — 12.2)");
+    {
+        auto cfgPairs = []() {
+            PairsConfig c;
+            c.zWindow = 20; c.entryK = 2.0; c.exitZ = 0.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggP { size_t fen = 0; double sharpe = 0.0, ret = 0.0, dd = 0.0, leg0dd = 0.0;
+                      size_t trades = 0; };
+        auto agrege = [](const std::vector<PairWindow>& ws) {
+            AggP a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.ret += w.oos.totalReturnPct;
+                a.dd += w.oos.maxDrawdownPct; a.leg0dd += w.oos.leg0BuyHoldDrawdownPct;
+                a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.ret /= n; a.dd /= n; a.leg0dd /= n; }
+            return a;
+        };
+        const std::vector<std::string> qs = { SWINGBOT_QQQ_MAX_CSV, SWINGBOT_SPY_MAX_CSV };
+
+        const auto ac = agrege(PairsWalkForward(cfgPairs(), qs, 700, 400, 400).run());
+        const auto af = agrege(PairsWalkForward(cfgPairs(), qs, 500, 300, 300).run());
+        const auto as = agrege(PairsWalkForward(cfgPairs(), qs, 700, 400, 400, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  Sharpe OOS (QQQ/SPY) : canon " << ac.sharpe
+                  << " (ret " << ac.ret << ", trades " << ac.trades << ")\n"
+                  << "                         fin   " << af.sharpe
+                  << " (ret " << af.ret << ", trades " << af.trades << ")\n"
+                  << "                         decale " << as.sharpe
+                  << " (ret " << as.ret << ", trades " << as.trades << ")\n";
+        std::cout << "  Clause DoD DD reduit >= 50 % (canon) : DD strat " << ac.dd
+                  << " % vs DD B&H jambe0 " << ac.leg0dd << " % (atteinte mais ret < 0)\n";
+
+        std::cout << "  Multi-paires (fin) :";
+        const std::pair<const char*, std::pair<const char*, const char*>> paires[] = {
+            {"QQQ/SPY", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_SPY_MAX_CSV}},
+            {"QQQ/IWM", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_IWM_MAX_CSV}},
+            {"QQQ/MDY", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_MDY_MAX_CSV}},
+            {"SPY/IWM", {SWINGBOT_SPY_MAX_CSV, SWINGBOT_IWM_MAX_CSV}} };
+        for (const auto& p : paires) {
+            const auto agg = agrege(PairsWalkForward(cfgPairs(),
+                { p.second.first, p.second.second }, 500, 300, 300).run());
+            std::cout << "  " << p.first << " " << agg.sharpe;
+        }
+        std::cout << "\n";
+
+        double best = -1e9; int bZ = 0; double bK = 0.0;
+        for (int z : {10, 20}) for (double k : {1.5, 2.0, 2.5}) {
+            PairsConfig c = cfgPairs(); c.zWindow = z; c.entryK = k;
+            const double sh = agrege(PairsWalkForward(c, qs, 500, 300, 300).run()).sharpe;
+            if (sh > best) { best = sh; bZ = z; bK = k; }
+        }
+        std::cout << "  Balayage zWindow x entryK : meilleur z=" << bZ << " / k=" << bK
+                  << " -> Sharpe OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        std::cout << "  VERDICT 12.2 : AUCUN EDGE — la famille TRADE massivement (~210 A/R OOS,\n"
+                  << "  D47 satisfait) mais Sharpe OOS negatif sur les 3 pavages, les 4 paires et\n"
+                  << "  tous les reglages. Le spread sur fenetre courte est du bruit, pas un retour\n"
+                  << "  a la moyenne exploitable net de couts. Gate FERME. Prod paper.\n";
     }
 
     std::cout << "\n";
