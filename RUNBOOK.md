@@ -48,6 +48,25 @@
 | Stop orphelin chez IBKR (position fermée mais ordre STP encore visible) | `cancelStopLoss` a échoué | Portail IBKR → Orders → annuler l'ordre STP `swingbot-…-STOP-…` manuellement |
 | Position ouverte hors bot / vente manuelle | Le bot détecte la disparition au cycle suivant : reset + cooldown de ré-entrée du jour | Rien — vérifier le log `Position absente chez le broker` |
 
+## 4-bis. Surveillance de la santé (instantané `health`)
+
+Le flux WebSocket (`ws://localhost:9001`) porte désormais un objet `health`
+(item 15.1) — une surface de liveness EXPLICITE, au-delà du healthcheck TCP du
+conteneur (qui ne voit qu'un process gelé, PAS un process qui tourne mais
+silencieusement malsain). Champs et seuils :
+
+| Champ | Sens | Quand agir |
+|---|---|---|
+| `last_cycle_healthy` | le DERNIER cycle a-t-il tourné sans panne feed/broker et Gateway authentifié | `false` ponctuel = toléré (panne transitoire) ; `false` persistant → voir `seconds_since_healthy_cycle` |
+| `seconds_since_healthy_cycle` | âge (s) du dernier cycle SAIN ; `-1` = aucun encore | `> ~4000` (un cycle de 60 min + marge) = le bot tourne mais AUCUN cycle sain récent → même cause qu'une alerte watchdog « silencieux », diagnostiquer feed/Gateway |
+| `gateway_authenticated` | session CP Gateway valide au dernier cycle | `false` → ré-auth navigateur sur `https://localhost:5000` (la session CP expire ~24 h) |
+| `kill_switch_tripped` / `kill_switch_reason` | un garde-fou de risque a bloqué les entrées pour la séance (état de NIVEAU, remis à zéro au nouveau jour de bourse) | `true` → analyser la raison ; ne PAS relancer pour « débloquer » (cf. §4) |
+
+Cet objet est la source de vérité pour un check `/healthz` externe ou une sonde
+d'orchestrateur : `last_cycle_healthy && seconds_since_healthy_cycle < 4000 &&
+gateway_authenticated` = bot opérationnel. La panne « process gelé » reste
+couverte par le healthcheck TCP du `Dockerfile`.
+
 ## 5. Kill-switch MANUEL (arrêt d'urgence)
 
 Dans l'ordre, sans sauter d'étape :
