@@ -115,6 +115,29 @@ namespace trading {
         // désactivé (sortie laissée aux seuls stops). Défaut 55. Sans effet en
         // mode TrendFollow.
         double mrRsiExitMin       = 55.0;
+        // ── Variante z-score / Bollinger de l'entrée MR (Sprint 11, item ──────
+        // 11.1, décision utilisateur 10.4 = a) ────────────────────────────────
+        // Le 1er jet MR (RSI ≤ 30 EN régime, Sprint 10) ne tradait quasiment pas
+        // (un creux assez profond pour RSI ≤ 30 casse souvent le régime SMA200 →
+        // 1 seul trade OOS, verdict = cash drag, D47). L'entrée z-score achète la
+        // faiblesse en termes de PRIX (clôture sous la bande basse de Bollinger),
+        // moins couplée au RSI → un échantillon de trades RÉEL pour juger la
+        // FAMILLE. Active UNIQUEMENT en mode MeanReversion ET si mrBandPeriod > 0
+        // ET mrBandEntryK > 0 ; sinon repli exact sur l'entrée RSI ci-dessus
+        // (Sprint 10). Sans effet en mode TrendFollow.
+        //
+        // Période de la bande (SMA + écart-type glissant), ex. 20. ≤ 0 = variante
+        // z-score désactivée.
+        int    mrBandPeriod       = 0;
+        // Entrée : BUY (en régime haussier confirmé) quand
+        // z = (clôture − SMA) / σ ≤ −mrBandEntryK — clôture sous la bande basse
+        // de k écarts-types. ≤ 0 = désactivé.
+        double mrBandEntryK       = 0.0;
+        // Sortie : SELL quand z ≥ mrBandExitZ (retour à/au-dessus de la moyenne).
+        // Seuil SIGNÉ, défaut 0.0 = sortie exactement au retour à la moyenne.
+        // Consulté seulement quand la variante z-score est active (sinon la
+        // sortie reste RSI ≥ mrRsiExitMin + les stops du RiskManager).
+        double mrBandExitZ        = 0.0;
         // Garde-fous de coupure (item 18, externalisés en C1/passe 3) : les
         // seuils du kill-switch font partie de la config VALIDÉE par le golden
         // (config/prod.json) — plus de dérive prod ≠ backtest sur le risque.
@@ -149,13 +172,18 @@ namespace trading {
         // Le 5e indicateur (ATR, item 8y.2) a un défaut pour préserver tous
         // les sites d'appel historiques : nullptr → ATR(14) vrai true-range
         // (même période que le trailing ATR 8q.1).
+        // Les 6e/7e indicateurs (bande z-score MR, item 11.1) ont un défaut
+        // nullptr pour préserver tous les sites d'appel historiques ; ils ne
+        // sont construits que si mrBandPeriod > 0 (variante z-score active).
         explicit SwingStrategy(
                 SwingConfig                       config,
                 std::unique_ptr<IIndicator<double>> emaFast,
                 std::unique_ptr<IIndicator<double>> emaSlow,
                 std::unique_ptr<IIndicator<double>> rsi,
                 std::unique_ptr<IIndicator<double>> smaTrend,
-                std::unique_ptr<IIndicator<double>> atr = nullptr
+                std::unique_ptr<IIndicator<double>> atr = nullptr,
+                std::unique_ptr<IIndicator<double>> mrBandMa = nullptr,
+                std::unique_ptr<IIndicator<double>> mrBandSd = nullptr
         )
                 : config_(std::move(config))
                 , emaFast_(std::move(emaFast))
@@ -163,18 +191,30 @@ namespace trading {
                 , rsi_(std::move(rsi))
                 , smaTrend_(std::move(smaTrend))
                 , atr_(std::move(atr))
+                , mrBandMa_(std::move(mrBandMa))
+                , mrBandSd_(std::move(mrBandSd))
         {
             if (!atr_) atr_ = std::make_unique<ATR>(14);
         }
 
         // Factory method pour créer une instance avec les paramètres par défaut
         static std::unique_ptr<SwingStrategy> create(SwingConfig cfg = {}) {
+            // Bande z-score (item 11.1) : construite seulement si demandée, pour
+            // ne rien changer aux configs qui ne l'utilisent pas.
+            std::unique_ptr<IIndicator<double>> bandMa, bandSd;
+            if (cfg.mrBandPeriod > 0) {
+                bandMa = std::make_unique<SMA>(cfg.mrBandPeriod);
+                bandSd = std::make_unique<RollingStdDev>(cfg.mrBandPeriod);
+            }
             return std::make_unique<SwingStrategy>(
                     cfg,
                     std::make_unique<EMA>(cfg.emaFast),
                     std::make_unique<EMA>(cfg.emaSlow),
                     std::make_unique<RSI>(cfg.rsiPeriod),
-                    std::make_unique<SMA>(std::max(1, cfg.smaTrendPeriod))
+                    std::make_unique<SMA>(std::max(1, cfg.smaTrendPeriod)),
+                    nullptr,                 // atr → défaut ATR(14) dans le ctor
+                    std::move(bandMa),
+                    std::move(bandSd)
             );
         }
 
@@ -229,6 +269,49 @@ namespace trading {
             // et le trailing (RiskManager) restent la couche de sortie de
             // sécurité, inchangés.
             if (config_.mode == StrategyMode::MeanReversion) {
+                // ── Variante z-score / Bollinger (item 11.1, décision 10.4=a) ──
+                // Active si mrBandPeriod > 0 ET mrBandEntryK > 0 : l'entrée
+                // achète la faiblesse de PRIX (clôture sous la bande basse de
+                // Bollinger), moins couplée au régime que « RSI ≤ 30 » — le 1er
+                // jet MR (Sprint 10) ne tradait quasiment pas (D47). Bloc séparé
+                // à retour immédiat. Bande incalculable (série trop courte ou σ
+                // nul) → on RETOMBE sur l'entrée RSI ci-dessous (fail-safe,
+                // jamais de division par zéro).
+                if (config_.mrBandPeriod > 0 && config_.mrBandEntryK > 0.0
+                    && mrBandMa_ && mrBandSd_) {
+                    const auto maVals = mrBandMa_->compute(closes);
+                    const auto sdVals = mrBandSd_->compute(closes);
+                    if (!maVals.empty() && !sdVals.empty() && sdVals[n-1] > 0.0) {
+                        const double z = (lastClose - maVals[n-1]) / sdVals[n-1];
+                        // Sortie d'abord (jamais gatée par le régime) : retour à
+                        // la moyenne (z ≥ seuil de sortie, défaut 0 = la moyenne).
+                        if (z >= config_.mrBandExitZ)
+                            return makeSignal(SignalType::SELL, bars,
+                                              "Mean-reversion z-score : z=" +
+                                              std::to_string(z) + " >= sortie " +
+                                              std::to_string(config_.mrBandExitZ) +
+                                              " (retour à la moyenne)");
+                        // Entrée contrarian : régime haussier confirmé et clôture
+                        // sous la bande basse de k écarts-types (z ≤ −k).
+                        if (regimeUp && z <= -config_.mrBandEntryK)
+                            return makeSignal(SignalType::BUY, bars,
+                                              "Mean-reversion z-score : z=" +
+                                              std::to_string(z) + " <= -" +
+                                              std::to_string(config_.mrBandEntryK) +
+                                              " | regime up (achat sous la bande basse)");
+                        if (historiqueInsuffisant)
+                            return makeSignal(SignalType::HOLD, bars,
+                                              "Régime inconnu : historique insuffisant (" +
+                                              std::to_string(n) + "/" +
+                                              std::to_string(config_.smaTrendPeriod) +
+                                              " barres) — aucune entrée possible");
+                        return makeSignal(SignalType::HOLD, bars,
+                                          "Mean-reversion z-score : z=" +
+                                          std::to_string(z) + " neutre");
+                    }
+                    // bande incalculable → repli sur l'entrée RSI (fail-safe)
+                }
+
                 // Sortie d'abord (les sorties gardent la priorité et ne sont
                 // jamais gatées par le régime) : RSI revenu au niveau de sortie
                 // → retour à la moyenne. Mutuellement exclusif de l'entrée tant
@@ -436,6 +519,8 @@ namespace trading {
         std::unique_ptr<IIndicator<double>> rsi_;
         std::unique_ptr<IIndicator<double>> smaTrend_;
         std::unique_ptr<IIndicator<double>> atr_;   // filtre de volatilité (item 8y.2)
+        std::unique_ptr<IIndicator<double>> mrBandMa_; // SMA de la bande z-score MR (item 11.1)
+        std::unique_ptr<IIndicator<double>> mrBandSd_; // écart-type de la bande z-score MR (item 11.1)
     };
 
 } // namespace trading
