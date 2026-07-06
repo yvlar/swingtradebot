@@ -94,6 +94,9 @@ target_compile_definitions(validate PRIVATE
         SWINGBOT_SPY_MAX_CSV="${CMAKE_SOURCE_DIR}/SPY_max.csv"
         SWINGBOT_IWM_MAX_CSV="${CMAKE_SOURCE_DIR}/IWM_max.csv"
         SWINGBOT_MDY_MAX_CSV="${CMAKE_SOURCE_DIR}/MDY_max.csv"
+        # Indice de vol IMPLICITE (^VIX, Sprint 14) : SIGNAL de régime, jamais tradé.
+        # Adj Close == Close (indice sans dividende) → suspectNoDividends ATTENDU.
+        SWINGBOT_VIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
@@ -192,6 +195,9 @@ target_compile_definitions(integration_tests PRIVATE
         SWINGBOT_SPY_MAX_CSV="${CMAKE_SOURCE_DIR}/SPY_max.csv"
         SWINGBOT_IWM_MAX_CSV="${CMAKE_SOURCE_DIR}/IWM_max.csv"
         SWINGBOT_MDY_MAX_CSV="${CMAKE_SOURCE_DIR}/MDY_max.csv"
+        # Indice de vol IMPLICITE (^VIX, Sprint 14) : SIGNAL de régime, jamais tradé.
+        # Adj Close == Close (indice sans dividende) → suspectNoDividends ATTENDU.
+        SWINGBOT_VIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
