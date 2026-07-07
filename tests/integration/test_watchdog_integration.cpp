@@ -186,6 +186,82 @@ TEST_F(WatchdogIntegration, SmsDeliveredToLocalServer) {
     EXPECT_NE(raw.find("Authorization: Basic"), std::string::npos);
 }
 
+// ════════════════════════════════════════════════════════════
+//  E2E email SMTP réel via mock STARTTLS (item 17.1)
+// ════════════════════════════════════════════════════════════
+#include "../support/MiniSmtpServer.hpp"
+
+namespace {
+// Config email complète pointée sur le mock — factorisée pour les 3 tests
+void configureEmailOnMock(AlertConfig& cfg, const MiniSmtpServer& smtp) {
+    cfg.email_enabled = true;
+    cfg.smtp_url      = smtp.url();
+    cfg.smtp_user     = "bot";
+    cfg.smtp_pass     = "mdp";
+    cfg.email_to      = "ops@example.com";
+    cfg.email_from    = "bot@example.com";
+    cfg.smtp_ca_path  = smtp.caPath();   // seam : racine de confiance du test
+    cfg.alert_timeout_sec = 10;
+}
+}  // namespace
+
+// L'email est réellement LIVRÉ : STARTTLS négocié, AUTH, message capturé —
+// le succès SMTP (jusqu'ici testé en échec seulement) est enfin E2E.
+TEST_F(WatchdogIntegration, EmailDeliveredViaStartTls) {
+    MiniSmtpServer smtp;
+    configureEmailOnMock(cfg_, smtp);
+
+    Watchdog wd(cfg_, state_);
+    wd.alertNow("🚨 SWING BOT ALERTE — test E2E STARTTLS");
+
+    ASSERT_TRUE(smtp.waitForMessage(10'000));
+    EXPECT_TRUE(smtp.tlsEstablished());
+    EXPECT_NE(smtp.mailFrom().find("bot@example.com"), std::string::npos);
+    ASSERT_FALSE(smtp.rcptTo().empty());
+    EXPECT_NE(smtp.rcptTo()[0].find("ops@example.com"), std::string::npos);
+
+    const std::string msg = smtp.message();
+    EXPECT_NE(msg.find("To: ops@example.com"),    std::string::npos);
+    EXPECT_NE(msg.find("From: bot@example.com"),  std::string::npos);
+    EXPECT_NE(msg.find("Subject: [SwingBot]"),    std::string::npos);
+    EXPECT_NE(msg.find("SWING BOT ALERTE"),       std::string::npos);
+    EXPECT_FALSE(smtp.authLine().empty());        // credentials bien envoyés
+}
+
+// Verrou : AUCUN credential ni commande sensible avant le chiffrement —
+// AUTH et MAIL FROM ne circulent qu'APRÈS la poignée de main TLS.
+TEST_F(WatchdogIntegration, EmailAuthCredentialsSentAfterTlsOnly) {
+    MiniSmtpServer smtp;
+    configureEmailOnMock(cfg_, smtp);
+
+    Watchdog wd(cfg_, state_);
+    wd.alertNow("test confidentialité pré-TLS");
+
+    ASSERT_TRUE(smtp.waitForMessage(10'000));
+    EXPECT_TRUE(smtp.authInTls());
+    for (const auto& l : smtp.plaintextLines()) {
+        EXPECT_EQ(l.find("AUTH"),      std::string::npos) << "en clair : " << l;
+        EXPECT_EQ(l.find("MAIL FROM"), std::string::npos) << "en clair : " << l;
+    }
+}
+
+// Verrou anti-régression du défaut CURLUSESSL_ALL : si le serveur n'annonce
+// PAS STARTTLS, rien ne part (aucun repli en clair) et le watchdog survit.
+TEST_F(WatchdogIntegration, EmailRefusedWhenServerLacksStartTls) {
+    MiniSmtpServer smtp(/*advertiseStartTls=*/false);
+    configureEmailOnMock(cfg_, smtp);
+    cfg_.alert_timeout_sec = 3;
+
+    std::atomic<int> alerts{0};
+    Watchdog wd(cfg_, state_);
+    wd.on_alert([&](const std::string&){ alerts++; });
+    wd.alertNow("test refus sans STARTTLS");
+
+    EXPECT_EQ(alerts.load(), 1);              // callback appelé, pas de gel
+    EXPECT_TRUE(smtp.message().empty());      // rien n'a été livré
+    EXPECT_FALSE(smtp.tlsEstablished());      // et rien en TLS non plus
+}
+
 // SMTP injoignable (port fermé) : l'envoi échoue proprement,
 // le watchdog survit et le callback d'alerte est quand même appelé
 TEST_F(WatchdogIntegration, EmailFailureDoesNotBlockWatchdog) {

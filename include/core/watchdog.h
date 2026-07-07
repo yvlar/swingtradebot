@@ -39,6 +39,11 @@ struct AlertConfig {
     std::string smtp_pass      = "";
     std::string email_to       = "";
     std::string email_from     = "";
+    // CA additionnel pour la vérification TLS SMTP — substituable en test
+    // (mock STARTTLS, item 17.1). Vide (défaut) = magasin système de curl :
+    // la vérification TLS reste INTACTE en prod, la seam ne fait qu'AJOUTER
+    // une racine de confiance. Volontairement absent d'alertConfigFromEnv.
+    std::string smtp_ca_path   = "";
 
     // Twilio SMS — credentials via l'environnement (alertConfigFromEnv)
     bool        sms_enabled    = false;
@@ -231,6 +236,10 @@ private:
         curl_easy_setopt(curl, CURLOPT_USERNAME,      cfg_.smtp_user.c_str());
         curl_easy_setopt(curl, CURLOPT_PASSWORD,      cfg_.smtp_pass.c_str());
         curl_easy_setopt(curl, CURLOPT_USE_SSL,       CURLUSESSL_ALL);
+        // Racine de confiance additionnelle (item 17.1) : vérification TLS
+        // inchangée (VERIFYPEER/VERIFYHOST restent actifs), seul le CA change
+        if (!cfg_.smtp_ca_path.empty())
+            curl_easy_setopt(curl, CURLOPT_CAINFO,    cfg_.smtp_ca_path.c_str());
         curl_easy_setopt(curl, CURLOPT_MAIL_FROM,     cfg_.email_from.c_str());
         curl_easy_setopt(curl, CURLOPT_MAIL_RCPT,     recipients);
         // Callback extrait avant curl_easy_setopt (le macro ne supporte pas les lambdas multi-lignes)

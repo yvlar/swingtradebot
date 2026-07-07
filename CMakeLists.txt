@@ -15,6 +15,9 @@ find_package(Boost         REQUIRED COMPONENTS system)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(CURL          REQUIRED)
 find_package(GTest         CONFIG REQUIRED)
+# OpenSSL : uniquement pour les tests d'intégration (MiniSmtpServer, mock
+# STARTTLS de l'item 17.1) — le bot lui-même n'en dépend pas directement.
+find_package(OpenSSL       REQUIRED)
 
 # SQLite3 : config vcpkg si disponible, sinon paquet système
 # (permet de builder/tester hors du conteneur vcpkg, ex. CI Linux)
@@ -183,7 +186,9 @@ add_executable(integration_tests
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
-target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS})
+# OpenSSL : MiniSmtpServer (mock STARTTLS, item 17.1) — tests seulement
+target_link_libraries(integration_tests PRIVATE ${COMMON_LIBS} ${GTEST_LIBS}
+        OpenSSL::SSL OpenSSL::Crypto)
 # Le golden backtest (item 17) lit QQQ.csv depuis la racine du dépôt,
 # indépendamment du répertoire de travail des tests.
 # Les actifs multi-CSV (item 7.4, D29) : séries total-return réelles
