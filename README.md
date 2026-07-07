@@ -7,8 +7,11 @@ anti-look-ahead, persistance SQLite, flux WebSocket pour dashboard.
 > ## ⚠️ Argent réel — lire avant tout
 >
 > **La DoD de rentabilité n'est PAS atteinte : la prod reste en paper.**
-> Aucun edge n'a été démontré hors-échantillon (voir `ROADMAP.md`,
-> Sprint 8-ter). Le mode `--live` est verrouillé par un gate mécanique en
+> La recherche d'edge est **close** : cinq familles de signaux (six
+> variantes) ont été jugées hors-échantillon sans edge net de coûts —
+> conclusion documentée dans `documentation/CONCLUSION_RECHERCHE_EDGE.md`,
+> verdicts détaillés dans `ROADMAP.md`.
+> Le mode `--live` est verrouillé par un gate mécanique en
 > quatre couches (`config/prod.json` → `liveTradingApproved`, canal
 > d'alerte configuré, terminal interactif, confirmation « OUI » tapée) et
 > par un test d'intégration qui interdit `liveTradingApproved=true` tant
@@ -56,11 +59,13 @@ docker compose up -d --build
 |---|---|
 | `RUNBOOK.md` | Opérations : démarrage/arrêt, incidents, kill-switch manuel, checklist pré-live, politique de risque |
 | `ROADMAP.md` | Source de vérité du workflow : sprints, découvertes, changelog, verdicts d'edge |
+| `documentation/CONCLUSION_RECHERCHE_EDGE.md` | Conclusion de la recherche d'edge : verdict des 5 familles, méthodologie, leçons, critères de réouverture |
 | `CLAUDE.md`  | Règles pour l'agent de code (conventions, gotchas, règles de sécurité live) |
 | `documentation/` | UML à jour ; les .pdf/.docx sont **obsolètes** (voir documentation/README.md) |
 
 ## Tests
 
-~537 tests GTest (unitaires + intégration), un processus par test, goldens
+716 tests GTest (575 unitaires + 141 intégration — décompte tenu à jour
+dans `ROADMAP.md`, « État des tests »), un processus par test, goldens
 de non-régression sur le backtest. CI : build Debug + Release, ASan/UBSan,
 TSan ciblé. `ctest --test-dir build -j4`.

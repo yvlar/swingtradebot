@@ -101,8 +101,10 @@ exposition multi-comptes, risque de gap overnight au-delà du stop.
 
 Le mode `--live` refuse de démarrer tant que tout n'est pas vrai :
 
-- [ ] **DoD d'edge atteinte et verrouillée par test** (Sprint 8-ter conclu
-      positivement — voir ROADMAP ; aujourd'hui : NON atteinte).
+- [ ] **DoD d'edge atteinte et verrouillée par test** (aujourd'hui : NON
+      atteinte — recherche close sans edge après 5 familles, voir
+      `documentation/CONCLUSION_RECHERCHE_EDGE.md` et ROADMAP ; toute
+      réouverture repasse par le protocole complet avant ce point).
 - [ ] Suite de tests complète verte (Debug, Release, ASan) sur le commit déployé.
 - [ ] Au moins un canal d'alerte **testé réellement** (envoyer une alerte
       de test : couper le heartbeat en paper et vérifier la réception).
