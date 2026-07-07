@@ -56,6 +56,9 @@ public:
                   std::vector<double> stopLoss,
                   std::vector<double> takeProfit,
                   ObjectiveFn         objective,
+                  // cppcheck-suppress passedByValue ; header couvert par les
+                  // goldens (grille OOS) : pas de retouche de style, copie
+                  // unique et hors chemin chaud
                   SwingConfig         base = SwingConfig{},
                   std::vector<int>    smaTrendPeriod  = {},
                   std::vector<double> trailingStopPct = {})

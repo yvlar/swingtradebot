@@ -62,10 +62,38 @@ silencieusement malsain). Champs et seuils :
 | `gateway_authenticated` | session CP Gateway valide au dernier cycle | `false` → ré-auth navigateur sur `https://localhost:5000` (la session CP expire ~24 h) |
 | `kill_switch_tripped` / `kill_switch_reason` | un garde-fou de risque a bloqué les entrées pour la séance (état de NIVEAU, remis à zéro au nouveau jour de bourse) | `true` → analyser la raison ; ne PAS relancer pour « débloquer » (cf. §4) |
 
-Cet objet est la source de vérité pour un check `/healthz` externe ou une sonde
-d'orchestrateur : `last_cycle_healthy && seconds_since_healthy_cycle < 4000 &&
-gateway_authenticated` = bot opérationnel. La panne « process gelé » reste
-couverte par le healthcheck TCP du `Dockerfile`.
+Cet objet est aussi servi en HTTP sur le port du WsServer (item 17.3) :
+
+```bash
+curl -s http://localhost:9001/healthz   # → JSON de l'objet health, HTTP 200
+```
+
+Critère « bot opérationnel » : `last_cycle_healthy &&
+seconds_since_healthy_cycle < 4000 && gateway_authenticated`. Le HEALTHCHECK
+du `Dockerfile.multistage` valide désormais un 200 sur `/healthz` (boucle
+d'événements vivante ET surface de santé servie), plus seulement l'ouverture
+TCP ; l'évaluation des seuils ci-dessus reste à l'opérateur/orchestrateur.
+
+## 4-ter. Ré-authentification du Gateway (item 17.4)
+
+La session CP Gateway expire (~24 h). Comportement du bot à la perte d'auth :
+
+1. **Tentative automatique** : `POST /v1/api/iserver/reauthenticate` — ne
+   réussit que si la session SSO est encore valide (micro-coupure de la
+   session brokerage). Si elle réussit, log `OK` « Gateway ré-authentifié
+   automatiquement », aucun cycle perdu de plus.
+2. **Alerte immédiate** : si la tentative échoue, une alerte « 🔐 CP GATEWAY
+   DÉ-AUTHENTIFIÉ » part sur les canaux configurés dès la PREMIÈRE détection
+   (une seule fois — pas de spam à chaque cycle sauté). L'alerte watchdog
+   « bot silencieux » reste le backstop (~65 min après, heartbeat affamé).
+3. **Action opérateur** : ouvrir `https://localhost:5000` dans un navigateur
+   et se reconnecter au compte IBKR. AUCUN redémarrage du bot requis : il
+   re-vérifie l'auth à chaque cycle et pousse le log `OK` « Gateway
+   ré-authentifié — reprise des cycles » dès la session restaurée
+   (`gateway_authenticated` repasse à `true` sur `/healthz`, §4-bis).
+4. **Vérification** : `curl -s http://localhost:9001/healthz` →
+   `gateway_authenticated: true` et, au cycle suivant,
+   `last_cycle_healthy: true`.
 
 ## 5. Kill-switch MANUEL (arrêt d'urgence)
 

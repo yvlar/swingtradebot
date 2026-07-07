@@ -26,6 +26,7 @@
 #include "core/curl_global.h"
 
 #include "core/LiveGate.hpp"
+#include "core/GatewayAuthMonitor.hpp"
 
 #include <iostream>
 #include <csignal>
@@ -179,7 +180,8 @@ int main(int argc, char* argv[]) {
 
     WsServer wsServer(9001, botState);
     wsServer.start();
-    std::cout << "\n[WsServer] Dashboard sur ws://localhost:9001\n";
+    std::cout << "\n[WsServer] Dashboard sur ws://localhost:9001"
+                 " — sonde santé : GET http://localhost:9001/healthz\n";
 
     // Les DB vivent dans data/ : c'est le répertoire monté en volume par
     // docker-compose (./data:/app/data) — écrites dans /app, elles n'étaient
@@ -271,13 +273,44 @@ int main(int argc, char* argv[]) {
             std::chrono::system_clock::now().time_since_epoch()).count());
     };
 
+    // Transitions d'auth Gateway (item 17.4) : alerte IMMÉDIATE à la perte
+    // (une seule — pas à chaque cycle sauté), sans attendre l'alerte « bot
+    // silencieux » du watchdog (jusqu'à 65 min après, en backstop).
+    trading::GatewayAuthMonitor gwMonitor;
+
     while (g_running) {
         try {
             // Supervision de l'auth Gateway (A3) : la session CP expire
             // (~24 h). Sans ré-auth, chaque appel échouerait en silence —
             // ici : cycle sauté, heartbeat RETENU → l'alerte watchdog part
             // après max_silence_sec, avec le diagnostic explicite.
-            const bool gwAuth = dataFeed->isAuthenticated();
+            bool gwAuth = dataFeed->isAuthenticated();
+            // Tentative de ré-auth AUTOMATIQUE (item 17.4) : ne réussit que
+            // si la session SSO est encore valide (micro-coupure brokerage) —
+            // sinon la ré-auth reste manuelle (navigateur, RUNBOOK §4-ter).
+            if (!gwAuth && dataFeed->tryReauthenticate()) {
+                std::this_thread::sleep_for(std::chrono::seconds(3));
+                gwAuth = dataFeed->isAuthenticated();
+                if (gwAuth)
+                    botState.push_log("OK", "Gateway ré-authentifié "
+                        "automatiquement (session SSO encore valide)");
+            }
+            switch (gwMonitor.observe(gwAuth)) {
+                case trading::GatewayAuthMonitor::Event::PerteAuth:
+                    watchdog.alertNow(
+                        "🔐 CP GATEWAY DÉ-AUTHENTIFIÉ — cycles suspendus. "
+                        "Tentative de ré-auth automatique échouée : "
+                        "ré-authentification MANUELLE requise sur "
+                        "https://localhost:5000 (navigateur, RUNBOOK §4-ter). "
+                        "Le bot reprendra seul dès la session restaurée.");
+                    break;
+                case trading::GatewayAuthMonitor::Event::Recuperation:
+                    botState.push_log("OK",
+                        "Gateway ré-authentifié — reprise des cycles");
+                    break;
+                case trading::GatewayAuthMonitor::Event::Aucun:
+                    break;
+            }
             bool cycleHealthy = false;
             if (!gwAuth) {
                 botState.push_log("ERROR",

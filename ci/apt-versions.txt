@@ -1,0 +1,13 @@
+cmake 3.28.3-1build7
+cppcheck 2.13.0-2ubuntu3
+g++ 4:13.2.0-7ubuntu1
+gcovr 7.0-1
+googletest 1.14.0-1
+libboost-dev 1.83.0.1ubuntu2
+libboost-system-dev 1.83.0.1ubuntu2
+libcurl4-openssl-dev 8.5.0-2ubuntu10.10
+libgtest-dev 1.14.0-1
+libsqlite3-dev 3.45.1-1ubuntu2.5
+libssl-dev 3.0.13-0ubuntu3.7
+ninja-build 1.11.1-2
+nlohmann-json3-dev 3.11.3-1

@@ -30,8 +30,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libboost-dev libboost-system-dev \
-            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev \
             libgtest-dev googletest cmake ninja-build
+
+      # Reproductibilité (item 17.2) : un pin dur pkg=version briquerait la
+      # CI dès que les miroirs GC une vieille version — on épingle plutôt
+      # l'image du runner (ubuntu-24.04, jamais -latest) et on COMPARE les
+      # versions installées au manifeste ci/apt-versions.txt. Toute dérive
+      # émet un ::warning:: (non bloquant) → recaler le manifeste au sprint
+      # suivant, en connaissance de cause.
+      - name: Vérifier la dérive de versions apt (manifeste)
+        run: |
+          dpkg-query -W -f '${Package} ${Version}\n' \
+            libboost-dev libboost-system-dev nlohmann-json3-dev \
+            libcurl4-openssl-dev libsqlite3-dev libssl-dev libgtest-dev \
+            googletest cmake ninja-build g++ \
+            | sort > installed-versions.txt
+          grep -vE '^(cppcheck|gcovr) ' ci/apt-versions.txt | sort \
+            > manifest-core.txt
+          diff manifest-core.txt installed-versions.txt \
+            || echo "::warning::Dérive de versions apt vs ci/apt-versions.txt — recaler le manifeste (voir commentaire du job)"
 
       - name: Configurer (CMake + Ninja, build Debug)
         run: cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
@@ -43,6 +61,77 @@ jobs:
         working-directory: build
         # --output-on-failure : la sortie du test rouge apparaît dans les logs CI
         run: ctest --output-on-failure -j4
+
+  # ── Lint statique BLOQUANT (item 17.2) : cppcheck sur les headers + les
+  # composition roots. Choisi plutôt que clang-tidy pour ce gate : il analyse
+  # les .hpp directement (projet header-only), tourne en < 1 min et reste
+  # honnêtement vert (clang-tidy sur Boost.Beast/Asio = bruit massif —
+  # reste au backlog comme évolution documentée). Les suppressions vivent
+  # dans ci/cppcheck-suppressions.txt (structurelles) ou INLINE avec
+  # justification (headers couverts par les goldens, interdits de retouche).
+  lint:
+    name: Lint statique (cppcheck bloquant)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: cppcheck (erreur = échec du job)
+        run: >
+          cppcheck --std=c++17 --language=c++
+          --enable=warning,performance,portability
+          --inline-suppr --suppressions-list=ci/cppcheck-suppressions.txt
+          --error-exitcode=1
+          -I include -I include/core -I include/bot -I include/brokers
+          -I include/indicators -I include/strategies -I include/backtest
+          -I include/models
+          include/ main.cpp main_ibkr.cpp main_alpaca.cpp main_v2.cpp
+          main_validate.cpp
+
+  # ── Gate de couverture (item 17.2) : lignes de include/ exercées par la
+  # suite. Mesure au moment de la pose du gate : 97,2 % → seuil 95 % (mesuré
+  # − 2 pts de marge). Lignes seulement : la couverture de BRANCHES sur du
+  # code à templates (Boost/nlohmann) est du bruit. Si le job casse ici sans
+  # baisse réelle de couverture, recaler le seuil est une décision de sprint.
+  coverage:
+    name: Couverture (gcovr, seuil 95 % lignes include/)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances + gcovr
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libboost-dev libboost-system-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev \
+            libgtest-dev googletest cmake ninja-build gcovr
+
+      - name: Configurer (Debug instrumenté --coverage)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -G Ninja
+          -DCMAKE_CXX_FLAGS="--coverage -O0"
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      - name: Compiler
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Tester (génère les .gcda)
+        working-directory: build
+        # -j2 : le verrouillage des .gcda par libgcov n'aime pas la forte
+        # contention — même réglage que le job sanitizers
+        run: ctest --output-on-failure -j2
+
+      - name: Mesurer et vérifier le seuil
+        run: >
+          gcovr --root . --filter 'include/' --exclude '.*tests/.*'
+          --print-summary --fail-under-line 95 build
 
   # ── Release : le binaire de PROD est un build Release — il doit être testé
   # sous la forme sous laquelle il tournera (optimisations, assert() coupés).
@@ -58,7 +147,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libboost-dev libboost-system-dev \
-            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev \
             libgtest-dev googletest cmake ninja-build
 
       - name: Configurer (Release)
@@ -86,7 +175,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libboost-dev libboost-system-dev \
-            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev \
             libgtest-dev googletest cmake ninja-build
 
       - name: Configurer (ASan + UBSan)
@@ -106,14 +195,18 @@ jobs:
         # -j2 : ASan ralentit ~2× — limite la contention pour tenir les timeouts
         run: ctest --output-on-failure -j2
 
-  # ── TSan ciblé sur les suites concurrentes. NON bloquant pour l'instant :
-  # Boost.Asio produit des faux positifs connus selon le timing (le -Wno-tsan
-  # est requis à la compilation : atomic_thread_fence non supporté par TSan).
+  # ── TSan ciblé sur les suites concurrentes — BLOQUANT depuis l'item 17.2
+  # (75 tests ciblés vérifiés verts localement sous TSan avant la bascule,
+  # dont les nouveaux mock STARTTLS et /healthz). Le périmètre reste CIBLÉ :
+  # les suites concurrentes sont exactement celles-ci, élargir à tout le
+  # projet inviterait les faux positifs Boost.Asio non triés (le -Wno-tsan
+  # reste requis à la compilation : atomic_thread_fence non supporté par
+  # TSan). Un faux positif avéré se supprime via un fichier tsan.supp
+  # justifié — jamais en repassant le job en non bloquant.
   # A déjà attrapé : data race MiniHttpServer::stop()/loop_().
   tsan:
     name: TSan ciblé (WsServer/Watchdog/BotState)
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,7 +216,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libboost-dev libboost-system-dev \
-            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev \
+            nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev \
             libgtest-dev googletest cmake ninja-build
 
       - name: Configurer (TSan)

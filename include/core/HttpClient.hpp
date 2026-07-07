@@ -54,7 +54,7 @@ struct HttpClientConfig {
 
 class HttpClient {
 public:
-    explicit HttpClient(HttpClientConfig cfg = {}) : cfg_(cfg) {}
+    explicit HttpClient(const HttpClientConfig& cfg = {}) : cfg_(cfg) {}
     virtual ~HttpClient() = default;
 
     // Exécute la requête avec retry + backoff exponentiel.

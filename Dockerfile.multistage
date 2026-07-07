@@ -52,11 +52,15 @@ RUN ldconfig
 
 EXPOSE 9001
 
-# Vivacité : connexion TCP au WsServer (bash intégré, zéro dépendance).
-# Si le process est gelé ou mort, l'acceptor Beast ne répond plus →
-# unhealthy → restart par l'orchestrateur. Limite assumée : ne teste pas
-# la santé des CYCLES (couverte par le watchdog + heartbeat conditionnel).
+# Vivacité APPLICATIVE (item 17.3) : GET /healthz sur le port WsServer
+# (bash /dev/tcp intégré, zéro dépendance — l'image n'a pas curl). Un 200
+# prouve que la boucle d'événements répond et sert l'instantané de santé —
+# au-delà de l'ancien test TCP pur qui ne voyait qu'un process gelé. Les
+# SEUILS (âge du dernier cycle sain, dé-auth) restent à l'orchestrateur /
+# opérateur : voir RUNBOOK §4-bis.
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/9001' || exit 1
+  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/9001 \
+    && printf "GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n" >&3 \
+    && head -1 <&3 | grep -q " 200 "' || exit 1
 
 CMD ["./swing_bot"]

@@ -131,6 +131,8 @@ inline std::vector<double> trailingMedian(const std::vector<double>& v, int wind
 class VolRegimeBacktester {
 public:
     // Charge UNE série (mono-actif : QQQ en prod, SPY/IWM/MDY en validation-only).
+    // cppcheck-suppress passedByValue ; header couvert par les goldens
+    // (vol-regime OOS) : pas de retouche de style, copie unique au chargement
     VolRegimeBacktester(VolRegimeConfig cfg, std::string csvPath)
         : cfg_(std::move(cfg)) {
         const auto bars = CsvDataFeed(csvPath).allBars();

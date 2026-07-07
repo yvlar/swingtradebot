@@ -10,12 +10,12 @@
 | Dimension    | Note /100 | Baseline (audit 2026-06-10) |
 |--------------|-----------|------------------------------|
 | Architecture | 90        | 68                           |
-| Qualité      | 93        | 60                           |
+| Qualité      | 94        | 60                           |
 | FinTech      | 88        | 38                           |
-| Production   | 74        | 35                           |
+| Production   | 78        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-07 (Sprint 16 — **Conclusion de la recherche d'edge**. Décision utilisateur (d), la recommandation. La recherche d'edge est **CLOSE** : cinq familles de signaux / six variantes jugées par le protocole complet (3 pavages, anti-look-ahead, total-return, MC size-aware, confirmation hors-protocole) — **aucun edge OOS net de coûts**. Connaissance négative solide, désormais synthétisée dans un document autonome : `documentation/CONCLUSION_RECHERCHE_EDGE.md` (verdict exécutif, méthodologie, table des verdicts par famille avec renvois D26-D52 et suites verrous, leçons transférables, critères de réouverture). Pointeurs recalés : README (avertissement + décompte de tests « ~537 » périmé → 716), RUNBOOK (checklist pré-live : référence « Sprint 8-ter » périmée → conclusion, exigence inchangée mot pour mot), documentation/README. Sprint 100 % documentation : goldens byte-identiques par construction, verrou live intact. 716/716 verts, +0.)
-- **Sprint courant** : Sprint 17 — **Décision requise**. La recherche d'edge est close (Sprint 16) ; le moteur est sûr, correct, observable, 716 verts — et reste en paper. Options : (a') **poursuivre le durcissement Production** (backlog golden-safe restant : test E2E email SMTP via mock STARTTLS ; durcissement CI — lint/clang-tidy/cppcheck, pin des versions apt, coverage gate, TSan bloquant ; sonde `/healthz` HTTP ; opérabilité ré-auth Gateway) ; ou (e) **mode maintenance** (paper-only en veille : baseline verte au fil de l'eau, aucune exploration nouvelle). Les anciennes options (b) pairs-trading cointégré et (c'') variantes lourdes ne sont PLUS des sprints planifiés : elles sont documentées comme **critères de réouverture** (`CONCLUSION_RECHERCHE_EDGE.md` §5) — toute réouverture repasse par le protocole complet et la confirmation hors-protocole (D43). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
+- **Dernière mise à jour** : 2026-07-07 (Sprint 17 — **Durcissement Production**, décision utilisateur (a'). Les QUATRE items golden-safe du backlog D52 sont soldés : **17.1** le canal email est enfin E2E-testé en SUCCÈS (`MiniSmtpServer` mock STARTTLS OpenSSL, cert généré à l'exécution avec SAN IP, clé jamais sur disque ; seam `AlertConfig::smtp_ca_path` = racine de confiance AJOUTÉE, vérification TLS intacte, absente d'`alertConfigFromEnv`) ; **17.3** l'instantané de santé (15.1) est servi en HTTP — `GET /healthz` sur le port WsServer (lecture HTTP avant handshake WS, garde `upgraded_` anti-UB broadcast, HEALTHCHECK Docker applicatif exigeant un 200, RUNBOOK §4-bis) ; **17.4** la perte d'auth Gateway alerte IMMÉDIATEMENT sur transition (une fois, pas par cycle) après une tentative de ré-auth automatique (`GatewayAuthMonitor` pur + `IBKRDataFeed::tryReauthenticate`, RUNBOOK §4-ter) ; **17.2** CI durcie — job lint cppcheck BLOQUANT, job couverture gcovr (seuil 95 % lignes include/, mesuré 97,2 %), manifeste `ci/apt-versions.txt` avec warning de dérive (pas de pin dur qui briquerait la CI), TSan ciblé BLOQUANT (75 tests pré-vérifiés verts localement). Goldens byte-identiques (2 suppressions cppcheck INLINE justifiées dans les headers golden au lieu de retouches). 716 → **732/732 verts**. Reliquats consignés : clang-tidy ciblé au backlog ; proposition de diff `prompt-executer-sprint.md` (libssl-dev dans la liste apt) en attente de décision utilisateur — D54)
+- **Sprint courant** : Sprint 18 — **Décision requise**. Le backlog Production golden-safe (D52) est SOLDÉ au Sprint 17 ; le moteur est sûr, correct, observable, sondable (`/healthz`), CI durcie (lint + couverture + TSan bloquants), 732 verts — et reste en paper. Options : (e) **mode maintenance** (recommandée — paper-only en veille : baseline verte au fil de l'eau, recalage du manifeste apt sur dérive CI, aucune exploration nouvelle) ; ou (a'') **finitions Production restantes** (reliquats documentés, valeur marginale : job clang-tidy ciblé `bugprone-*`/`performance-*` sur les 6 TU réels avec `-header-filter=include/.*` — coût : suppressions Boost à trier ; test de contrat cross-feed « barres clôturées seulement » IBKR vs Alpaca — reliquat D25). Décision utilisateur préalable dans les deux cas : appliquer ou non le diff D54 (`prompt-executer-sprint.md`, libssl-dev dans la liste apt — fichier gouverné). Les critères de réouverture de la recherche d'edge restent ceux de `CONCLUSION_RECHERCHE_EDGE.md` §5 (protocole complet + confirmation hors-protocole D43). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -52,11 +52,13 @@
 > | Dimension     | Note /100 | Justification |
 > |---------------|-----------|---------------|
 > | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. Le Sprint 12 **consolide sans ajouter (=)** : la 4e famille (pairs-trading market-neutral, la seule ORTHOGONALE) TRADE massivement (209-212 A/R OOS, D47 satisfait) mais n'a AUCUN edge — Sharpe OOS négatif sur les 3 pavages, les 4 paires et tous les réglages (D49) ; le spread log naïf β=1 sur fenêtre courte est du bruit. Les QUATRE familles d'alpha pré-définies sont soldées ; la note reste à 28, mais l'incertitude a encore rétréci (on SAIT que les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide). Le Sprint 13 **consolide sans ajouter (=)** : la 5e famille explorée (vol-regime / volatility-managed, la variante (c) la plus faisable offline) TRADE réellement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages du balayage (D50) ; le filtre réduit le DD de < 50 % et l'alpha vs B&H reste négatif (cash drag). La note reste à 28, les CINQ familles techniques simples étant désormais soldées (connaissance négative encore renforcée). Le Sprint 14 **consolide sans ajouter (=)** : la variante à données EXTERNES de la 5e famille (VIX-regime, vol IMPLICITE) TRADE massivement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages (D51) ; la vol implicite (anticipatrice, exogène) ne fait pas mieux que la réalisée. La note reste à 28 ; les DEUX variantes de régime de vol (réalisée + implicite) sont soldées, la connaissance négative se renforce encore. La note ne bougera qu'avec une piste NON technique (données alternatives) ou une vraie cointégration testée, pas un raffinement de plus. |
-- **État des tests** : 716/716 verts (575 unitaires + 141 intégration) — et la
-  suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes (dont la suite `BotStateHealthUnit`). +0 au Sprint 16
-  (sprint 100 % documentation ; baseline recalée sur `ctest -N`=716, aucune
-  dérive hors cycle). Détail au changelog.
+- **État des tests** : 732/732 verts (583 unitaires + 149 intégration) — et la
+  suite passe aussi en **Release**, sous **ASan/UBSan**, sous instrumentation
+  **--coverage** (97,2 % de lignes sur include/), et TSan ciblé désormais
+  **BLOQUANT** en CI sur les suites concurrentes (75 tests
+  `WsServer|Watchdog|BotState`, vérifiés localement avant la bascule). +16 au
+  Sprint 17 (baseline recalée sur `ctest -N`=716 à l'ouverture, aucune dérive
+  hors cycle). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1375,8 +1377,132 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D51 | 🟡 | (Sprint 14) **La variante à données EXTERNES de la 5e famille (VIX-regime, volatilité IMPLICITE) n'a AUCUN edge ajusté du risque — la vol implicite ne fait pas mieux que la vol réalisée du Sprint 13.** Même moteur binaire long/cash, mais le signal de régime est le niveau du ^VIX (vol implicite, anticipatrice, EXOGÈNE — 9192 barres 1990+, fetchées via `export_total_return.py` étendu au caret ^ + fallback sans dividende, item 14.0) au lieu de la vol réalisée de QQQ. Le filtre TRADE massivement (195-227 stints OOS, plus que le VolRegime car le VIX croise sa médiane plus souvent, D47 satisfait) et son Sharpe est POSITIF (0,55/0,42/0,45) — mais SOUS le Sharpe du B&H (1,06/0,87/0,98) sur les 3 pavages, les 4 actifs gatés sur le MÊME VIX (QQQ 0,42, SPY −0,01, IWM 0,38, MDY 0,28) et les 9 réglages du balayage {63,126,252}×{0,8;1;1,2} (meilleur rl=126/seuil=1,2 = dSharpe −0,22 < 0). DD réduit (13,4 vs 18,6 %) mais < 50 % ; alpha vs B&H négatif (cash drag T4/D48). MC size-aware cagrP50 +5,15 %. Constat : sortir du marché en régime de vol haute (réalisée OU implicite) coûte plus en rendement manqué que ça ne rapporte en risque réduit, sur un QQQ structurellement haussier. Faisabilité notée : le fetch Yahoo ^VIX PASSE dans cet environnement (proxy egress autorise query2.finance.yahoo.com, HTTP 200), TLS via SSL_CERT_FILE=bundle CA du proxy. Pistes NON explorées (backlog) : scaling continu Moreira-Muir (w = cible/VIX, code moteur) ; term-structure VIX/VIX3M ; données alternatives / surface d'options. | Consigné (verrous `VixRegimeOosIntegration`) ; décision de suite = **Décision requise Sprint 15** (parquer/durcir la prod, raffiner le pairs-trading, variante encore plus lourde, ou documenter la conclusion) |
 | D52 | 🟢 | (Sprint 15) **Le backlog du candidat (a) « durcir l'opérationnel » était en grande partie PÉRIMÉ — déjà résolu en code (D18/D25) ou re-priorisé (D19).** En ouvrant le Sprint 15, les trois items nommés se sont révélés obsolètes : D18 (ATR true-range) et D25 (drop de la barre en formation) déjà implémentés ET test-lockés ; D19 (lookback) déjà configurable (=230, coïncide avec le backtest) et re-priorisé hors runtime. Dérive de type D20 (le backlog a menti). De plus, les canaux d'alerte sont déjà E2E-testés (SMS + webhook : `SmsDeliveredToLocalServer`/`WebhookDeliveredToLocalServer` ; email en échec seulement — le succès SMTP exige STARTTLS, non mockable en HTTP). Le SEUL vrai manque golden-safe était l'OBSERVABILITÉ : `BotState` n'exposait aucune liveness explicite (âge du dernier cycle sain, kill-switch armé, auth Gateway) → le healthcheck TCP voit un process gelé mais pas un process silencieusement malsain. Corrigé (15.1/15.2 : instantané `health` + câblage + procédure RUNBOOK). Leçon : rouvrir un item de backlog commence par VÉRIFIER fichier:ligne qu'il est encore réel, pas le croire sur parole. | Corrigé (D18/D19/D25 recalés ; observabilité ajoutée). Reste au backlog Production : test E2E email SMTP (mock STARTTLS), durcissement CI (lint/static-analysis/pin/coverage), sonde `/healthz` HTTP, opérabilité ré-auth Gateway |
 | D53 | 🟢 | (Sprint 16) **Le README affichait « ~537 tests » pour un dépôt qui en compte 716** — un document pointeur portait son propre décompte, jamais recalé depuis des sprints (même famille de dérive que D20/D52 : un document qui ment). Garde-fou adopté : le décompte de tests ne vit QUE dans ROADMAP « État des tests » (recalé chaque sprint par `ctest -N`, étape 2 du workflow) ; le README y renvoie au lieu de porter un chiffre autonome | ✅ Corrigé au Sprint 16 (16.2, `e1ef454`) |
+| D54 | 🟢 | (Sprint 17) **La liste apt de `prompt-executer-sprint.md` (fichier GOUVERNÉ) ne contient pas `libssl-dev`, désormais requis** : l'item 17.1 lie OpenSSL aux tests d'intégration (`MiniSmtpServer`, mock STARTTLS). La CI (4 jobs) et les Dockerfiles l'installent déjà ; seul le prompt gouverné est en retard — un exécuteur de sprint sur Linux nu partirait d'une baseline rouge (échec `find_package(OpenSSL)`). Conformément à la règle « les fichiers de règles ne sont JAMAIS modifiés sans décision utilisateur », le diff est PROPOSÉ, pas appliqué : ajouter `libssl-dev` entre `libsqlite3-dev` et `libgtest-dev` dans la commande apt (ligne ~20). En attendant, `find_package(OpenSSL REQUIRED)` échoue avec un message explicite — le manque se diagnostique en une ligne | ⏳ Diff proposé — décision utilisateur requise (Sprint 18) |
 
 ## Changelog
+
+### Sprint 17 — Durcissement Production (2026-07-07)
+
+**Contexte** : décision utilisateur (a') à l'ouverture (choix guidé) = solder le
+backlog Production golden-safe listé par D52 : email E2E (STARTTLS), CI
+(lint/pin/couverture/TSan), sonde `/healthz`, opérabilité ré-auth Gateway.
+Règle D52 appliquée : chaque item re-vérifié fichier:ligne avant travaux —
+les quatre étaient encore réels (aucun n'était déjà résolu).
+
+**Baseline à l'ouverture** : **716/716 verte** (build −Werror sans warning,
+Linux paquets système sans vcpkg, `ctest -N`=716, 575 unitaires + 141
+intégration, aucune dérive — le tableau de bord était exact).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `b7e2b63` test(alertes) : E2E email SMTP réel via mock STARTTLS + seam smtp_ca_path (item 17.1)
+- `d2428be` feat(observabilite) : sonde HTTP GET /healthz sur le port WsServer + HEALTHCHECK applicatif (item 17.3)
+- `19b8b4a` feat(operabilite) : alerte immédiate + tentative de ré-auth automatique sur perte d'auth Gateway (item 17.4)
+- `0f54e4e` feat(ci) : lint cppcheck bloquant, manifeste versions apt, gate de couverture gcovr, TSan bloquant (item 17.2)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 716 → **732** (+16 : 3 intégration email STARTTLS, 5 intégration
+/healthz, 5 unitaires GatewayAuthMonitor, 3 unitaires tryReauthenticate).
+583 unitaires + 149 intégration ; TSan ciblé passe de 59 à 75 tests couverts.
+
+**Items** :
+- [x] **17.1** Test E2E email SMTP via mock STARTTLS → `b7e2b63`
+  `tests/support/MiniSmtpServer.hpp` : squelette MiniHttpServer (POSIX, port 0,
+  stop() TSan-propre) + dialogue SMTP (220/EHLO/STARTTLS) + `SSL_accept` en
+  process sur le fd brut. Certificat auto-signé GÉNÉRÉ À L'EXÉCUTION (EVP/X509
+  OpenSSL 3, SAN `IP:127.0.0.1` exigé par curl ; un PEM commité expirerait et
+  sa clé ressemblerait à un secret — la clé ne touche jamais le disque). Seam
+  `AlertConfig::smtp_ca_path` → `CURLOPT_CAINFO` : AJOUTE une racine de
+  confiance, VERIFYPEER/HOST intacts, absente d'`alertConfigFromEnv` (aucune
+  surface prod). Rouge démontré : `EmailDeliveredViaStartTls` échouait en
+  `CURLE_PEER_FAILED_VERIFICATION` avant le câblage CAINFO. Verrous ajoutés :
+  credentials uniquement post-TLS ; refus si le serveur n'annonce pas STARTTLS
+  (anti-repli en clair de `CURLUSESSL_ALL`). OpenSSL lié aux tests
+  d'intégration SEULEMENT ; `libssl-dev` ajouté aux 4 jobs CI (prompt gouverné
+  non touché → D54).
+- [x] **17.3** Sonde HTTP GET /healthz → `d2428be`
+  `ws_server.cpp` (seul .cpp) : chaque session lit la requête HTTP AVANT le
+  handshake (`http::async_read`, expiry 30 s) — upgrade WS → chemin existant
+  inchangé (décorateur, état initial, file D4) ; `GET /healthz` → 200
+  `application/json` = `BotState::health_json` (item 15.1) ; autre chemin →
+  404. Garde `upgraded_` : `broadcast()` n'écrit JAMAIS sur un stream encore
+  en phase HTTP (UB Beast), verrouillé par
+  `BroadcastDuringIdleHttpConnectionNoCrash`. Rouge démontré : GET /healthz
+  échouait (handshake WS direct). HEALTHCHECK `Dockerfile.multistage` :
+  `/dev/tcp` + GET, exige « 200 » (l'image runtime n'a pas curl) ; RUNBOOK
+  §4-bis documente `curl /healthz`. API publique `ws_server.h` inchangée.
+- [x] **17.4** Opérabilité ré-auth Gateway → `19b8b4a`
+  `include/core/GatewayAuthMonitor.hpp` (logique PURE, patron LiveGate) :
+  transitions PerteAuth (UNE fois, pas par cycle sauté) / Recuperation.
+  `IBKRDataFeed::tryReauthenticate()` : POST `/v1/api/iserver/reauthenticate`
+  via la seam `request()` — ne réussit que si la session SSO est encore valide
+  (micro-coupure) ; ne lève jamais, la vérité se relit via `isAuthenticated()`.
+  Composition root : tentative auto + re-check (3 s) ; perte confirmée →
+  `watchdog.alertNow` immédiat « CP GATEWAY DÉ-AUTHENTIFIÉ » (patron A6 du
+  kill-switch) au lieu d'attendre l'alerte « bot silencieux » (~65 min, qui
+  reste le backstop) ; récupération → log OK sans alerte (anti-bruit, décision
+  d'exécution). Cycle sauté + heartbeat retenu INCHANGÉS. RUNBOOK §4-ter :
+  procédure opérateur (navigateur, vérif /healthz, aucun redémarrage requis).
+- [x] **17.2** Durcissement CI → `0f54e4e`
+  (a) Job **lint cppcheck BLOQUANT** (`--enable=warning,performance,portability
+  --error-exitcode=1`, include/ + 5 composition roots) — choisi contre
+  clang-tidy pour ce gate (analyse les .hpp directement, < 1 min, vert
+  honnêtement ; clang-tidy sur Boost.Beast/Asio = bruit massif → reliquat au
+  backlog). 3 constats initiaux : `HttpClient` (non golden) corrigé en
+  `const&` ; `GridOptimizer`/`VolRegimeBacktester` (headers GOLDEN)
+  suppressions INLINE justifiées — zéro retouche de code golden.
+  (b) **Manifeste `ci/apt-versions.txt`** + étape `dpkg-query`/diff : dérive
+  de versions = `::warning::` non bloquant (un pin dur `pkg=ver` briquerait la
+  CI quand les miroirs GC ; l'image runner reste épinglée ubuntu-24.04).
+  (c) Job **couverture gcovr** : build `--coverage`, lignes de include/ hors
+  tests, mesuré **97,2 %** à la pose → seuil `--fail-under-line 95` (mesuré
+  − 2 pts) ; lignes seulement (branches sur templates = bruit).
+  (d) **TSan ciblé BLOQUANT** : `continue-on-error` retiré APRÈS vérification
+  locale (75/75 verts, dont les nouveaux mock STARTTLS et /healthz) ;
+  périmètre ciblé conservé ; un faux positif avéré passera par un `tsan.supp`
+  justifié, jamais par un retour au non bloquant.
+
+**Verdict de clôture** : DoD atteinte — build −Werror sans warning, 732/732
+verts (Debug ; Release/ASan/UBSan/TSan couverts par la CI durcie, TSan aussi
+vérifié localement), chaque comportement nouveau a eu son test rouge d'abord
+(17.1 : vérification TLS ; 17.3 : routage HTTP), goldens byte-identiques
+(aucun code de stratégie/backtest touché — les 2 suppressions inline sont des
+commentaires). Fichiers gouvernés (`config/prod.json`, `prompt-*.md`,
+CLAUDE.md live-safety) intacts, vérifié par diff. `liveTradingApproved` =
+false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` intact.
+
+**Rétrospective** :
+1. *Découpage* : bon — 4 items indépendants, exécutés 17.1 → 17.3 → 17.4 →
+   17.2, la CI EN DERNIER à dessein : le seuil de couverture est mesuré AVEC
+   les tests du sprint, le lint voit le code du sprint, et TSan n'est basculé
+   bloquant qu'après que les nouveaux tests concurrents (SMTP, /healthz) ont
+   prouvé leur propreté sous TSan. Ordre inverse = seuils posés sur une base
+   périmée dès le premier commit suivant.
+2. *Prompts du workflow* : suffisants, AUCUNE improvisation de procédure. Un
+   SEUL manque factuel détecté : la liste apt du prompt gouverné n'a pas
+   `libssl-dev` (nouvelle dépendance de test) — diff PROPOSÉ, décision
+   utilisateur requise, non appliqué (D54, règle « pas d'auto-amendement »).
+3. *À détecter plus tôt / garde-fou* : (i) la syntaxe des suppressions inline
+   cppcheck exige `;` ou `//` comme séparateur de commentaire — attrapé
+   localement parce que la règle « lancer le lint en local AVANT de committer
+   le job » était dans le plan ; garde-fou déjà en place de fait (le job CI
+   échoue sur suppression malformée). (ii) Le mock STARTTLS a demandé une
+   décision de conception (cert commité vs généré) — tranchée par la règle
+   existante « pas de secret commité » : la génération à l'exécution évite
+   cert expiré ET clé scannable ; consigné dans l'en-tête du mock pour les
+   successeurs. Aucun garde-fou nouveau nécessaire.
+4. *Notes /100* : Architecture 90 (=) — seams et logique pure dans les patrons
+   existants, rien de structurel. Qualité 93 → **94 (+1)** : lint statique
+   bloquant + gate de couverture (97,2 % mesuré, seuil 95) + TSan bloquant =
+   la qualité est désormais DÉFENDUE par la CI, plus seulement constatée.
+   FinTech 88 (=) — aucun changement de moteur/stratégie. Production 74 →
+   **78 (+4)** : les 4 trous opérationnels connus sont fermés (canal email
+   prouvé en succès, sonde applicative pour orchestrateur, alerte immédiate +
+   auto-réparation partielle de l'auth Gateway, CI qui bloque les régressions
+   de qualité) ; le backlog golden-safe est VIDE — la note ne montera
+   au-delà qu'avec de l'opérationnel réel (déploiement surveillé long, runbook
+   éprouvé par incident) pas par du code. **Rentabilité 28 (=)** — un sprint
+   d'infrastructure ne change pas la capacité démontrée de gain ; verdict
+   d'edge inchangé (recherche close, critères de réouverture §5).
 
 ### Sprint 16 — Conclusion de la recherche d'edge (2026-07-07)
 
