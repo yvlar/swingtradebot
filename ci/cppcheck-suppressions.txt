@@ -1,0 +1,9 @@
+# Suppressions cppcheck GLOBALES (job lint de la CI, item 17.2).
+# Règle : une suppression NE va ici que si elle est structurelle (bruit
+# d'outillage) — un vrai constat dans le code se corrige, ou se supprime
+# INLINE (// cppcheck-suppress <id> ; justification) s'il touche un header
+# couvert par les goldens (interdits de retouche hors re-baseline documentée).
+
+# Les en-têtes système/externes (Boost, nlohmann, curl, gtest) ne sont pas
+# fournis à cppcheck : l'information « include introuvable » est du bruit.
+missingIncludeSystem
