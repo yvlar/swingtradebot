@@ -245,6 +245,40 @@ TEST(IbkrDataFeedUnit, AuthFailureMeansNotAuthenticated) {
     EXPECT_FALSE(f.isAuthenticated());
 }
 
+// ════════════════════════════════════════════════════════════
+//  tryReauthenticate — tentative de ré-auth automatique (item 17.4)
+// ════════════════════════════════════════════════════════════
+
+// La tentative POSTe bien sur l'endpoint de ré-auth du Gateway
+TEST(IbkrDataFeedUnit, TryReauthenticatePostsToReauthEndpoint) {
+    ScriptedIbkrDataFeed f;
+    f.responses = {{"/iserver/reauthenticate", R"({"message":"triggered"})"}};
+    EXPECT_TRUE(f.tryReauthenticate());
+    ASSERT_EQ(f.calls.size(), 1u);
+    EXPECT_EQ(f.calls[0].method, "POST");
+    EXPECT_NE(f.calls[0].url.find("/v1/api/iserver/reauthenticate"),
+              std::string::npos);
+}
+
+// Réponse sans « message » (contrat variable selon la version du Gateway) :
+// pas déclenchée — la vérité se relit de toute façon via isAuthenticated()
+TEST(IbkrDataFeedUnit, TryReauthenticateFalseOnEmptyMessage) {
+    ScriptedIbkrDataFeed f;   // réponse par défaut : {}
+    EXPECT_FALSE(f.tryReauthenticate());
+}
+
+// Gateway injoignable ou réponse malformée → false, JAMAIS d'exception
+// (même contrat qu'isAuthenticated : la boucle du bot ne doit pas mourir)
+TEST(IbkrDataFeedUnit, TryReauthenticateFalseOnFailureNoThrow) {
+    ScriptedIbkrDataFeed panne;
+    panne.failAll = true;
+    EXPECT_FALSE(panne.tryReauthenticate());
+
+    ScriptedIbkrDataFeed malforme;
+    malforme.responses = {{"/iserver/reauthenticate", "pas du json"}};
+    EXPECT_FALSE(malforme.tryReauthenticate());
+}
+
 // Gateway sans info NASDAQ/NYSE : repli sur l'horloge EST locale —
 // le résultat dépend de l'heure d'exécution, on fige seulement
 // l'absence d'exception et la cohérence du repli

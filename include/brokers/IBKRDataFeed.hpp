@@ -150,6 +150,23 @@ public:
         }
     }
 
+    // Tentative UNIQUE de ré-authentification de la session brokerage
+    // (POST /v1/api/iserver/reauthenticate, item 17.4) — ne peut réussir
+    // que si la session SSO du Gateway est encore valide (micro-coupure) ;
+    // sinon la ré-auth reste MANUELLE (navigateur, RUNBOOK). Ne lève
+    // jamais (même contrat qu'isAuthenticated). Le retour n'est qu'un
+    // indice (« triggered ») : la vérité se relit via isAuthenticated().
+    bool tryReauthenticate() {
+        try {
+            auto resp = request("POST",
+                gatewayUrl_ + "/v1/api/iserver/reauthenticate", "");
+            auto j = json::parse(resp);
+            return !j.value("message", std::string()).empty();
+        } catch (...) {
+            return false;
+        }
+    }
+
 private:
     std::string gatewayUrl_;
     bool        verifySsl_;
