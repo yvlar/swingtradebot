@@ -14,8 +14,8 @@
 | FinTech      | 88        | 38                           |
 | Production   | 74        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-06 (Sprint 15 — **Durcissement opérationnel : observabilité + recalage du backlog**. Décision utilisateur (a). Constat d'ouverture (D52) : **le backlog nommé du candidat (a) était en grande partie PÉRIMÉ** — D18 (ATR true-range) et D25 (drop de la barre en formation) déjà implémentés ET test-lockés ; D19 (lookback) déjà configurable (=230) et re-priorisé ; canaux d'alerte SMS+webhook déjà E2E-testés. Le seul vrai manque golden-safe était l'**observabilité** : `BotState` n'exposait aucune liveness explicite → le healthcheck TCP voit un process gelé mais pas un process qui tourne silencieusement malsain. Corrigé : instantané `health` structuré (`last_cycle_healthy`, `seconds_since_healthy_cycle`, `gateway_authenticated`, `kill_switch_tripped`+raison) dans BotState + câblage composition root + procédure opérateur RUNBOOK. Golden-safe (BotState hors chemin de trading), verrou live intact. 716/716 verts.)
-- **Sprint courant** : Sprint 16 — **Décision de suite requise**. Cinq familles d'alpha soldées sans edge OOS ; l'opérationnel durci (observabilité ajoutée, backlog D18/D19/D25 recalé). Le moteur est sûr, correct, bien testé (716 verts) et désormais mieux observable. **Décision d'ouverture requise** : (a') **poursuivre le durcissement Production** (backlog golden-safe restant : test E2E email SMTP via mock STARTTLS ; durcissement CI — lint/clang-tidy/cppcheck, pin des versions apt, coverage gate, TSan bloquant ; sonde `/healthz` HTTP ; opérabilité ré-auth Gateway) ; (b) **raffiner le pairs-trading proprement** (cointégration Engle-Granger + hedge ratio roulant, D49) ; (c'') **variante de 5e famille encore plus lourde** (scaling continu Moreira-Muir sur le VIX ; term-structure ; données alternatives) ; (d) **documenter la conclusion et clore la recherche d'edge** (aucune stratégie technique ni de régime de vol n'a d'edge OOS net de coûts — 5 familles / 6 variantes de connaissance négative). Recommandation : (d) est de plus en plus l'aboutissement honnête ; (a') est un durcissement incrémental utile mais à rendement décroissant. Discipline inchangée. Prod reste paper tant qu'aucun edge OOS n'est démontré
+- **Dernière mise à jour** : 2026-07-07 (Sprint 16 — **Conclusion de la recherche d'edge**. Décision utilisateur (d), la recommandation. La recherche d'edge est **CLOSE** : cinq familles de signaux / six variantes jugées par le protocole complet (3 pavages, anti-look-ahead, total-return, MC size-aware, confirmation hors-protocole) — **aucun edge OOS net de coûts**. Connaissance négative solide, désormais synthétisée dans un document autonome : `documentation/CONCLUSION_RECHERCHE_EDGE.md` (verdict exécutif, méthodologie, table des verdicts par famille avec renvois D26-D52 et suites verrous, leçons transférables, critères de réouverture). Pointeurs recalés : README (avertissement + décompte de tests « ~537 » périmé → 716), RUNBOOK (checklist pré-live : référence « Sprint 8-ter » périmée → conclusion, exigence inchangée mot pour mot), documentation/README. Sprint 100 % documentation : goldens byte-identiques par construction, verrou live intact. 716/716 verts, +0.)
+- **Sprint courant** : Sprint 17 — **Décision requise**. La recherche d'edge est close (Sprint 16) ; le moteur est sûr, correct, observable, 716 verts — et reste en paper. Options : (a') **poursuivre le durcissement Production** (backlog golden-safe restant : test E2E email SMTP via mock STARTTLS ; durcissement CI — lint/clang-tidy/cppcheck, pin des versions apt, coverage gate, TSan bloquant ; sonde `/healthz` HTTP ; opérabilité ré-auth Gateway) ; ou (e) **mode maintenance** (paper-only en veille : baseline verte au fil de l'eau, aucune exploration nouvelle). Les anciennes options (b) pairs-trading cointégré et (c'') variantes lourdes ne sont PLUS des sprints planifiés : elles sont documentées comme **critères de réouverture** (`CONCLUSION_RECHERCHE_EDGE.md` §5) — toute réouverture repasse par le protocole complet et la confirmation hors-protocole (D43). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -54,9 +54,9 @@
 > | **Rentabilité** | **28**  | Le candidat 8b.1 avait été réfuté proprement (−5 au Sprint 8-ter) ; les Sprints 8-quater/8-quinquies n'avaient rien changé (D40/D41). Le Sprint 8-sexies avait apporté +3 (pullback = premier candidat vivant). Le Sprint 8-septies **consolide sans ajouter (=)** : l'alpha du pullback est CONFIRMÉ hors de son protocole (données longues incluant dot-com/2008 : +0,14/+1,05 ; 2/3 actifs ; grille stable — la méfiance D36 est levée SUR L'ALPHA, vraie bonne nouvelle) MAIS il double le drawdown de queue (DD p95 10,80 → 19,27) et aucun levier config-only ne les découple (D44) → non adopté. La capacité DÉMONTRÉE à gagner de l'argent est inchangée (alpha absolu toujours négatif), d'où le maintien à 28 ; mais l'incertitude a rétréci (on sait que le pullback a un vrai alpha et où est le verrou). Le Sprint 8-octies **consolide encore sans ajouter (=)** : le vol-sizing est le premier levier à améliorer la frontière DD/alpha du pullback (DD 7,88 → 6,51 à faible coût d'alpha, après que D45 a corrigé un MC aveugle à la taille) mais le découplage est PARTIEL et l'alpha absolu reste négatif → non adopté. La note ne franchira 50 qu'avec un edge d'alpha ABSOLU — c'est l'objet du changement de paradigme (rotation multi-actifs, Sprint 8-nonies), premier axe à ne plus raffiner une chaîne mono-actif perdante ; et 70+ qu'en battant le B&H net de coûts avec la DoD complète. Le Sprint 8-nonies **consolide sans ajouter (=)** : la rotation multi-actifs est RÉFUTÉE (aucun edge, PIRE que le panier passif, D46) — le second grand axe (multi-actifs) est soldé comme le premier (mono-actif) ; la note reste à 28, les DEUX voies de recherche d'alpha étant épuisées sans edge démontré. Le Sprint 10 **consolide sans ajouter (=)** : la 3e famille explorée (mean-reversion, contrarian) n'a AUCUN alpha OOS (−8,56 fin QQQ, négatif sur les 4 actifs), mais son 1er jet ne trade quasi pas (D47 : cash drag, 1,45 % de temps investi) — la famille reste sous-explorée, l'incertitude n'a donc pas vraiment bougé ; la note reste à 28. Le Sprint 11 **consolide sans ajouter (=)** : la variante z-score/Bollinger de la famille MR TRADE enfin réellement (3-4 trades OOS, jusqu'à 23 sans filtre — D47 levé) mais reste SANS edge (alpha OOS négatif sur les 2 pavages, les 3 actifs et tous les réglages) → la 3e et dernière famille est désormais VRAIMENT jugée et soldée ; l'incertitude a rétréci (on SAIT maintenant que le mean-reversion n'a pas d'edge, ce n'était pas qu'un artefact de sous-échantillonnage) mais la capacité démontrée de gain est inchangée ; la note reste à 28. Le Sprint 12 **consolide sans ajouter (=)** : la 4e famille (pairs-trading market-neutral, la seule ORTHOGONALE) TRADE massivement (209-212 A/R OOS, D47 satisfait) mais n'a AUCUN edge — Sharpe OOS négatif sur les 3 pavages, les 4 paires et tous les réglages (D49) ; le spread log naïf β=1 sur fenêtre courte est du bruit. Les QUATRE familles d'alpha pré-définies sont soldées ; la note reste à 28, mais l'incertitude a encore rétréci (on SAIT que les stratégies techniques simples sur ETFs US n'ont pas d'edge OOS net de coûts — connaissance négative solide). Le Sprint 13 **consolide sans ajouter (=)** : la 5e famille explorée (vol-regime / volatility-managed, la variante (c) la plus faisable offline) TRADE réellement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages du balayage (D50) ; le filtre réduit le DD de < 50 % et l'alpha vs B&H reste négatif (cash drag). La note reste à 28, les CINQ familles techniques simples étant désormais soldées (connaissance négative encore renforcée). Le Sprint 14 **consolide sans ajouter (=)** : la variante à données EXTERNES de la 5e famille (VIX-regime, vol IMPLICITE) TRADE massivement mais n'a AUCUN edge ajusté du risque — Sharpe OOS positif mais SOUS le B&H sur les 3 pavages, les 4 actifs et les 9 réglages (D51) ; la vol implicite (anticipatrice, exogène) ne fait pas mieux que la réalisée. La note reste à 28 ; les DEUX variantes de régime de vol (réalisée + implicite) sont soldées, la connaissance négative se renforce encore. La note ne bougera qu'avec une piste NON technique (données alternatives) ou une vraie cointégration testée, pas un raffinement de plus. |
 - **État des tests** : 716/716 verts (575 unitaires + 141 intégration) — et la
   suite passe aussi en **Release**, sous **ASan/UBSan**, et TSan ciblé sur les
-  suites concurrentes (dont la nouvelle suite `BotStateHealthUnit`). +8 au Sprint 15
-  (708 → 716 : instantané de santé `BotState` + 8 tests BotStateHealthUnit ; aucun
-  nouveau test d'intégration). Aucune dérive hors cycle. Détail au changelog.
+  suites concurrentes (dont la suite `BotStateHealthUnit`). +0 au Sprint 16
+  (sprint 100 % documentation ; baseline recalée sur `ctest -N`=716, aucune
+  dérive hors cycle). Détail au changelog.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1374,8 +1374,77 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D50 | 🟡 | (Sprint 13) **La 5e famille — vol-regime / volatility-managed — TRADE réellement mais n'a AUCUN edge ajusté du risque ; le cash drag coûte plus que la réduction de DD ne rapporte.** Le filtre binaire long/cash (long si vol réalisée 20 j ≤ médiane glissante 126 j de cette vol) déclenche 107-135 stints OOS (D47 satisfait) et son Sharpe est POSITIF (0,52 canon / 0,23 fin / 0,61 décalé) — mais SOUS le Sharpe du B&H (1,09 / 0,77 / 1,04) sur les 3 pavages, les 4 actifs (dSharpe QQQ −0,54, SPY −0,62, IWM −0,39, MDY −0,68) et les 9 réglages du balayage {10,20,42}×{0,8;1;1,2} (meilleur vl=42/seuil=1,2 = dSharpe −0,16 < 0). Il réduit le drawdown (14,5 vs 18,1 %) mais de < 50 % seulement (clause DoD « DD réduit ≥ 50 % » NON atteinte, contraste avec le pairs-trading D49) et l'alpha vs B&H est négatif (sous-performe le rendement du B&H — cash drag T4/D48, cohérent avec un QQQ structurellement haussier). MC size-aware cagrP50 +5,03 % (gagne de l'argent, moins efficacement que le B&H). Les CINQ familles pré-définies sont soldées sans edge OOS. Pistes de 5e famille NON explorées (backlog) : volatilité IMPLICITE (VIX/VXN — nécessite un export de données, aucune dans le dépôt ; export_total_return.py rejette un indice sans dividende, D29) ; scaling continu w = cible/réalisée (Moreira-Muir strict, code moteur) ; données alternatives / surface d'options (gros chantier data). | Consigné (verrous `VolRegimeOosIntegration`) ; décision de suite = **Décision requise Sprint 14** (parquer/durcir la prod, raffiner le pairs-trading, autre 5e famille à données externes, ou documenter la conclusion) |
 | D51 | 🟡 | (Sprint 14) **La variante à données EXTERNES de la 5e famille (VIX-regime, volatilité IMPLICITE) n'a AUCUN edge ajusté du risque — la vol implicite ne fait pas mieux que la vol réalisée du Sprint 13.** Même moteur binaire long/cash, mais le signal de régime est le niveau du ^VIX (vol implicite, anticipatrice, EXOGÈNE — 9192 barres 1990+, fetchées via `export_total_return.py` étendu au caret ^ + fallback sans dividende, item 14.0) au lieu de la vol réalisée de QQQ. Le filtre TRADE massivement (195-227 stints OOS, plus que le VolRegime car le VIX croise sa médiane plus souvent, D47 satisfait) et son Sharpe est POSITIF (0,55/0,42/0,45) — mais SOUS le Sharpe du B&H (1,06/0,87/0,98) sur les 3 pavages, les 4 actifs gatés sur le MÊME VIX (QQQ 0,42, SPY −0,01, IWM 0,38, MDY 0,28) et les 9 réglages du balayage {63,126,252}×{0,8;1;1,2} (meilleur rl=126/seuil=1,2 = dSharpe −0,22 < 0). DD réduit (13,4 vs 18,6 %) mais < 50 % ; alpha vs B&H négatif (cash drag T4/D48). MC size-aware cagrP50 +5,15 %. Constat : sortir du marché en régime de vol haute (réalisée OU implicite) coûte plus en rendement manqué que ça ne rapporte en risque réduit, sur un QQQ structurellement haussier. Faisabilité notée : le fetch Yahoo ^VIX PASSE dans cet environnement (proxy egress autorise query2.finance.yahoo.com, HTTP 200), TLS via SSL_CERT_FILE=bundle CA du proxy. Pistes NON explorées (backlog) : scaling continu Moreira-Muir (w = cible/VIX, code moteur) ; term-structure VIX/VIX3M ; données alternatives / surface d'options. | Consigné (verrous `VixRegimeOosIntegration`) ; décision de suite = **Décision requise Sprint 15** (parquer/durcir la prod, raffiner le pairs-trading, variante encore plus lourde, ou documenter la conclusion) |
 | D52 | 🟢 | (Sprint 15) **Le backlog du candidat (a) « durcir l'opérationnel » était en grande partie PÉRIMÉ — déjà résolu en code (D18/D25) ou re-priorisé (D19).** En ouvrant le Sprint 15, les trois items nommés se sont révélés obsolètes : D18 (ATR true-range) et D25 (drop de la barre en formation) déjà implémentés ET test-lockés ; D19 (lookback) déjà configurable (=230, coïncide avec le backtest) et re-priorisé hors runtime. Dérive de type D20 (le backlog a menti). De plus, les canaux d'alerte sont déjà E2E-testés (SMS + webhook : `SmsDeliveredToLocalServer`/`WebhookDeliveredToLocalServer` ; email en échec seulement — le succès SMTP exige STARTTLS, non mockable en HTTP). Le SEUL vrai manque golden-safe était l'OBSERVABILITÉ : `BotState` n'exposait aucune liveness explicite (âge du dernier cycle sain, kill-switch armé, auth Gateway) → le healthcheck TCP voit un process gelé mais pas un process silencieusement malsain. Corrigé (15.1/15.2 : instantané `health` + câblage + procédure RUNBOOK). Leçon : rouvrir un item de backlog commence par VÉRIFIER fichier:ligne qu'il est encore réel, pas le croire sur parole. | Corrigé (D18/D19/D25 recalés ; observabilité ajoutée). Reste au backlog Production : test E2E email SMTP (mock STARTTLS), durcissement CI (lint/static-analysis/pin/coverage), sonde `/healthz` HTTP, opérabilité ré-auth Gateway |
+| D53 | 🟢 | (Sprint 16) **Le README affichait « ~537 tests » pour un dépôt qui en compte 716** — un document pointeur portait son propre décompte, jamais recalé depuis des sprints (même famille de dérive que D20/D52 : un document qui ment). Garde-fou adopté : le décompte de tests ne vit QUE dans ROADMAP « État des tests » (recalé chaque sprint par `ctest -N`, étape 2 du workflow) ; le README y renvoie au lieu de porter un chiffre autonome | ✅ Corrigé au Sprint 16 (16.2, `e1ef454`) |
 
 ## Changelog
+
+### Sprint 16 — Conclusion de la recherche d'edge (2026-07-07)
+
+**Contexte** : décision utilisateur (d) = documenter la conclusion et clore la
+recherche d'edge — la recommandation du tableau de bord (« l'aboutissement
+honnête »). Cinq familles de signaux (six variantes) ont été jugées par le même
+protocole discipliné, toutes soldées sans edge OOS net de coûts ; la ROADMAP
+portait ce verdict en fragments (D26-D52, changelogs par sprint), il manquait
+la synthèse autonome et le recalage des documents pointeurs.
+
+**Baseline à l'ouverture** : **716/716 verte** (build −Werror sans warning,
+Linux paquets système sans vcpkg, `ctest -N`=716, 575 unitaires + 141
+intégration, aucune dérive — le tableau de bord était exact).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `93bd3c4` docs: conclusion de la recherche d'edge — 5 familles soldées sans edge OOS (item 16.1)
+- `e1ef454` docs: pointeurs README/RUNBOOK/documentation vers la conclusion d'edge (item 16.2)
+- (clôture) docs : mise à jour roadmap
+
+**Tests** : 716 → **716** (+0 : sprint 100 % documentation, aucun code touché,
+goldens byte-identiques par construction).
+
+**Items** :
+- [x] **16.1** `documentation/CONCLUSION_RECHERCHE_EDGE.md` → `93bd3c4`
+  Document de clôture autonome : verdict exécutif (aucune stratégie technique
+  simple sur ETFs US n'a d'edge OOS net de coûts) ; table des 11 garde-fous
+  méthodologiques qui rendent la connaissance négative solide (D22/D29/D33/D34/
+  D35/D36/D37/D39/D43/D45/D47) ; verdicts des 5 familles avec chiffres, renvois
+  Découvertes et suites de tests verrous ; 10 leçons transférables ; critères de
+  réouverture (cointégration Engle-Granger, Moreira-Muir continu, term-structure
+  VIX/VIX3M, données alternatives — chacune soumise au protocole complet + D43) ;
+  statut résiduel du bot (paper-only, gate 4 couches).
+- [x] **16.2** Recalage des documents pointeurs → `e1ef454`
+  README : bloc d'avertissement (référençait le seul Sprint 8-ter → recherche
+  close, 5 familles), ligne au tableau des documents, décompte de tests corrigé
+  (« ~537 » périmé → 716 réels — dérive documentaire de type D52 attrapée en
+  passant). RUNBOOK : la référence « Sprint 8-ter » de la checklist pré-live
+  pointe vers la conclusion ; l'exigence (DoD NON atteinte, case décochée) est
+  inchangée mot pour mot. documentation/README : conclusion marquée à jour.
+
+**Verdict de clôture** : DoD atteinte (716/716 verts, −Werror, goldens
+byte-identiques — aucun code touché). Fichiers gouvernés (`config/prod.json`,
+`prompt-*.md`, CLAUDE.md live-safety) intacts, vérifié par diff. `liveTradingApproved`
+= false, verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` intact. **La recherche
+d'edge est CLOSE** ; décision de suite = **Décision requise Sprint 17** ((a')
+durcissement Production restant, ou (e) mode maintenance).
+
+**Rétrospective** :
+1. *Découpage* : bon et sans surprise — 16.1 (synthèse) puis 16.2 (pointeurs),
+   additifs et indépendants du code. Le seul choix structurant : la conclusion
+   vit dans `documentation/` comme document AUTONOME (lisible sans la ROADMAP)
+   et la ROADMAP reste la source de vérité des verdicts détaillés — pas de
+   duplication de rôle, chaque chiffre cité renvoie à sa suite de tests verrou.
+2. *Prompts du workflow* : suffisants, AUCUN diff proposé. La décision (d) a été
+   posée via le choix guidé à l'ouverture (options a'/b/c''/d) et consignée ici.
+3. *À détecter plus tôt / garde-fou* : le README affichait « ~537 tests » (réel :
+   716) — même famille de dérive que D20/D52 (un document pointeur ment),
+   consignée **D53**. Garde-fou
+   retenu : le décompte de tests ne vit plus QUE dans ROADMAP « État des tests »
+   (recalé chaque sprint par `ctest -N`) ; le README y renvoie désormais au lieu
+   de porter son propre chiffre. Coût nul, appliqué dans 16.2.
+4. *Notes /100* : **toutes inchangées** — Architecture 90, Qualité 93, FinTech 88,
+   Production 74, **Rentabilité 28 (=)**. Un sprint de documentation ne change ni
+   la couverture ni la capacité démontrée de gain ; sa valeur est l'honnêteté
+   documentaire (le verdict négatif est désormais un livrable de première classe,
+   pas un fil à reconstituer) et la fermeture propre d'un axe de travail — la
+   note Rentabilité ne bougera qu'avec un edge d'alpha absolu démontré selon les
+   critères de réouverture.
 
 ### Sprint 15 — Durcissement opérationnel : observabilité + recalage du backlog (2026-07-06)
 
