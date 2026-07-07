@@ -179,7 +179,8 @@ int main(int argc, char* argv[]) {
 
     WsServer wsServer(9001, botState);
     wsServer.start();
-    std::cout << "\n[WsServer] Dashboard sur ws://localhost:9001\n";
+    std::cout << "\n[WsServer] Dashboard sur ws://localhost:9001"
+                 " — sonde santé : GET http://localhost:9001/healthz\n";
 
     // Les DB vivent dans data/ : c'est le répertoire monté en volume par
     // docker-compose (./data:/app/data) — écrites dans /app, elles n'étaient
