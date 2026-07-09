@@ -17,8 +17,8 @@ une discipline de production : le sprint se termine compilable, testé, commité
   le CMakeLists gère les deux pour SQLite3). Sur un Linux nu, installer d'abord
   (l'`update` est obligatoire : un index apt périmé donne des 404 — leçon Sprint 3) :
   `apt-get update && apt-get install libboost-dev libboost-system-dev
-  nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libgtest-dev googletest
-  cmake ninja-build`.
+  nlohmann-json3-dev libcurl4-openssl-dev libsqlite3-dev libssl-dev libgtest-dev
+  googletest cmake ninja-build`.
 - Tests : GTest via `ctest` ; suites `<Component>Unit` / `<Component>Integration`,
   un fichier par composant dans `tests/unit/` / `tests/integration/` ; chaque nouveau
   fichier de test doit être ajouté aux cibles `unit_tests` / `integration_tests` du
