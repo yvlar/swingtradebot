@@ -156,13 +156,19 @@ structurellement haussier (cash drag).
 
 ## 5. Ce qui rouvrirait la recherche (critères, pas promesses)
 
-Pistes identifiées, non explorées, par ordre de coût croissant :
+Pistes identifiées à la clôture (Sprint 16), par ordre de coût croissant :
 
 - **Cointégration propre pour le pairs-trading** : test d'Engle-Granger +
   hedge ratio roulant (une vraie paire cointégrée, pas un spread naïf β=1) —
-  résidu explicite de D49.
+  résidu explicite de D49. *→ EXPLORÉE au Sprint 18 (décision (r)) : verdict
+  AUCUN EDGE — le gate filtre le bruit de D49 sans créer d'edge (D56,
+  changelog Sprint 18, verrous `CointPairsOosIntegration`).*
 - **Scaling continu Moreira-Muir** : pondération w = cible/vol (réalisée ou
-  VIX) au lieu du filtre binaire long/cash — code moteur.
+  VIX) au lieu du filtre binaire long/cash — code moteur. *→ EXPLORÉE au
+  Sprint 18 : verdict AUCUN EDGE — dSharpe vs B&H quasi comblé (le cash drag
+  D50 était le bon diagnostic) mais alpha absolu toujours négatif (D55,
+  changelog Sprint 18, verrous `VolScaledOosIntegration` /
+  `VixScaledOosIntegration`).*
 - **Term-structure de volatilité** (VIX/VIX3M) : le contango/backwardation
   comme signal de régime — nécessite un export de données supplémentaire.
 - **Données alternatives / surface d'options** : gros chantier data, hors du
