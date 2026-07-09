@@ -27,6 +27,9 @@
 #include "backtest/PairsBacktester.hpp"
 #include "backtest/VolRegimeBacktester.hpp"
 #include "backtest/VixRegimeBacktester.hpp"
+#include "backtest/VolScaledBacktester.hpp"
+#include "backtest/VixScaledBacktester.hpp"
+#include "backtest/CointPairsBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -870,6 +873,252 @@ int main() {
                   << "  OOS) et gagne de l'argent (Sharpe > 0) mais SOUS le B&H sur le Sharpe\n"
                   << "  (dSharpe < 0) sur les 3 pavages, les 4 actifs et tous les reglages. Gate\n"
                   << "  FERME. Prod paper. La 5e famille (deux variantes) est soldee sans edge.\n";
+    }
+
+    // ── 19. SCALING CONTINU MOREIRA-MUIR (Sprint 18) ────────────────────────
+    // Réouverture de la recherche d'edge (décision utilisateur (r), piste §5.2
+    // de CONCLUSION_RECHERCHE_EDGE.md) : au lieu du filtre BINAIRE long/cash des
+    // sections 17-18 (Sharpe OOS positif mais SOUS le B&H — cash drag D50/D51),
+    // le poids investi est CONTINU : w* = min(1, cible / vol annualisée), bande
+    // anti-churn, coût proportionnel au notionnel tradé |Δw|. Deux variantes :
+    // vol RÉALISÉE (VolScaledBacktester) et vol IMPLICITE ^VIX
+    // (VixScaledBacktester). Directionnel → jugé sur l'ALPHA vs B&H net de
+    // coûts (critère primaire) avec repli Sprint 8 (Sharpe ≥ B&H ET DD −50 %).
+    // Verrous CI dans test_vol_scaled_oos_integration.cpp /
+    // test_vix_scaled_oos_integration.cpp.
+    titre("19. SCALING CONTINU MOREIRA-MUIR (poids w = cible/vol, vol realisee + VIX — 18.3)");
+    {
+        auto cfgVs = []() {
+            VolScaledConfig c;
+            c.volLookback = 20; c.targetVolAnnPct = 15.0;
+            c.maxWeight = 1.0; c.rebalanceBand = 0.05;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggS { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                             dd = 0.0, bhdd = 0.0, alpha = 0.0,
+                                             poids = 0.0, churn = 0.0;
+                      size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VolScaledWindow>& ws) {
+            AggS a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.alpha += w.oos.alphaVsBuyHold;
+                a.poids += w.oos.avgWeight; a.churn += w.oos.turnover;
+                a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n;
+                a.alpha /= n; a.poids /= n; a.churn /= n; }
+            return a;
+        };
+        const std::string qqq = SWINGBOT_QQQ_MAX_CSV;
+
+        const auto ac = agrege(VolScaledWalkForward(cfgVs(), qqq, 750, 500, 500).run());
+        const auto af = agrege(VolScaledWalkForward(cfgVs(), qqq, 550, 400, 400).run());
+        const auto as = agrege(VolScaledWalkForward(cfgVs(), qqq, 750, 500, 500, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  Alpha OOS vs B&H (QQQ, vol realisee) : canon " << ac.alpha
+                  << " (dSharpe " << ac.dSharpe() << ", poids moy " << ac.poids
+                  << ", trades " << ac.trades << ")\n"
+                  << "                                          fin   " << af.alpha
+                  << " (dSharpe " << af.dSharpe() << ", poids moy " << af.poids
+                  << ", trades " << af.trades << ")\n"
+                  << "                                          decale " << as.alpha
+                  << " (dSharpe " << as.dSharpe() << ", poids moy " << as.poids
+                  << ", trades " << as.trades << ")\n";
+        std::cout << "  DD (canon) : strat " << ac.dd << " % vs B&H " << ac.bhdd
+                  << " % ; churn moyen (somme |dw| par fenetre) " << ac.churn << "\n";
+
+        std::cout << "  Multi-univers (fin) :";
+        const std::pair<const char*, const char*> univ[] = {
+            {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+            {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+        for (const auto& u : univ) {
+            const auto agg = agrege(VolScaledWalkForward(cfgVs(), u.second, 550, 400, 400).run());
+            std::cout << "  " << u.first << " a=" << agg.alpha;
+        }
+        std::cout << "\n";
+
+        // Variante vol IMPLICITE : le poids est piloté par le NIVEAU du ^VIX.
+        auto cfgVx = []() {
+            VixScaledConfig c;
+            c.targetVixPct = 15.0; c.maxWeight = 1.0; c.rebalanceBand = 0.05;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggX { size_t fen = 0; double alpha = 0.0, sharpe = 0.0, bhSharpe = 0.0;
+                      size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agregeX = [](const std::vector<VixScaledWindow>& ws) {
+            AggX a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.alpha += w.oos.alphaVsBuyHold; a.sharpe += w.oos.sharpeRatio;
+                a.bhSharpe += w.oos.buyHoldSharpe; a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.alpha /= n; a.sharpe /= n; a.bhSharpe /= n; }
+            return a;
+        };
+        const std::vector<std::string> qv = { SWINGBOT_QQQ_MAX_CSV, SWINGBOT_VIX_MAX_CSV };
+        const auto xc = agregeX(VixScaledWalkForward(cfgVx(), qv, 750, 500, 500).run());
+        const auto xf = agregeX(VixScaledWalkForward(cfgVx(), qv, 550, 400, 400).run());
+        const auto xs = agregeX(VixScaledWalkForward(cfgVx(), qv, 750, 500, 500, 90).run());
+        std::cout << "  Variante VIX : alpha OOS canon " << xc.alpha
+                  << " (dS " << xc.dSharpe() << ")  fin " << xf.alpha
+                  << " (dS " << xf.dSharpe() << ")  decale " << xs.alpha
+                  << " (dS " << xs.dSharpe() << ")\n";
+
+        // Balayage cible × bande (critère : alpha OOS moyen, pavage fin).
+        double best = -1e9; double bT = 0.0, bB = 0.0;
+        for (double tg : {10.0, 15.0, 20.0}) for (double bd : {0.02, 0.05, 0.10}) {
+            VolScaledConfig c = cfgVs(); c.targetVolAnnPct = tg; c.rebalanceBand = bd;
+            const double al = agrege(VolScaledWalkForward(c, qqq, 550, 400, 400).run()).alpha;
+            if (al > best) { best = al; bT = tg; bB = bd; }
+        }
+        std::cout << "  Balayage cible x bande : meilleur cible=" << bT << " / bande=" << bB
+                  << " -> alpha OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+
+        // Monte-Carlo size-aware (D45) sur les stints OOS poolés (canonique).
+        std::vector<TradeRecord> pool;
+        double annees = 0.0;
+        for (const auto& w : VolScaledWalkForward(cfgVs(), qqq, 750, 500, 500).run()) {
+            for (const auto& t : w.oos.trades) pool.push_back(t);
+            if (w.oos.equityDates.size() >= 2) {
+                const long d0 = daysFromCivil(w.oos.equityDates.front());
+                const long d1 = daysFromCivil(w.oos.equityDates.back());
+                if (d1 > d0) annees += static_cast<double>(d1 - d0) / 365.25;
+            }
+        }
+        if (!pool.empty()) {
+            MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+            const auto rmc = mc.run(pool, annees);
+            std::cout << "  Monte-Carlo size-aware (canon, seed 42, 2000 chemins) : cagrP50 "
+                      << rmc.cagrP50 << " %  ddP95 " << rmc.ddP95 << " %\n";
+        }
+
+        std::cout << "  VERDICT 18.3 : AUCUN EDGE — mais le RESULTAT NEGATIF LE PLUS SERRE du\n"
+                  << "  projet : le scaling continu COMBLE quasiment l'ecart de Sharpe vs B&H\n"
+                  << "  (dSharpe +0,06/-0,06/+0,03 contre -0,5 pour le binaire D50 : le cash drag\n"
+                  << "  est bien la bonne cible) et reduit le DD (~1/3), MAIS l'alpha absolu reste\n"
+                  << "  negatif sur les 3 pavages et les 4 actifs (meilleur reglage -0,52), le\n"
+                  << "  signe du dSharpe s'inverse selon le pavage (lecon 8t.1) et la clause de\n"
+                  << "  repli exige DD -50 %. La variante VIX fait MOINS bien que la vol realisee.\n"
+                  << "  Gate FERME. Prod paper.\n";
+    }
+
+    // ── 20. PAIRS-TRADING COINTEGRE ENGLE-GRANGER (Sprint 18) ───────────────
+    // Réouverture (décision (r), piste §5.1) : correction structurelle du
+    // Sprint 12/D49 (« le spread naïf sans test de cointégration est du
+    // bruit ») — hedge ratio OLS ROULANT (β figé à l'entrée) + GATE de
+    // cointégration (Dickey-Fuller sur le résidu, critique Engle-Granger figée
+    // −3,34) : quand la paire n'est PAS cointégrée, on ne trade PAS. Famille
+    // market-neutral → jugée sur le SHARPE OOS (pas l'alpha vs B&H). Garde
+    // d'activation D47 : pctBarsCointegrated (un gate toujours fermé ne serait
+    // pas un verdict). Verrous CI dans test_coint_pairs_oos_integration.cpp.
+    // AVERTISSEMENT WARMUP (D35) : max(betaWindow, adfWindow) − 1 = 125 barres
+    // (et 251 quand betaWindow = 252) → fenêtres OOS de 500 barres.
+    titre("20. PAIRS-TRADING COINTEGRE (Engle-Granger : hedge roulant + gate ADF — 18.6)");
+    {
+        auto cfgCp = []() {
+            CointPairsConfig c;
+            c.betaWindow = 126; c.adfWindow = 126; c.adfCritical = -3.34;
+            c.zWindow = 20; c.entryK = 2.0; c.exitZ = 0.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggC { size_t fen = 0; double sharpe = 0.0, ret = 0.0, dd = 0.0,
+                                             leg0dd = 0.0, coint = 0.0;
+                      size_t trades = 0; };
+        auto agrege = [](const std::vector<CointPairWindow>& ws) {
+            AggC a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.ret += w.oos.totalReturnPct;
+                a.dd += w.oos.maxDrawdownPct; a.leg0dd += w.oos.leg0BuyHoldDrawdownPct;
+                a.coint += w.oos.pctBarsCointegrated;
+                a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.ret /= n; a.dd /= n; a.leg0dd /= n; a.coint /= n; }
+            return a;
+        };
+        const std::vector<std::string> qs = { SWINGBOT_QQQ_MAX_CSV, SWINGBOT_SPY_MAX_CSV };
+
+        const auto ac = agrege(CointPairsWalkForward(cfgCp(), qs, 750, 500, 500).run());
+        const auto af = agrege(CointPairsWalkForward(cfgCp(), qs, 700, 500, 500).run());
+        const auto as = agrege(CointPairsWalkForward(cfgCp(), qs, 750, 500, 500, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  Sharpe OOS (QQQ/SPY) : canon " << ac.sharpe
+                  << " (ret " << ac.ret << ", A/R " << ac.trades
+                  << ", coint " << ac.coint << " %)\n"
+                  << "                         fin   " << af.sharpe
+                  << " (ret " << af.ret << ", A/R " << af.trades
+                  << ", coint " << af.coint << " %)\n"
+                  << "                         decale " << as.sharpe
+                  << " (ret " << as.ret << ", A/R " << as.trades
+                  << ", coint " << as.coint << " %)\n";
+        std::cout << "  DD (canon) : strat " << ac.dd << " % vs B&H jambe0 "
+                  << ac.leg0dd << " %\n";
+
+        std::cout << "  Multi-paires (fin) :";
+        const std::pair<const char*, std::pair<const char*, const char*>> paires[] = {
+            {"QQQ/SPY", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_SPY_MAX_CSV}},
+            {"QQQ/IWM", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_IWM_MAX_CSV}},
+            {"QQQ/MDY", {SWINGBOT_QQQ_MAX_CSV, SWINGBOT_MDY_MAX_CSV}},
+            {"SPY/IWM", {SWINGBOT_SPY_MAX_CSV, SWINGBOT_IWM_MAX_CSV}} };
+        for (const auto& p : paires) {
+            const auto agg = agrege(CointPairsWalkForward(cfgCp(),
+                { p.second.first, p.second.second }, 700, 500, 500).run());
+            std::cout << "  " << p.first << " S=" << agg.sharpe
+                      << " (coint " << agg.coint << " %)";
+        }
+        std::cout << "\n";
+
+        double best = -1e9; int bW = 0; double bK = 0.0;
+        for (int bw : {126, 252}) for (double k : {1.5, 2.0, 2.5}) {
+            CointPairsConfig c = cfgCp(); c.betaWindow = bw; c.adfWindow = bw; c.entryK = k;
+            const double sh = agrege(CointPairsWalkForward(c, qs, 700, 500, 500).run()).sharpe;
+            if (sh > best) { best = sh; bW = bw; bK = k; }
+        }
+        std::cout << "  Balayage betaWindow x entryK : meilleur w=" << bW << " / k=" << bK
+                  << " -> Sharpe OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+
+        // Monte-Carlo size-aware (D45) sur les A/R OOS poolés (canonique).
+        std::vector<TradeRecord> pool;
+        double annees = 0.0;
+        for (const auto& w : CointPairsWalkForward(cfgCp(), qs, 750, 500, 500).run()) {
+            for (const auto& t : w.oos.trades) pool.push_back(t);
+            if (w.oos.equityDates.size() >= 2) {
+                const long d0 = daysFromCivil(w.oos.equityDates.front());
+                const long d1 = daysFromCivil(w.oos.equityDates.back());
+                if (d1 > d0) annees += static_cast<double>(d1 - d0) / 365.25;
+            }
+        }
+        if (!pool.empty()) {
+            MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+            const auto rmc = mc.run(pool, annees);
+            std::cout << "  Monte-Carlo size-aware (canon, seed 42, 2000 chemins) : cagrP50 "
+                      << rmc.cagrP50 << " %  ddP95 " << rmc.ddP95 << " %\n";
+        } else {
+            std::cout << "  Monte-Carlo : AUCUN trade OOS poole (gate ferme en continu) —\n"
+                      << "  la garde D47 s'applique : verdict d'ACTIVATION, pas de performance.\n";
+        }
+
+        std::cout << "  VERDICT 18.6 : AUCUN EDGE — le gate de cointegration FILTRE bien le bruit\n"
+                  << "  (Sharpe OOS -0,17/-0,31 contre -1,16/-1,20 pour le naif D49 ; MC cagrP50\n"
+                  << "  -0,33 % contre -3,62 % ; DD p95 17 % contre 68 %) : il degrade beaucoup\n"
+                  << "  moins, mais ne CREE pas d'edge — Sharpe OOS negatif sur les 3 pavages, les\n"
+                  << "  4 paires et tous les reglages (gate ouvert ~7-10 % des barres, 19-24 A/R :\n"
+                  << "  D47 satisfait, le verdict est un verdict de PERFORMANCE, pas d'activation).\n"
+                  << "  ETFs indiciels US : pas de paire durablement cointegree exploitable net de\n"
+                  << "  couts. Gate FERME. Prod paper.\n";
     }
 
     std::cout << "\n";
