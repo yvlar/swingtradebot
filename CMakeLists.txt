@@ -143,6 +143,10 @@ add_executable(unit_tests
         tests/unit/test_mean_reversion_unit.cpp
         tests/unit/test_vol_regime_backtester_unit.cpp
         tests/unit/test_vix_regime_backtester_unit.cpp
+        tests/unit/test_vol_scaled_backtester_unit.cpp
+        tests/unit/test_vix_scaled_backtester_unit.cpp
+        tests/unit/test_cointegration_unit.cpp
+        tests/unit/test_coint_pairs_backtester_unit.cpp
         tests/unit/test_bot_state_health_unit.cpp
         tests/unit/test_gateway_auth_monitor_unit.cpp
         ${BOT_SOURCES}
@@ -184,6 +188,9 @@ add_executable(integration_tests
         tests/integration/test_pairs_oos_integration.cpp
         tests/integration/test_vol_regime_oos_integration.cpp
         tests/integration/test_vix_regime_oos_integration.cpp
+        tests/integration/test_vol_scaled_oos_integration.cpp
+        tests/integration/test_vix_scaled_oos_integration.cpp
+        tests/integration/test_coint_pairs_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
