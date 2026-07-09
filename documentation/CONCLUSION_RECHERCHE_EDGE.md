@@ -180,6 +180,17 @@ Pistes identifiées à la clôture (Sprint 16), par ordre de coût croissant :
   `VixTermScaledOosIntegration`). Le périmètre OFFLINE du §5 est ÉPUISÉ.*
 - **Données alternatives / surface d'options** : gros chantier data, hors du
   périmètre offline actuel — la SEULE piste restante du §5.
+  *→ Variante GRATUITE EXPLORÉE au Sprint 20 (décision (r''), exports
+  `SKEW_max.csv` 1990+ / `VVIX_max.csv` 2007+ — indices dérivés de la surface
+  d'options CBOE servis par Yahoo, coût zéro) : verdict AUCUN EDGE — ni le
+  prix de la protection de queue (SKEW, le PIRE filtre de régime externe :
+  churn de coûts sans pouvoir prédictif) ni la vol-de-vol (VVIX, même profil
+  que le niveau du VIX D51) ne battent le B&H en Sharpe OOS, et AUCUN candidat
+  de balayage > 0 n'émerge (D58, changelog Sprint 20, verrous
+  `SkewRegimeOosIntegration` / `VvixRegimeOosIntegration`). Le chantier PAYANT
+  (vraies chaînes d'options : IV par strike/échéance, ORATS/CBOE DataShop…)
+  reste DISTINCT et NON exploré — il exige une décision utilisateur sur la
+  source, son coût et des identifiants.*
 
 Toute réouverture est soumise au protocole complet : moteur anti-look-ahead,
 données total-return longues, 3 pavages, garde de trades, grille resserrée,

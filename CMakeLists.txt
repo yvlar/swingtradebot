@@ -103,6 +103,10 @@ target_compile_definitions(validate PRIVATE
         # Indice de vol implicite 3 MOIS (^VIX3M, Sprint 19) : term-structure
         # VIX/VIX3M. Même statut que VIX : signal seulement, Adj == Close attendu.
         SWINGBOT_VIX3M_MAX_CSV="${CMAKE_SOURCE_DIR}/VIX3M_max.csv"
+        # Indices de SURFACE D'OPTIONS (^SKEW / ^VVIX, Sprint 20) : signaux de
+        # régime seulement, jamais tradés ; Adj == Close attendu (indices).
+        SWINGBOT_SKEW_MAX_CSV="${CMAKE_SOURCE_DIR}/SKEW_max.csv"
+        SWINGBOT_VVIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VVIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
@@ -198,6 +202,8 @@ add_executable(integration_tests
         tests/integration/test_vix_term_regime_oos_integration.cpp
         tests/integration/test_vix_term_scaled_oos_integration.cpp
         tests/integration/test_coint_pairs_oos_integration.cpp
+        tests/integration/test_skew_regime_oos_integration.cpp
+        tests/integration/test_vvix_regime_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
@@ -224,6 +230,10 @@ target_compile_definitions(integration_tests PRIVATE
         # Indice de vol implicite 3 MOIS (^VIX3M, Sprint 19) : term-structure
         # VIX/VIX3M. Même statut que VIX : signal seulement, Adj == Close attendu.
         SWINGBOT_VIX3M_MAX_CSV="${CMAKE_SOURCE_DIR}/VIX3M_max.csv"
+        # Indices de SURFACE D'OPTIONS (^SKEW / ^VVIX, Sprint 20) : signaux de
+        # régime seulement, jamais tradés ; Adj == Close attendu (indices).
+        SWINGBOT_SKEW_MAX_CSV="${CMAKE_SOURCE_DIR}/SKEW_max.csv"
+        SWINGBOT_VVIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VVIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 

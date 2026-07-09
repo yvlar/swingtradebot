@@ -63,6 +63,12 @@ build_log*.txt
 # verrous OOS de la famille vix-regime en dépendent. SIGNAL de régime, jamais
 # tradé ; Adj Close == Close (indice sans dividende).
 !VIX_max.csv
+# Indices de SURFACE D'OPTIONS ^SKEW ~1990+ / ^VVIX ~2007+ (Sprint 20, item
+# 20.0) : versionnés car les verrous OOS de la famille surface d'options en
+# dépendent. SIGNAUX de régime, jamais tradés ; Adj Close == Close (indices
+# sans dividende).
+!SKEW_max.csv
+!VVIX_max.csv
 
 # ── Python ────────────────────────────────────────────────
 __pycache__/

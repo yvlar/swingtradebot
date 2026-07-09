@@ -1284,6 +1284,109 @@ int main() {
                   << "  Gate FERME. Prod paper. La DERNIERE piste offline du paragraphe 5 est soldee.\n";
     }
 
+    // ── 22. FAMILLE SURFACE D'OPTIONS (Sprint 20) ───────────────────────────
+    // Piste §5.4 de CONCLUSION_RECHERCHE_EDGE.md, variante indices GRATUITS
+    // (décision utilisateur (r''), 2026-07-09) : deux indices dérivés de la
+    // surface d'options CBOE — ^SKEW (prix de la protection de queue, options
+    // OTM du S&P 500, axe 1999+ borné par QQQ : dot-com + 2008) et ^VVIX
+    // (vol-de-vol, options SUR le VIX, axe 2007+ : 2008 sans dot-com). Moteur
+    // VixRegimeBacktester RÉUTILISÉ tel quel (gate générique niveau vs médiane
+    // glissante — seule la série signal change) ; direction canonique seulement
+    // (long ssi signal ≤ mult × médiane), l'inversion n'est pas jugée (D43).
+    // Verrous CI dans test_skew_regime_oos_integration.cpp et
+    // test_vvix_regime_oos_integration.cpp.
+    titre("22. FAMILLE SURFACE D'OPTIONS (^SKEW + ^VVIX, QQQ long/cash, 3 pavages + balayage — 20.1/20.2)");
+    {
+        auto cfgSurf = []() {
+            VixRegimeConfig c;
+            c.refLookback = 126; c.thresholdMult = 1.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggS { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                            dd = 0.0, bhdd = 0.0; size_t trades = 0;
+                      std::vector<TradeRecord> pool; double annees = 0.0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VixWindow>& ws) {
+            AggS a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.trades += w.oos.trades.size();
+                for (const auto& t : w.oos.trades) a.pool.push_back(t);
+                if (w.oos.equityDates.size() >= 2) {
+                    const long d0 = daysFromCivil(w.oos.equityDates.front());
+                    const long d1 = daysFromCivil(w.oos.equityDates.back());
+                    if (d1 > d0) a.annees += static_cast<double>(d1 - d0) / 365.25;
+                }
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n; }
+            return a;
+        };
+
+        const std::pair<const char*, const char*> signaux[] = {
+            {"SKEW", SWINGBOT_SKEW_MAX_CSV}, {"VVIX", SWINGBOT_VVIX_MAX_CSV} };
+        for (const auto& sig : signaux) {
+            const std::vector<std::string> qs = { SWINGBOT_QQQ_MAX_CSV, sig.second };
+            const auto ac = agrege(VixRegimeWalkForward(cfgSurf(), qs, 750, 500, 500).run());
+            const auto af = agrege(VixRegimeWalkForward(cfgSurf(), qs, 550, 400, 400).run());
+            const auto as = agrege(VixRegimeWalkForward(cfgSurf(), qs, 750, 500, 500, 90).run());
+            std::cout << std::fixed << std::setprecision(4)
+                      << "\n  [" << sig.first << "] dSharpe OOS vs B&H (QQQ) : canon "
+                      << ac.dSharpe() << " (strat " << ac.sharpe << " vs B&H " << ac.bhSharpe
+                      << ", trades " << ac.trades << ")\n"
+                      << "                                    fin    " << af.dSharpe()
+                      << " (strat " << af.sharpe << " vs B&H " << af.bhSharpe
+                      << ", trades " << af.trades << ")\n"
+                      << "                                    decale " << as.dSharpe()
+                      << " (strat " << as.sharpe << " vs B&H " << as.bhSharpe
+                      << ", trades " << as.trades << ")\n";
+            std::cout << "  [" << sig.first << "] DD reduit (canon) : DD strat " << ac.dd
+                      << " % vs DD B&H " << ac.bhdd
+                      << " % (reduit mais < 50 %, clause DoD NON atteinte)\n";
+
+            std::cout << "  [" << sig.first << "] Multi-univers (fin, meme signal) :";
+            const std::pair<const char*, const char*> univ[] = {
+                {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+                {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+            for (const auto& u : univ) {
+                const auto agg = agrege(VixRegimeWalkForward(cfgSurf(),
+                    { u.second, sig.second }, 550, 400, 400).run());
+                std::cout << "  " << u.first << " dS=" << agg.dSharpe();
+            }
+            std::cout << "\n";
+
+            double best = -1e9; int bR = 0; double bM = 0.0;
+            for (int rl : {63, 126, 252}) for (double mm : {0.8, 1.0, 1.2}) {
+                VixRegimeConfig c = cfgSurf(); c.refLookback = rl; c.thresholdMult = mm;
+                const double ds = agrege(VixRegimeWalkForward(c, qs, 550, 400, 400).run()).dSharpe();
+                if (ds > best) { best = ds; bR = rl; bM = mm; }
+            }
+            std::cout << "  [" << sig.first << "] Balayage refLookback x seuil : meilleur rl="
+                      << bR << " / m=" << bM << " -> dSharpe OOS " << best
+                      << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+
+            MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+            const auto rmc = mc.run(ac.pool, ac.annees);
+            std::cout << "  [" << sig.first
+                      << "] Monte-Carlo size-aware (canon, seed 42, 2000 chemins) : cagrP50 "
+                      << rmc.cagrP50 << " %  ddP95 " << rmc.ddP95 << " %\n";
+        }
+
+        std::cout << "  VERDICT 20.3 : AUCUN EDGE — ni le prix de la protection de queue (SKEW)\n"
+                  << "  ni la vol-de-vol (VVIX) ne battent le B&H sur le Sharpe OOS : dSharpe < 0\n"
+                  << "  sur les 3 pavages, les 4 actifs et les 9 reglages, pour les DEUX signaux\n"
+                  << "  (SKEW : le PIRE des filtres externes, -0,68 canon — il croise sa mediane\n"
+                  << "  trop souvent, 343 A/R -> churn de couts ; VVIX : meme profil que le VIX\n"
+                  << "  D51, -0,61). AUCUN candidat de balayage > 0 (contraste D57) -> pas de\n"
+                  << "  grille resserree. DD reduit mais < 50 %, alpha negatif partout. Direction\n"
+                  << "  canonique seule jugee (D43). Gate FERME. Prod paper. La variante GRATUITE\n"
+                  << "  de la piste 5.4 est soldee ; le chantier payant (vraies chaines d'options)\n"
+                  << "  reste distinct et NON explore.\n";
+    }
+
     std::cout << "\n";
     return 0;
 }
