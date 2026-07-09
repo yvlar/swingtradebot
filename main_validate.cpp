@@ -30,6 +30,8 @@
 #include "backtest/VolScaledBacktester.hpp"
 #include "backtest/VixScaledBacktester.hpp"
 #include "backtest/CointPairsBacktester.hpp"
+#include "backtest/VixTermRegimeBacktester.hpp"
+#include "backtest/VixTermScaledBacktester.hpp"
 #include "strategies/ProdConfig.hpp"
 
 using namespace trading;
@@ -1119,6 +1121,167 @@ int main() {
                   << "  D47 satisfait, le verdict est un verdict de PERFORMANCE, pas d'activation).\n"
                   << "  ETFs indiciels US : pas de paire durablement cointegree exploitable net de\n"
                   << "  couts. Gate FERME. Prod paper.\n";
+    }
+
+    // ── 21. TERM-STRUCTURE VIX/VIX3M (Sprint 19) ────────────────────────────
+    // Réouverture (décision utilisateur (r'), piste §5.3 — DERNIÈRE piste
+    // offline du §5) : la FORME de la courbe de vol implicite comme signal de
+    // régime. Ratio VIX/VIX3M : contango (< 1) = régime normal, backwardation
+    // (> 1) = stress (2008, 2011, 2015, 2018, 2020, 2022). Deux variantes :
+    // filtre BINAIRE long/cash (ratio lissé ≤ seuil, VixTermRegimeBacktester)
+    // et poids CONTINU w = min(1, (VIX3M/VIX)^k) (VixTermScaledBacktester —
+    // leçon D55 : le cash drag est le vrai coût du binaire). Axe QQQ∩VIX∩VIX3M
+    // borné par le VIX3M (~2006) : SANS l'épisode dot-com. Directionnel →
+    // critère PRIMAIRE dSharpe vs B&H + sanity alpha (D23). Verrous CI dans
+    // test_vix_term_regime_oos_integration.cpp / test_vix_term_scaled_*.cpp.
+    titre("21. TERM-STRUCTURE VIX/VIX3M (contango/backwardation, binaire + continu — 19.5)");
+    {
+        // Variante BINAIRE : long si le ratio lissé (SMA 5) est ≤ 1, cash sinon.
+        auto cfgTr = []() {
+            VixTermRegimeConfig c;
+            c.ratioThreshold = 1.0; c.smoothLookback = 5;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggT { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                             dd = 0.0, bhdd = 0.0, alpha = 0.0,
+                                             invest = 0.0;
+                      size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VixTermRegimeWindow>& ws) {
+            AggT a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.alpha += w.oos.alphaVsBuyHold;
+                a.invest += w.oos.pctTimeInvested;
+                a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n;
+                a.alpha /= n; a.invest /= n; }
+            return a;
+        };
+        const std::vector<std::string> trio =
+            { SWINGBOT_QQQ_MAX_CSV, SWINGBOT_VIX_MAX_CSV, SWINGBOT_VIX3M_MAX_CSV };
+
+        const auto tc = agrege(VixTermRegimeWalkForward(cfgTr(), trio, 750, 500, 500).run());
+        const auto tf = agrege(VixTermRegimeWalkForward(cfgTr(), trio, 550, 400, 400).run());
+        const auto ts = agrege(VixTermRegimeWalkForward(cfgTr(), trio, 750, 500, 500, 90).run());
+        std::cout << std::fixed << std::setprecision(4)
+                  << "\n  Binaire (seuil 1,0 / SMA 5) — dSharpe OOS vs B&H (QQQ) :\n"
+                  << "    canon " << tc.dSharpe() << " (alpha " << tc.alpha
+                  << ", investi " << tc.invest << " %, trades " << tc.trades << ")\n"
+                  << "    fin   " << tf.dSharpe() << " (alpha " << tf.alpha
+                  << ", investi " << tf.invest << " %, trades " << tf.trades << ")\n"
+                  << "    decale " << ts.dSharpe() << " (alpha " << ts.alpha
+                  << ", investi " << ts.invest << " %, trades " << ts.trades << ")\n";
+        std::cout << "  DD (canon) : strat " << tc.dd << " % vs B&H " << tc.bhdd << " %\n";
+
+        std::cout << "  Multi-univers (fin) :";
+        const std::pair<const char*, const char*> univ[] = {
+            {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+            {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+        for (const auto& u : univ) {
+            const auto agg = agrege(VixTermRegimeWalkForward(cfgTr(),
+                { u.second, SWINGBOT_VIX_MAX_CSV, SWINGBOT_VIX3M_MAX_CSV },
+                550, 400, 400).run());
+            std::cout << "  " << u.first << " dS=" << agg.dSharpe();
+        }
+        std::cout << "\n";
+
+        // Balayage seuil × lissage (critère : dSharpe OOS moyen, pavage fin).
+        double best = -1e9; double bS = 0.0; int bL = 0;
+        for (double se : {0.95, 1.0, 1.05}) for (int li : {1, 5, 10}) {
+            VixTermRegimeConfig c = cfgTr(); c.ratioThreshold = se; c.smoothLookback = li;
+            const double ds = agrege(VixTermRegimeWalkForward(c, trio,
+                                                              550, 400, 400).run()).dSharpe();
+            if (ds > best) { best = ds; bS = se; bL = li; }
+        }
+        std::cout << "  Balayage seuil x lissage : meilleur seuil=" << bS << " / lissage=" << bL
+                  << " -> dSharpe OOS " << best
+                  << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+        // Grille resserrée autour du candidat (leçon 8t.3), pavage CANONIQUE :
+        // le signe du dSharpe doit être STABLE pour être un edge (8t.1).
+        std::cout << "  Grille resserree (lissage 5, canon) :";
+        for (double se : {1.04, 1.05, 1.06, 1.08}) {
+            VixTermRegimeConfig c = cfgTr(); c.ratioThreshold = se; c.smoothLookback = 5;
+            const auto ag = agrege(VixTermRegimeWalkForward(c, trio, 750, 500, 500).run());
+            std::cout << "  s=" << se << " dS=" << ag.dSharpe();
+        }
+        std::cout << "\n";
+
+        // Variante CONTINUE : poids = min(1, (VIX3M/VIX)^k), bande anti-churn.
+        auto cfgTs = []() {
+            VixTermScaledConfig c;
+            c.steepness = 1.0; c.maxWeight = 1.0; c.rebalanceBand = 0.05;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggC { size_t fen = 0; double alpha = 0.0, sharpe = 0.0, bhSharpe = 0.0,
+                                             poids = 0.0;
+                      size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agregeC = [](const std::vector<VixTermScaledWindow>& ws) {
+            AggC a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.alpha += w.oos.alphaVsBuyHold; a.sharpe += w.oos.sharpeRatio;
+                a.bhSharpe += w.oos.buyHoldSharpe; a.poids += w.oos.avgWeight;
+                a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.alpha /= n; a.sharpe /= n; a.bhSharpe /= n; a.poids /= n; }
+            return a;
+        };
+        const auto cc = agregeC(VixTermScaledWalkForward(cfgTs(), trio, 750, 500, 500).run());
+        const auto cf = agregeC(VixTermScaledWalkForward(cfgTs(), trio, 550, 400, 400).run());
+        const auto cs = agregeC(VixTermScaledWalkForward(cfgTs(), trio, 750, 500, 500, 90).run());
+        std::cout << "  Continu (pente 1 / bande 0,05) : dSharpe canon " << cc.dSharpe()
+                  << " (alpha " << cc.alpha << ")  fin " << cf.dSharpe()
+                  << " (alpha " << cf.alpha << ")  decale " << cs.dSharpe()
+                  << " (alpha " << cs.alpha << ")  poids moy " << cc.poids << "\n";
+
+        // Balayage pente × bande (critère : dSharpe OOS moyen, pavage fin).
+        double bestC = -1e9; double bP = 0.0, bB = 0.0;
+        for (double pe : {1.0, 2.0, 3.0}) for (double bd : {0.02, 0.05, 0.10}) {
+            VixTermScaledConfig c = cfgTs(); c.steepness = pe; c.rebalanceBand = bd;
+            const double ds = agregeC(VixTermScaledWalkForward(c, trio,
+                                                               550, 400, 400).run()).dSharpe();
+            if (ds > bestC) { bestC = ds; bP = pe; bB = bd; }
+        }
+        std::cout << "  Balayage pente x bande : meilleur pente=" << bP << " / bande=" << bB
+                  << " -> dSharpe OOS " << bestC
+                  << (bestC > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+
+        // Monte-Carlo size-aware (D45) sur les trades OOS poolés (canonique, binaire).
+        std::vector<TradeRecord> pool;
+        double annees = 0.0;
+        for (const auto& w : VixTermRegimeWalkForward(cfgTr(), trio, 750, 500, 500).run()) {
+            for (const auto& t : w.oos.trades) pool.push_back(t);
+            if (w.oos.equityDates.size() >= 2) {
+                const long d0 = daysFromCivil(w.oos.equityDates.front());
+                const long d1 = daysFromCivil(w.oos.equityDates.back());
+                if (d1 > d0) annees += static_cast<double>(d1 - d0) / 365.25;
+            }
+        }
+        if (!pool.empty()) {
+            MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+            const auto rmc = mc.run(pool, annees);
+            std::cout << "  Monte-Carlo size-aware (canon, seed 42, 2000 chemins, binaire) : cagrP50 "
+                      << rmc.cagrP50 << " %  ddP95 " << rmc.ddP95 << " %\n";
+        }
+
+        std::cout << "  VERDICT 19.5 : AUCUN EDGE — la term-structure confirme son MECANISME\n"
+                  << "  (l'inversion est rare : ~93 % investi en binaire, ~98 % de poids en continu\n"
+                  << "  -> quasi plus de cash drag, la lecon D50/D55 est integree) mais n'en fait\n"
+                  << "  PAS un edge : binaire dSharpe < 0 au seuil naturel sur les 3 pavages ;\n"
+                  << "  le candidat du balayage (seuil 1,05 -> +0,07, une PREMIERE) est REFUTE par\n"
+                  << "  la grille resserree (le signe s'inverse sur le canon a +/-0,01 de seuil,\n"
+                  << "  lecon 8t.1/8t.3) ; continu dSharpe >= 0 partout mais <= 0,03 (bruit) et\n"
+                  << "  alpha absolu negatif partout (DoD non atteinte). Axe 2006+ SANS dot-com.\n"
+                  << "  Gate FERME. Prod paper. La DERNIERE piste offline du paragraphe 5 est soldee.\n";
     }
 
     std::cout << "\n";

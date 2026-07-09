@@ -99,3 +99,7 @@ $RECYCLE.BIN/
 
 # ── VSCode ────────────────────────────────────────────────
 .vscode/
+# Indice de vol IMPLICITE 3 MOIS ^VIX3M ~2006+ (Sprint 19, item 19.0) : versionné
+# car les verrous OOS de la famille term-structure VIX/VIX3M en dépendent.
+# SIGNAL de régime, jamais tradé ; Adj Close == Close (indice sans dividende).
+!VIX3M_max.csv
