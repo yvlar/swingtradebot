@@ -171,8 +171,15 @@ Pistes identifiées à la clôture (Sprint 16), par ordre de coût croissant :
   `VixScaledOosIntegration`).*
 - **Term-structure de volatilité** (VIX/VIX3M) : le contango/backwardation
   comme signal de régime — nécessite un export de données supplémentaire.
+  *→ EXPLORÉE au Sprint 19 (décision (r'), export `VIX3M_max.csv` 2006+) :
+  verdict AUCUN EDGE — le mécanisme anti-cash-drag est confirmé (~93 %
+  investi) et le balayage a produit le PREMIER candidat dSharpe OOS > 0 du
+  projet (seuil 1,05), mais la grille resserrée l'a réfuté (signe instable,
+  artefact de sélection 8t.1/8t.3) et l'alpha absolu reste négatif partout
+  (D57, changelog Sprint 19, verrous `VixTermRegimeOosIntegration` /
+  `VixTermScaledOosIntegration`). Le périmètre OFFLINE du §5 est ÉPUISÉ.*
 - **Données alternatives / surface d'options** : gros chantier data, hors du
-  périmètre offline actuel.
+  périmètre offline actuel — la SEULE piste restante du §5.
 
 Toute réouverture est soumise au protocole complet : moteur anti-look-ahead,
 données total-return longues, 3 pavages, garde de trades, grille resserrée,
