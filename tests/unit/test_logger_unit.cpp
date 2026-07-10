@@ -10,6 +10,7 @@
 #include <regex>
 #include <sstream>
 #include "bot/Logger.hpp"
+#include "../support/TempPath.hpp"
 
 using namespace trading;
 namespace fs = std::filesystem;
@@ -84,8 +85,8 @@ protected:
     std::string path_;
 
     void SetUp() override {
-        path_ = "unit_log_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) + ".log";
+        // Nom unique PID+compteur+tick (D59) — même motif que les fixtures SQLite.
+        path_ = swingbot_test::uniqueTempName("unit_log_", ".log");
     }
     void TearDown() override {
         if (fs::exists(path_)) fs::remove(path_);

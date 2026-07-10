@@ -17,6 +17,7 @@
 #include "backtest/DataQuality.hpp"
 #include "backtest/WalkForward.hpp"
 #include "strategies/ProdConfig.hpp"
+#include "../support/TempPath.hpp"
 
 using namespace trading;
 namespace fs = std::filesystem;
@@ -157,8 +158,9 @@ TEST(MultiAssetIntegration, DividendsCountedOnTotalReturnAssets) {
 // ════════════════════════════════════════════════════════════
 TEST(MultiAssetIntegration, GuardFlagsSyntheticNoDividendCsv) {
     // Reconstitue le symptôme D29 dans un fichier temporaire : Adj == Close.
-    const std::string path = "integ_dq_nodiv_" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count()) + ".csv";
+    // Nom unique PID+compteur+tick (D59) — même motif que les fixtures SQLite.
+    const std::string path =
+        swingbot_test::uniqueTempName("integ_dq_nodiv_", ".csv");
     {
         std::ofstream f(path);
         f << "Date,Open,High,Low,Close,Adj Close,Volume\n"
