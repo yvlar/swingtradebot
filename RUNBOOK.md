@@ -147,3 +147,67 @@ Le mode `--live` refuse de démarrer tant que tout n'est pas vrai :
       kill-switch manuel (§5), sous quel délai.
 
 Signature (date + décideur) : ______________________
+
+## 8. Mode maintenance (Sprint 20, décision utilisateur (e) — 2026-07-10)
+
+Le périmètre offline de recherche d'edge est ÉPUISÉ (8 familles/variantes
+soldées sans edge OOS, voir ROADMAP et
+`documentation/CONCLUSION_RECHERCHE_EDGE.md`). Par décision utilisateur
+explicite (option (e) du Sprint 20), SwingBot passe en **mode maintenance** :
+banc d'essai paper-only en veille, aucune recherche de stratégie, aucune
+évolution fonctionnelle.
+
+### 8.1 Ce qui est autorisé sans rouvrir de sprint
+
+Uniquement des opérations SANS modification de fichier versionné :
+
+- faire tourner le paper trading (sections 1-5) et surveiller sa santé (§4-bis) ;
+- exécuter la baseline (build Debug `-Werror` + `ctest` complet) et le
+  harnais `validate` en lecture seule ;
+- consulter les logs, la base SQLite et le dashboard.
+
+### 8.2 Ce qui exige un item de sprint (défaut concret d'abord)
+
+Toute modification de code, de configuration, de CI ou de dépendance passe
+par le cycle normal (`prompt-executer-sprint.md`) avec un **défaut concret
+reproduit** — idéalement un test rouge — AVANT le correctif. Cas prévus :
+
+- build cassé par l'environnement (nouvelle version de compilateur/paquet) ;
+- alerte de sécurité sur une dépendance (Boost, nlohmann-json, CURL,
+  SQLite, OpenSSL, GTest) — une alerte publiée qui touche un composant
+  réellement utilisé SUFFIT à rouvrir un sprint de maintenance ;
+- test flaky ou régression constatée en CI ;
+- défaut opérationnel constaté en paper (réconciliation, stop résident,
+  alerte non délivrée).
+
+Inventer un test rouge artificiel pour occuper un sprint est interdit :
+pas de défaut concret → pas de changement.
+
+### 8.3 Ce qui reste interdit (inchangé)
+
+- Mises à jour de dépendances « préventives » ou automatiques : au cas par
+  cas seulement (8.2), décision consignée au changelog ROADMAP.
+- `config/prod.json`, `liveTradingApproved`, le verrou
+  `LiveTradingStaysDisapprovedUntilEdgeDoD`, les goldens : intacts — toute
+  re-baseline suit la règle CLAUDE.md (décision + changelog ancien → nouveau).
+- Les prompts gouvernés et la DoD : jamais modifiés sans décision utilisateur.
+
+### 8.4 Cadence de veille
+
+- **CI sur chaque push** (Debug, Release, ASan/UBSan, TSan ciblé, cppcheck,
+  couverture) reste le garde-fou principal — aucun push sans CI verte.
+- **Baseline locale complète** : à l'ouverture de TOUTE session de travail
+  (règle existante du prompt d'exécution) et au minimum **mensuelle** en
+  l'absence d'activité, résultat consigné (date, `ctest -N`, verdict).
+- **Paper trading** : en continu si l'opérateur le souhaite (c'est le banc
+  d'essai), sinon à la demande ; dans les deux cas la checklist de
+  démarrage (§1) et la surveillance santé (§4-bis) s'appliquent.
+
+### 8.5 Sortie du mode maintenance
+
+Uniquement par **décision utilisateur explicite**, consignée au changelog
+ROADMAP — typiquement : ouvrir le chantier données alternatives (§5.4 de la
+conclusion d'edge, ex-option (r'')) ou les finitions Production
+(ex-option (a'') : clang-tidy ciblé, contrat cross-feed). Aucun travail de
+maintenance ne vaut autorisation d'aller vers le trading réel : la
+checklist §7 et la DoD d'edge restent entièrement non satisfaites.
