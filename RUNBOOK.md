@@ -2,6 +2,10 @@
 
 > Procédures opérateur. À relire AVANT tout démarrage réel. La référence
 > technique est `ROADMAP.md` (verdicts, découvertes) et `CLAUDE.md` (règles).
+>
+> Dans ce document, « production » désigne l'environnement opérationnel de
+> SwingBot ; tant que la checklist pré-live (§7) et la DoD d'edge ne sont pas
+> satisfaites, cet environnement reste exclusivement **paper-only**.
 
 ## 1. Démarrage
 
@@ -147,3 +151,116 @@ Le mode `--live` refuse de démarrer tant que tout n'est pas vrai :
       kill-switch manuel (§5), sous quel délai.
 
 Signature (date + décideur) : ______________________
+
+## 8. Mode maintenance (Sprint 20, décision utilisateur (e) — 2026-07-10)
+
+Le périmètre offline de recherche d'edge est ÉPUISÉ (8 familles/variantes
+soldées sans edge OOS, voir ROADMAP et
+`documentation/CONCLUSION_RECHERCHE_EDGE.md`). Par décision utilisateur
+explicite (option (e) du Sprint 20), SwingBot passe en **mode maintenance** :
+banc d'essai paper-only en veille, aucune recherche de stratégie, aucune
+évolution fonctionnelle.
+
+### 8.1 Ce qui est autorisé sans rouvrir de sprint
+
+Uniquement des opérations SANS modification de fichier versionné :
+
+- faire tourner le paper trading (sections 1-5) et surveiller sa santé (§4-bis) ;
+- exécuter la baseline (build Debug `-Werror` + `ctest` complet) et le
+  harnais `validate` en lecture seule ;
+- consulter les logs, la base SQLite et le dashboard.
+
+### 8.2 Ce qui exige un item de sprint (preuve objective d'abord)
+
+Toute modification de code, de configuration, de CI ou de dépendance passe
+par le cycle normal (`prompt-executer-sprint.md`). Règle uniforme : **toute
+modification exige une preuve objective, reproductible et documentée AVANT
+le correctif ; un test rouge est privilégié lorsqu'il est applicable.**
+
+Une preuve recevable peut notamment être :
+
+- un test rouge ;
+- une alerte de sécurité applicable à un composant réellement utilisé ;
+- un avis de rupture ou de modification d'un contrat externe (API broker,
+  format de données) ;
+- la dépréciation annoncée d'une API ;
+- un défaut reproductible constaté en paper trading (réconciliation, stop
+  résident, alerte non délivrée) ;
+- un échec de build ou de CI (y compris un test flaky documenté par les
+  journaux CI) ;
+- une incohérence démontrée par un audit ;
+- l'absence démontrée de couverture d'un scénario critique.
+
+Inventer un test rouge artificiel pour occuper un sprint reste interdit :
+pas de preuve objective → pas de changement.
+
+### 8.3 Politique des dépendances et interdits
+
+- Mises à jour de dépendances « préventives » ou automatiques : INTERDITES.
+  Au cas par cas seulement, sur preuve objective (§8.2), décision consignée
+  au changelog ROADMAP.
+- La veille mensuelle (§8.4) inclut la consultation des alertes de sécurité
+  ET de la dérive des versions des dépendances (Boost, nlohmann-json, CURL,
+  SQLite, OpenSSL, GTest, toolchain).
+- Le triage incombe au propriétaire du dépôt ou à l'opérateur qu'il a
+  explicitement désigné : une alerte CRITIQUE ou ÉLEVÉE applicable est
+  qualifiée sous DEUX jours ouvrables au plus ; les autres alertes sont
+  qualifiées au plus tard lors de la prochaine veille mensuelle.
+- L'absence de mise à jour immédiate après une alerte applicable doit être
+  JUSTIFIÉE et consignée (journal de maintenance, §8.4).
+- Toute dérive de dépendance constatée déclenche une évaluation de la
+  reproductibilité du build.
+- Une alerte applicable SUFFIT à ouvrir un sprint de maintenance, même si
+  aucun test rouge n'est possible (règle §8.2).
+- `config/prod.json`, `liveTradingApproved`, le verrou
+  `LiveTradingStaysDisapprovedUntilEdgeDoD`, les goldens : intacts — toute
+  re-baseline suit la règle CLAUDE.md (décision + changelog ancien → nouveau).
+- Les prompts gouvernés et la DoD : jamais modifiés sans décision utilisateur.
+
+### 8.4 Cadence de veille et journal de maintenance
+
+- **Règle CI** : aucun merge, aucune clôture déclarée comme verte et aucun
+  déploiement ne sont autorisés tant que la CI du SHA concerné n'est pas
+  ENTIÈREMENT terminée et verte (Debug, Release, ASan/UBSan, TSan ciblé,
+  cppcheck, couverture). La CI est déclenchée par les push : pousser une
+  branche est permis, c'est la déclaration de validité qui exige le vert.
+- **Baseline locale complète** — responsable : le propriétaire du dépôt ou
+  un opérateur explicitement désigné par lui. Fréquence : à l'ouverture de
+  toute session de travail et au minimum UNE FOIS PAR MOIS en l'absence
+  d'activité. Contenu minimal consigné : date ; SHA testé ; environnement
+  utilisé ; résultat de la compilation (warnings sous `-Werror`) ; résultat
+  de `ctest -N` ; nombre de tests réussis et échoués ; durée totale ;
+  résultat de la consultation des alertes de sécurité.
+- **Lieu de consignation officiel** : une issue GitHub dédiée servant de
+  journal de maintenance — aucune modification de fichier versionné. Une
+  entrée dans ce journal ne constitue PAS une réouverture de sprint. (Le
+  mécanisme est documenté ici ; la création de l'issue exige une
+  autorisation explicite du propriétaire.)
+- **Résultat rouge** : consigné honnêtement tel quel ; aucun état « baseline
+  verte » ne peut être déclaré ; un sprint de maintenance est PROPOSÉ dès
+  que le problème exige une modification versionnée.
+- **Paper trading** : en continu si l'opérateur le souhaite (c'est le banc
+  d'essai), sinon à la demande ; dans les deux cas la checklist de
+  démarrage (§1) et la surveillance santé (§4-bis) s'appliquent.
+
+### 8.5 Sortie du mode maintenance
+
+La sortie du mode maintenance exige CUMULATIVEMENT :
+
+1. une décision utilisateur explicite, consignée au changelog ROADMAP ;
+2. une nouvelle définition de sprint ;
+3. des items numérotés ;
+4. des critères d'acceptation vérifiables ;
+5. une mise à jour de `ROADMAP.md` ;
+6. l'identification des dépendances et des décisions préalables (par ex.
+   ex-option (a'') : périmètre/checks clang-tidy + convention du contrat
+   cross-feed ; ex-option (r'') : fournisseur, budget, licence, type de
+   données, hypothèse, benchmark) ;
+7. aucune sortie automatique : **une IA, un agent automatisé ou un workflow
+   ne peut pas décider seul de sortir SwingBot du mode maintenance** ;
+8. aucune autorisation implicite de trading réel.
+
+`liveTradingApproved` reste `false`, la checklist pré-live (§7) et la DoD
+d'edge restent entièrement non satisfaites : aucun travail de maintenance
+ne vaut autorisation d'aller vers le trading réel — le statut demeure
+paper-only.
