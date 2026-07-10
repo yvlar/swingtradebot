@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include "core/db_logger.h"
+#include "../support/TempPath.hpp"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -18,8 +19,9 @@ protected:
     DbLogger*   db_ = nullptr;
 
     void SetUp() override {
-        db_path_ = "unit_db_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) + ".db";
+        // Nom unique PID+compteur+tick (D59) : deux processus ctest
+        // parallèles ne peuvent plus ouvrir le même fichier SQLite.
+        db_path_ = swingbot_test::uniqueTempName("unit_db_", ".db");
         db_ = new DbLogger(db_path_);
     }
     void TearDown() override {
