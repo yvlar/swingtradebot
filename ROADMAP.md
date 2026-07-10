@@ -14,9 +14,9 @@
 | FinTech      | 88        | 38                           |
 | Production   | 78        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-10 (Sprint 20 — **Mode maintenance**, décision utilisateur (e), prise après une revue pré-sprint indépendante (verdict NO-GO : aucun périmètre exécutable tant que le choix (e)/(a'')/(r'') — réservé à l'utilisateur — n'était pas rendu ; constats factuels contre-vérifiés un par un sur le dépôt, tous exacts). Sprint SANS modification de code : **20.1** baseline réelle documentée (Linux paquets système sans vcpkg, build Debug -Werror sans warning, `ctest -N` = 814 = tableau de bord — AUCUNE dérive, **814/814 verts** en 26 s) ; **20.2** politique de maintenance écrite (`RUNBOOK.md` §8 : périmètre autorisé, dépendances au cas par cas sur alerte sécurité/rupture de build, défaut concret + test rouge avant tout correctif, CI sur chaque push + baseline locale mensuelle minimum, sortie du mode par décision utilisateur uniquement). D58 consignée (constats techniques de la revue pour le backlog contrat cross-feed). Aucun golden touché, `config/prod.json` intact, verrou live intact)
+- **Dernière mise à jour** : 2026-07-10 (Sprint 20 — **Mode maintenance**, décision utilisateur (e), prise après une revue pré-sprint indépendante (verdict NO-GO : aucun périmètre exécutable tant que le choix (e)/(a'')/(r'') — réservé à l'utilisateur — n'était pas rendu ; constats factuels contre-vérifiés un par un sur le dépôt, tous exacts). Sprint SANS modification de code : **20.1** baseline LOCALE documentée (Linux paquets système sans vcpkg, build Debug -Werror sans warning, `ctest -N` = 814 = tableau de bord — AUCUNE dérive, 814/814 verts LOCALEMENT ; la CI GitHub du SHA de tête est en revanche ROUGE — flake d'isolation DbLogger, D59 : le sprint n'est PAS entièrement validé tant qu'une CI complète n'est pas verte) ; **20.2** politique de maintenance écrite (`RUNBOOK.md` §8 : périmètre autorisé, dépendances au cas par cas sur alerte sécurité/rupture de build, preuve objective documentée avant tout correctif — test rouge lorsqu'applicable —, règle CI « aucun merge/clôture déclarée verte sans CI complète verte du SHA concerné », baseline locale mensuelle minimum consignée dans un journal de maintenance (issue GitHub dédiée), sortie du mode par décision utilisateur uniquement). D58-D60 consignées (contrat cross-feed ; flake DbLogger en CI ; contradiction TSan de CLAUDE.md). Aucun golden touché, `config/prod.json` intact, verrou live intact)
 - **Mise à jour précédente** : 2026-07-09 (Sprint 19 — **Term-structure VIX/VIX3M**, décision utilisateur (r'). La DERNIÈRE piste offline du §5 de `CONCLUSION_RECHERCHE_EDGE.md` (§5.3) est implémentée, jugée par le protocole complet (3 pavages, multi-univers, balayages, grille resserrée, MC size-aware seed 42) et VERROUILLÉE : **19.0** export `VIX3M_max.csv` (5021 barres 2006-07-17 → 2026-07-01, script `export_total_return.py` inchangé — le VIX3M borne l'axe : SANS dot-com) ; **19.1-19.2** filtre BINAIRE contango/backwardation (`VixTermRegimeBacktester`, ratio VIX/VIX3M lissé SMA 5, 3 séries alignées) → AUCUN EDGE au seuil naturel 1,0 (dSharpe OOS −0,12/−0,01/−0,08) MAIS le balayage produit le PREMIER candidat dSharpe > 0 du projet (seuil 1,05 → +0,07 fin, positif sur les 3 pavages ET les 4 actifs) — RÉFUTÉ par la grille resserrée (leçon 8t.3 : signe instable sur le canon à ±0,01 de seuil, alpha canonique négatif sur TOUTE la grille ; verrou dédié `CandidateFragilityIsLocked`) ; **19.3-19.4** variante CONTINUE w = min(1, (VIX3M/VIX)^k) → dSharpe ≥ 0 sur les 3 pavages ET les 9 réglages (cohérence inédite) mais ≤ 0,03 (bruit), alpha absolu négatif partout, quasi-B&H (poids moyen 0,98) — AUCUN EDGE (D57) ; **19.5** section 21 du harnais. Le MÉCANISME visé est confirmé : l'inversion est rare (~93 % investi) → le cash drag D50/D55 est éliminé — mais cela ne crée pas d'edge. D54 APPLIQUÉ (libssl-dev, décision utilisateur, commit dédié). Moteurs séparés additifs, goldens byte-identiques, 781 → **814/814 verts**)
-- **Sprint courant** : — **MODE MAINTENANCE ACTIF** (décision utilisateur (e), Sprint 20, 2026-07-10). Aucun sprint en cours, aucune exploration nouvelle : SwingBot est un banc d'essai paper-only en veille, régi par `RUNBOOK.md` §8 (baseline verte au fil de l'eau ; toute modification exige un défaut concret reproduit — test rouge d'abord — et un item de sprint dédié). Réouverture UNIQUEMENT par décision utilisateur explicite ; options connues au backlog : (a'') finitions Production (clang-tidy ciblé, test de contrat cross-feed — reliquats D25/Sprint 17, constats préparatoires D58, conventions à décider par l'utilisateur avant tout code) ou (r'') chantier données alternatives / surface d'options (§5.4 — exige fournisseur, budget, licence, type de données, hypothèse et benchmark prédéfinis). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
+- **Sprint courant** : — **MODE MAINTENANCE ACTIF** (décision utilisateur (e), Sprint 20, 2026-07-10). Aucun sprint en cours, aucune exploration nouvelle : SwingBot est un banc d'essai paper-only en veille, régi par `RUNBOOK.md` §8 (baseline verte au fil de l'eau ; toute modification exige une preuve objective, reproductible et documentée — test rouge lorsqu'applicable — et un item de sprint dédié). Le mode maintenance est un ÉTAT TERMINAL TEMPORAIRE, pas un sprint vide : tant qu'il est actif et qu'aucun nouveau sprint n'a été défini par décision utilisateur, `prompt-executer-sprint.md` ne doit PAS être lancé. Réouverture UNIQUEMENT par décision utilisateur explicite ; options connues au backlog : (a'') finitions Production (clang-tidy ciblé, test de contrat cross-feed — reliquats D25/Sprint 17, constats préparatoires D58, conventions à décider par l'utilisateur avant tout code) ou (r'') chantier données alternatives / surface d'options (§5.4 — exige fournisseur, budget, licence, type de données, hypothèse et benchmark prédéfinis). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -58,7 +58,10 @@
   **--coverage**, et TSan ciblé **BLOQUANT** en CI sur les suites concurrentes
   (`WsServer|Watchdog|BotState`). +0 au Sprint 20 (mode maintenance —
   baseline recalée sur `ctest -N`=814 à l'ouverture, AUCUNE dérive hors
-  cycle, aucun test ajouté ni retiré). Détail au changelog.
+  cycle, aucun test ajouté ni retiré). Détail au changelog. **Caveat D59** :
+  la CI du 2026-07-10 a révélé un flake d'ISOLATION des tests DbLogger
+  (collision de nom de fichier SQLite en exécution parallèle — 2 échecs
+  sporadiques possibles) ; le correctif exige un sprint technique dédié.
 - **Environnement de référence** : conteneur vcpkg (`dev.ps1`) ; build aussi possible
   sur Linux avec paquets système (validé de bout en bout au Sprint 2 — voir D11 et
   la liste apt dans `prompt-executer-sprint.md`)
@@ -1382,6 +1385,8 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D56 | 🟡 | (Sprint 18) **La VRAIE cointégration Engle-Granger FILTRE le bruit que le spread naïf β=1 tradait (D49) — mais ne CRÉE pas d'edge : il n'y a pas de paire d'ETFs indiciels US durablement cointégrée exploitable net de coûts.** Hedge ratio OLS ROULANT sur log-prix (β figé à l'entrée du stint) + gate Dickey-Fuller (lag 0, critique MacKinnon 5 % figée −3,34) sur le résidu (`Cointegration.hpp` math pur à la main, `CointPairsBacktester`) : le gate ne s'ouvre que sur ~7-10 % des barres décidables et ne laisse passer que 19-24 A/R OOS (contre 209-212 pour le naïf) — et TOUT s'améliore : Sharpe OOS −0,17/−0,31 (vs −1,16/−1,20), MC cagrP50 −0,33 % (vs −3,62 %), DD p95 17 % (vs 68 %). Mais le Sharpe reste NÉGATIF sur les 3 pavages (canon −0,31 / fin −0,25 / décalé −0,40), les 4 paires (QQQ/SPY −0,25 ; QQQ/IWM −0,22 ; QQQ/MDY −0,25 ; SPY/IWM −0,13) et tous les réglages {126,252}×{1,5;2;2,5} (meilleur w=252/k=2,5 → −0,17). Garde d'activation D47 DOUBLE (A/R > 1 ET pctBarsCointegrated > 1 %) : le verdict est un verdict de PERFORMANCE, pas d'activation. Le résidu de D49 est soldé : ce n'était pas l'absence de test de cointégration qui créait la perte, c'est l'absence de cointégration STABLE entre indices US large-cap (corrélés mais co-trending, pas cointégrés). | Consigné (verrous `CointPairsOosIntegration`) ; piste §5.1 SOLDÉE — un pas de plus exigerait des paires hors indices (secteurs, actions single-name = données nouvelles) |
 | D57 | 🟡 | (Sprint 19) **La term-structure VIX/VIX3M confirme son MÉCANISME (l'inversion élimine le cash drag des filtres de niveau) et produit le PREMIER candidat dSharpe OOS > 0 du projet — mais le candidat est un artefact de sélection et l'alpha absolu reste négatif : AUCUN EDGE, la dernière piste offline du §5 est soldée.** Filtre BINAIRE (ratio VIX/VIX3M lissé SMA 5 ≤ seuil → long, `VixTermRegimeBacktester`, 3 séries alignées QQQ∩VIX∩VIX3M — **axe borné par le VIX3M : 5021 barres 2006-07-17+, SANS l'épisode dot-com**, seule famille jugée sans lui) : au seuil naturel 1,0, dSharpe OOS −0,12/−0,01/−0,08 et alpha −11,5/−4,4/−10,7 sur les 3 pavages ; MAIS ~91-93 % du temps investi (contre ~55-70 % pour les filtres de NIVEAU D50/D51) → l'hypothèse « l'inversion est un signal rare et sélectif » est CONFIRMÉE sur le mécanisme. Le balayage {0,95;1;1,05}×{1;5;10} produit un candidat INÉDIT : seuil 1,05 → dSharpe +0,07 (fin), POSITIF sur les 3 pavages (+0,004/+0,07/+0,02) et les 4 actifs (SPY +0,06, IWM +0,04, MDY +0,06) — première fois qu'un mécanisme bat le B&H en Sharpe hors de son pavage de choix. RÉFUTÉ par la grille resserrée (leçon 8t.3, verrou `CandidateFragilityIsLocked`) : sur le pavage canonique le signe s'inverse à ±0,01-0,03 de seuil (1,04 → −0,05 ; 1,05 → +0,004 ; 1,06 → −0,01 ; 1,08 → +0,002 : du bruit, pas un plateau) et l'alpha absolu canonique est négatif sur TOUTE la grille (−7,6 à −2,0). Variante CONTINUE (w = min(1, (VIX3M/VIX)^k), `VixTermScaledBacktester`) : dSharpe ≥ 0 sur les 3 pavages ET les 9 réglages (cohérence jamais vue) mais ≤ 0,03 partout (bruit), alpha négatif partout, poids moyen 0,98 = quasi-B&H à micro-écrêtage — l'inversion arrive trop peu et trop tard pour créer un edge. MC size-aware binaire : cagrP50 +13,4 %, ddP95 34,8 %. | Consigné (verrous `VixTermRegimeOosIntegration` ×8 / `VixTermScaledOosIntegration` ×6) ; piste §5.3 SOLDÉE — le périmètre offline du §5 est ÉPUISÉ, il ne reste que §5.4 (données alternatives) |
 | D58 | 🟢 | (Sprint 20) **Constats techniques de la revue pré-sprint indépendante, consignés pour le futur contrat cross-feed (ex-option (a'')) — AUCUN défaut actif.** (1) `AlpacaDataFeed` calcule sa borne « hier » via `system_clock::now()` dans un helper statique privé (`AlpacaDataFeed.hpp:139-143`) — pas de seam d'horloge injectable, contrairement à `IBKRDataFeed::now_()` (`IBKRDataFeed.hpp:238`) : un test temporel déterministe cross-feed exigera une seam équivalente ; (2) les deux feeds répondent Ok(vide) à un JSON 2xx sans champ `data`/`bars` (`IBKRDataFeed.hpp:81`) — un JSON valide mais PARTIEL est indistinguable d'une absence légitime de données (comportement verrouillé par les tests actuels, à rendre EXPLICITE dans le contrat) ; (3) `Bar::operator==` ne compare que `date` et `close` (`Models.hpp:17-19`) — trop faible pour valider un contrat OHLCV complet ; (4) IBKR borne par date de séance EASTERN (`usEasternDateOfUtc`), Alpaca par « hier » calculé en UTC — conventions divergentes autour des changements de date UTC/ET : la convention canonique du contrat est une DÉCISION UTILISATEUR préalable. Rappel : pas de comparaison naïve des PRIX entre feeds (Alpaca = IEX, IBKR = HMDS — sources différentes, écarts légitimes) | Consigné (backlog (a'') — aucun sprint affecté tant que le mode maintenance dure) |
+| D59 | 🟠 | (Sprint 20, correctif post-revue finale) **Flake d'isolation des tests DbLogger en CI : collision de nom de fichier SQLite entre processus ctest parallèles.** Run CI `29094492121` (SHA `c2d58e9`, diff DOCS-ONLY par rapport au run vert précédent `29093941345` sur `15d5f24` — même code C++) : `Unit.DbLoggerUnit.Log200EntriesNoError` et `Unit.DbLoggerUnit.RecordTradeNoThrow` échouent avec « SQLite exec: database is locked » levée dans `SetUp()` (812/814, job « Build Linux + ctest » rouge, les 5 autres jobs verts). Cause identifiée en lecture seule : `tests/unit/test_db_logger_unit.cpp:21-22` nomme la base `unit_db_<steady_clock ns>.db` — horodatage SANS composante PID ni répertoire par test : deux processus démarrés dans le même tick peuvent ouvrir le MÊME fichier. Non reproduit localement (suites DbLogger ×30, -j16) — collision rare. Le correctif (nom incluant le PID, ou répertoire temporaire unique par test) est une modification de `tests/unit/` HORS du périmètre documentaire → **un nouveau sprint technique est requis**. Preuve objective au sens de RUNBOOK §8.2 : les journaux CI du run `29094492121` | Consigné — item candidat du prochain sprint de maintenance ; d'ici là, un re-run CI peut être vert (flake), mais le défaut d'isolation demeure |
+| D60 | 🟡 | (Sprint 20, correctif post-revue finale) **`CLAUDE.md` contredit la CI réelle sur le TSan ciblé.** Texte obsolète (`CLAUDE.md:50`) : « a targeted TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`, non-blocking) » ; comportement réel : le job `tsan` de `.github/workflows/ci.yml:198-231` est **BLOQUANT** depuis l'item 17.2 (commentaire explicite dans le workflow, aucun `continue-on-error`). Risque d'interprétation : un exécuteur croyant le TSan non bloquant pourrait juger un échec TSan sans conséquence et déclarer une validation à tort. Obsolescence connexe constatée au passage : la même phrase annonce « four jobs » alors que la CI en compte SIX (cppcheck et couverture ajoutés au Sprint 17). `CLAUDE.md` est un fichier de règles : conformément à la gouvernance (pas d'auto-amendement), le correctif n'est PAS appliqué — un diff minimal est PROPOSÉ au changelog du Sprint 20 et attend une approbation utilisateur explicite | Consigné — diff proposé, en attente de décision utilisateur |
 
 ## Changelog
 
@@ -1401,15 +1406,23 @@ est épuisé (8 familles/variantes soldées sans edge OOS depuis le Sprint 8) :
 SwingBot passe en veille paper-only. Sprint SANS modification de code —
 livrables : baseline réelle documentée + politique de maintenance écrite.
 
-**Baseline à l'ouverture (= item 20.1)** : **814/814 verte** — Linux paquets
-système SANS vcpkg (liste apt du prompt gouverné, libssl-dev inclus, D54),
-build Debug `-Werror` sans warning, `ctest -N` = 814 = tableau de bord
-(AUCUNE dérive hors cycle), suite complète verte en 26 s (632 unitaires +
-182 intégration).
+**Baseline à l'ouverture (= item 20.1)** : baseline **LOCALE** 814/814 verte —
+Linux paquets système SANS vcpkg (liste apt du prompt gouverné, libssl-dev
+inclus, D54), build Debug `-Werror` sans warning, `ctest -N` = 814 = tableau
+de bord (AUCUNE dérive hors cycle), suite complète verte en 26 s (632
+unitaires + 182 intégration). **Ré-exécutée le 2026-07-10 pendant le
+correctif post-revue finale**, sur le SHA `c2d58e9` (conteneur Ubuntu 24.04,
+paquets système, g++/Ninja, Debug) : `ctest -N` = 814, **814/814 réussis,
+0 échec, 27,72 s**, build sans warning (`ninja: no work to do` après
+recompilation incrémentale). Une baseline locale n'est PAS une validation
+CI : voir le bloc « Validation CI du SHA final » ci-dessous (job Debug de la
+CI GitHub rouge — flake D59).
 
 **Commits** :
 - `15d5f24` docs(runbook) : politique de mode maintenance — section 8 (item 20.2)
-- (clôture) docs : clôture sprint 20 — mise à jour roadmap
+- `c2d58e9` docs : clôture sprint 20 — mise à jour roadmap
+- (correctif post-revue finale) docs : clarifie la politique de maintenance
+  et la validation CI du sprint 20 (RUNBOOK §8 précisé, D59/D60, ce bloc)
 
 **Items** :
 - [x] **20.1** Baseline réelle documentée AVANT toute modification (critère :
@@ -1421,13 +1434,19 @@ build Debug `-Werror` sans warning, `ctest -N` = 814 = tableau de bord
   Les ambiguïtés relevées par la revue sont tranchées par des DÉFAUTS
   CONSERVATEURS, amendables par décision utilisateur : maintenance autorisée
   = opérations SANS modification de fichier versionné (§8.1) ; tout changement
-  de code/config/CI/dépendance = item de sprint avec défaut concret reproduit,
-  test rouge d'abord (§8.2) ; dépendances au cas par cas, jamais automatiques —
-  une alerte de sécurité sur un composant réellement utilisé SUFFIT à rouvrir
-  un sprint (§8.2) ; paper trading en continu ou à la demande, au choix de
-  l'opérateur (checklist §1 + santé §4-bis dans les deux cas) ; baseline
-  locale à chaque session de travail et au minimum MENSUELLE, CI sur chaque
-  push (§8.4) ; sortie du mode par décision utilisateur uniquement (§8.5).
+  de code/config/CI/dépendance = item de sprint avec preuve objective,
+  reproductible et documentée AVANT le correctif — test rouge privilégié
+  lorsqu'applicable (§8.2) ; dépendances au cas par cas, jamais automatiques —
+  une alerte de sécurité applicable SUFFIT à rouvrir un sprint même sans test
+  rouge possible, triage sous 2 jours ouvrables pour critique/élevée (§8.3) ;
+  paper trading en continu ou à la demande, au choix de l'opérateur
+  (checklist §1 + santé §4-bis dans les deux cas) ; baseline locale à chaque
+  session de travail et au minimum MENSUELLE, consignée dans un journal de
+  maintenance (issue GitHub dédiée — mécanisme documenté, issue à créer sur
+  autorisation), règle CI « aucun merge/clôture déclarée verte/déploiement
+  sans CI du SHA entièrement terminée et verte » (§8.4) ; sortie du mode
+  CUMULATIVE par décision utilisateur uniquement, jamais par une IA ou un
+  workflow (§8.5).
 - [x] **(clôture)** D58 consignée : constats techniques de la revue
   pré-sprint utiles au futur contrat cross-feed (seam d'horloge Alpaca
   manquante, Ok(vide) sur JSON partiel, `Bar::operator==` trop faible,
@@ -1439,19 +1458,59 @@ intact, `liveTradingApproved` = false, verrou
 `LiveTradingStaysDisapprovedUntilEdgeDoD` intact, goldens byte-identiques
 (aucun fichier de code touché).
 
-**Tests** : 814 → **814/814 verts** (aucun ajout ni retrait — premier sprint
-à décompte constant, cohérent avec un sprint sans code).
+**Tests** : 814 → **814/814 verts localement** (aucun ajout ni retrait —
+premier sprint à décompte constant, cohérent avec un sprint sans code). En
+CI, le job Debug du SHA `c2d58e9` a rendu **812/814** (flake d'isolation
+DbLogger, D59) — voir le bloc suivant.
+
+**Validation CI du SHA final** :
+- SHA : `c2d58e93e7c991a1b20a04d3d70cf191f582a1e3`
+- Workflow : run `29094492121` (CI, 2026-07-10 ~13:00 UTC)
+- Statut : `failure`
+- Jobs réussis : Build Release + ctest ; ASan + UBSan (Debug) ; TSan ciblé
+  (WsServer/Watchdog/BotState) ; Lint statique (cppcheck bloquant) ;
+  Couverture (gcovr, seuil 95 % lignes include/)
+- Jobs échoués : Build Linux + ctest — 2 tests :
+  `Unit.DbLoggerUnit.Log200EntriesNoError` et
+  `Unit.DbLoggerUnit.RecordTradeNoThrow` (« SQLite exec: database is
+  locked » dans `SetUp()` — flake d'isolation D59 ; le run précédent
+  `29093941345` sur `15d5f24`, même code C++, était entièrement vert)
+- Conclusion : **NON prête à fusionner.** Baseline locale rapportée :
+  814/814. Validation CI du SHA final : NON CONFIRMÉE, le job Debug
+  « Build Linux + ctest » est en échec. Le Sprint 20 ne peut pas être
+  déclaré entièrement validé tant qu'une CI complète n'est pas verte. Le
+  commit de correctif documentaire re-déclenche la CI : son résultat doit
+  être vérifié avant toute fusion (un re-run vert n'efface pas D59 — le
+  défaut d'isolation demeure jusqu'au correctif technique).
+
+**Diff proposé pour `CLAUDE.md` (fichier de règles — NON appliqué, décision
+utilisateur explicite requise, D60)** — ligne 50 :
+
+```diff
+- and a targeted TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`, non-blocking).
++ and a targeted blocking TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`).
+```
+
+(La même phrase annonce aussi « runs four jobs » alors que la CI en compte
+six depuis le Sprint 17 — correction connexe à décider en même temps.)
 
 **Rétrospective** :
 1. *Découpage* : trivial et adapté (2 items, zéro code) — la valeur du sprint
    est la DÉCISION actée et la politique écrite, pas le volume. La revue
    pré-sprint indépendante en amont a rempli exactement le rôle que la règle
    « Décision requise » attendait : bloquer l'exécution avant le choix.
-2. *Prompts du workflow* : suffisants, AUCUN diff proposé. Le cas « sprint
-   sans item de code » se plie à la procédure existante (baseline → items →
-   clôture) ; le point 3.a (test rouge) s'interprète naturellement comme
-   « non applicable sans défaut concret » — interprétation consignée dans
-   RUNBOOK §8.2 plutôt que dans le prompt gouverné.
+2. *Prompts du workflow* : AUCUN prompt gouverné n'a été modifié — mais ils
+   n'étaient PAS complètement suffisants. Le correctif post-revue finale a
+   reconnu deux limites : (a) le cas « mode maintenance sans sprint actif »
+   n'est pas explicitement prévu par le prompt de clôture (qui suppose un
+   « sprint suivant » à définir) — le mode maintenance est un état terminal
+   temporaire, pas un sprint vide ; (b) la première transposition du point
+   3.a (test rouge) dans RUNBOOK §8.2 était contradictoire (« idéalement »
+   vs « d'abord ») — corrigée en règle uniforme « preuve objective,
+   reproductible et documentée ; test rouge lorsqu'applicable ». Une
+   clarification des prompts pourra être PROPOSÉE ultérieurement à
+   l'utilisateur (diff soumis à décision explicite, règle du point 5.2) ;
+   rien n'est appliqué d'office.
 3. *À détecter plus tôt / garde-fou* : les options (e)/(a'')/(r'') du tableau
    de bord n'avaient ni items numérotés ni critères binaires — c'est la revue
    externe qui l'a formalisé. Garde-fou peu coûteux adopté dans la définition
