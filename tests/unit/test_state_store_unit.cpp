@@ -7,6 +7,7 @@
 #include <chrono>
 #include <fstream>
 #include "core/state_store.h"
+#include "../support/TempPath.hpp"
 
 using namespace trading;
 namespace fs = std::filesystem;
@@ -17,8 +18,9 @@ protected:
     std::string path_;
 
     void SetUp() override {
-        path_ = "unit_state_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) + ".db";
+        // Nom unique PID+compteur+tick (D59) : deux processus ctest
+        // parallèles ne peuvent plus ouvrir le même fichier SQLite.
+        path_ = swingbot_test::uniqueTempName("unit_state_", ".db");
     }
     void TearDown() override {
         for (const auto& suffix : {"", "-wal", "-shm"})

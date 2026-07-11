@@ -47,7 +47,7 @@ CSV paths (`SWINGBOT_*_CSV`, `SWINGBOT_*_MAX_CSV`) and the prod-config path (`SW
 
 Run the bot: `./build/swing_bot` (paper trading, default) · `--live` (real money — gated: see "Live-safety rules" below) · `--account DU123456`. IBKR requires an authenticated Client Portal Gateway on `https://localhost:5000`; Alpaca builds need `ALPACA_KEY`/`ALPACA_SECRET` env vars. Production config lives in `config/prod.json` (strategy + regime filter + kill-switch thresholds + `liveTradingApproved`), loaded and strictly validated at startup by `include/strategies/ConfigLoader.hpp` — the SAME file is backtested by the prod-config golden tests. Alert-channel secrets come from `SWINGBOT_*` environment variables (`.env.example`).
 
-**CI** (`.github/workflows/ci.yml`, system-packages path — no vcpkg) runs four jobs on every push/PR: Debug build+ctest, Release build+ctest (the prod binary shape), ASan+UBSan, and a targeted TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`, non-blocking).
+**CI** (`.github/workflows/ci.yml`, system-packages path — no vcpkg) runs six jobs on every push/PR, all blocking: Debug build+ctest, Release build+ctest (the prod binary shape), ASan+UBSan, a targeted blocking TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`), static lint (cppcheck), and coverage (gcovr, 95% line threshold on `include/`).
 
 ## Architecture
 

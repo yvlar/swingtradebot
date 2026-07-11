@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include "strategies/ConfigLoader.hpp"
+#include "../support/TempPath.hpp"
 
 using namespace trading;
 namespace fs = std::filesystem;
@@ -21,8 +22,8 @@ protected:
     std::string path_;
 
     void SetUp() override {
-        path_ = "unit_config_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) + ".json";
+        // Nom unique PID+compteur+tick (D59) — même motif que les fixtures SQLite.
+        path_ = swingbot_test::uniqueTempName("unit_config_", ".json");
     }
     void TearDown() override {
         if (fs::exists(path_)) fs::remove(path_);

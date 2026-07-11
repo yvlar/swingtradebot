@@ -16,6 +16,7 @@
 #include <sstream>
 #include "backtest/BackTester.hpp"
 #include "strategies/ProdConfig.hpp"
+#include "../support/TempPath.hpp"
 
 namespace {
 
@@ -129,8 +130,9 @@ TEST(BacktesterIntegration, FillsAtNextBarOpenNotAtDecisionClose) {
     };
     auto closeFor = [](int i) { return 100.0 + 0.2 * i; };  // tendance douce
 
-    const std::string path = "integ_lookahead_" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count()) + ".csv";
+    // Nom unique PID+compteur+tick (D59) — même motif que les fixtures SQLite.
+    const std::string path =
+        swingbot_test::uniqueTempName("integ_lookahead_", ".csv");
     {
         std::ofstream f(path);
         f << "Date,Open,High,Low,Close,Adj Close,Volume\n";

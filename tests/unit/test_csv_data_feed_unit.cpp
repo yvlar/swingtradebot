@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include "brokers/CsvDataFeed.hpp"
+#include "../support/TempPath.hpp"
 
 using namespace trading;
 namespace fs = std::filesystem;
@@ -18,8 +19,8 @@ protected:
     std::string path_;
 
     void SetUp() override {
-        path_ = "unit_csv_" + std::to_string(
-            std::chrono::steady_clock::now().time_since_epoch().count()) + ".csv";
+        // Nom unique PID+compteur+tick (D59) — même motif que les fixtures SQLite.
+        path_ = swingbot_test::uniqueTempName("unit_csv_", ".csv");
     }
     void TearDown() override {
         if (fs::exists(path_)) fs::remove(path_);
