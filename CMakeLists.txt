@@ -106,6 +106,9 @@ target_compile_definitions(validate PRIVATE
         # Indice CBOE de prix du risque de queue (^SKEW, Sprint 22) : dérivé de la
         # surface d'options SPX. Même statut : signal seulement, Adj == Close attendu.
         SWINGBOT_SKEW_MAX_CSV="${CMAKE_SOURCE_DIR}/SKEW_max.csv"
+        # Indice CBOE de vol de la vol (^VVIX, Sprint 22) : vol implicite des
+        # options SUR VIX. Même statut : signal seulement, Adj == Close attendu.
+        SWINGBOT_VVIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VVIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
@@ -203,6 +206,7 @@ add_executable(integration_tests
         tests/integration/test_vix_term_scaled_oos_integration.cpp
         tests/integration/test_coint_pairs_oos_integration.cpp
         tests/integration/test_skew_regime_oos_integration.cpp
+        tests/integration/test_vvix_regime_oos_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})
@@ -232,6 +236,9 @@ target_compile_definitions(integration_tests PRIVATE
         # Indice CBOE de prix du risque de queue (^SKEW, Sprint 22) : dérivé de la
         # surface d'options SPX. Même statut : signal seulement, Adj == Close attendu.
         SWINGBOT_SKEW_MAX_CSV="${CMAKE_SOURCE_DIR}/SKEW_max.csv"
+        # Indice CBOE de vol de la vol (^VVIX, Sprint 22) : vol implicite des
+        # options SUR VIX. Même statut : signal seulement, Adj == Close attendu.
+        SWINGBOT_VVIX_MAX_CSV="${CMAKE_SOURCE_DIR}/VVIX_max.csv"
         SWINGBOT_PROD_CONFIG_JSON="${CMAKE_SOURCE_DIR}/config/prod.json"
 )
 
