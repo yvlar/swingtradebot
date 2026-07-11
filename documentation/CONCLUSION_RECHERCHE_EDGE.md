@@ -180,6 +180,19 @@ Pistes identifiées à la clôture (Sprint 16), par ordre de coût croissant :
   `VixTermScaledOosIntegration`). Le périmètre OFFLINE du §5 est ÉPUISÉ.*
 - **Données alternatives / surface d'options** : gros chantier data, hors du
   périmètre offline actuel — la SEULE piste restante du §5.
+  *→ Volet GRATUIT EXPLORÉ au Sprint 22 (décision utilisateur (r''), sortie
+  du mode maintenance, exports `SKEW_max.csv`/`VVIX_max.csv` via le pipeline
+  Yahoo existant) : les deux indices CBOE dérivés de la surface d'options
+  sont RÉFUTÉS — le régime SKEW (queue chère → cash) fait PIRE que le régime
+  VIX (dSharpe OOS −0,68/−0,55/−0,67, churn 300-343 stints, MC ddP95 62,5 %)
+  et le régime VVIX réplique le profil du VIX (dSharpe ≈ −0,6 partout) ;
+  AUCUN candidat dSharpe > 0 dans les deux balayages, grille resserrée sans
+  objet (D61, changelog Sprint 22, verrous `SkewRegimeOosIntegration` /
+  `VvixRegimeOosIntegration`). La famille « niveau d'un indice vs sa propre
+  médiane glissante » est soldée sur QUATRE signaux (vol réalisée, VIX,
+  SKEW, VVIX). Ce qui RESTE du §5.4 : données PAYANTES (chaînes d'options
+  réelles, IV par strike, put/call OI — fournisseur/budget/licence à
+  décider) ou une autre classe de données alternatives.*
 
 Toute réouverture est soumise au protocole complet : moteur anti-look-ahead,
 données total-return longues, 3 pavages, garde de trades, grille resserrée,
