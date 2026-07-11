@@ -1284,6 +1284,118 @@ int main() {
                   << "  Gate FERME. Prod paper. La DERNIERE piste offline du paragraphe 5 est soldee.\n";
     }
 
+    // ── 22. INDICES DÉRIVÉS D'OPTIONS : SKEW / VVIX (Sprint 22) ─────────────
+    // Chantier (r'') « données alternatives / surface d'options » (§5.4, décision
+    // utilisateur 2026-07-11) : deux indices CBOE dérivés de la surface d'options
+    // comme signal de régime, via le moteur GÉNÉRIQUE du Sprint 14 (aucun nouveau
+    // moteur). Hypothèse (a) : ^SKEW — la queue chère (SKEW haut vs sa médiane
+    // glissante) annonce-t-elle un régime à éviter ? Hypothèse (b) : ^VVIX — la
+    // vol de la vol comme mesure d'incertitude. Verrous CI dans
+    // test_skew_regime_oos_integration.cpp / test_vvix_regime_oos_integration.cpp.
+    titre("22. INDICES DERIVES D'OPTIONS (^SKEW prix de queue, ^VVIX vol de la vol — 22.3)");
+    {
+        auto cfgIdx = []() {
+            VixRegimeConfig c;
+            c.refLookback = 126; c.thresholdMult = 1.0;
+            c.initialCapital = 10'000.0;
+            c.commissionPct = 0.001; c.slippageBps = 2.0; c.halfSpreadBps = 0.5;
+            return c;
+        };
+        struct AggV { size_t fen = 0; double sharpe = 0.0, bhSharpe = 0.0, ret = 0.0,
+                                            dd = 0.0, bhdd = 0.0; size_t trades = 0;
+                      double dSharpe() const { return sharpe - bhSharpe; } };
+        auto agrege = [](const std::vector<VixWindow>& ws) {
+            AggV a; a.fen = ws.size();
+            for (const auto& w : ws) {
+                a.sharpe += w.oos.sharpeRatio; a.bhSharpe += w.oos.buyHoldSharpe;
+                a.ret += w.oos.totalReturnPct; a.dd += w.oos.maxDrawdownPct;
+                a.bhdd += w.oos.buyHoldMaxDrawdownPct; a.trades += w.oos.trades.size();
+            }
+            if (a.fen) { const double n = static_cast<double>(a.fen);
+                a.sharpe /= n; a.bhSharpe /= n; a.ret /= n; a.dd /= n; a.bhdd /= n; }
+            return a;
+        };
+
+        // Un indice = un bloc : pavages, multi-univers, balayage, MC — mêmes
+        // chiffres que les verrous. La plage de seuils du SKEW est resserrée
+        // (indice borné ~100-183) ; celle du VVIX reprend le Sprint 14 (vol-like).
+        struct Idx { const char* nom; const char* csv; const char* axe;
+                     std::vector<double> mults; };
+        const Idx indices[] = {
+            {"SKEW", SWINGBOT_SKEW_MAX_CSV, "1999+ (borne par QQQ — dot-com/2008 couverts)",
+             {0.95, 1.0, 1.05, 1.1}},
+            {"VVIX", SWINGBOT_VVIX_MAX_CSV, "2007+ (borne par VVIX — PAS de dot-com, caveat D57)",
+             {0.8, 1.0, 1.2}},
+        };
+        for (const auto& ix : indices) {
+            const std::vector<std::string> qi = { SWINGBOT_QQQ_MAX_CSV, ix.csv };
+            const auto ac = agrege(VixRegimeWalkForward(cfgIdx(), qi, 750, 500, 500).run());
+            const auto af = agrege(VixRegimeWalkForward(cfgIdx(), qi, 550, 400, 400).run());
+            const auto as = agrege(VixRegimeWalkForward(cfgIdx(), qi, 750, 500, 500, 90).run());
+            std::cout << std::fixed << std::setprecision(4)
+                      << "\n  [" << ix.nom << "] axe " << ix.axe << "\n"
+                      << "  dSharpe OOS vs B&H (QQQ gate " << ix.nom << ") : canon " << ac.dSharpe()
+                      << " (strat " << ac.sharpe << " vs B&H " << ac.bhSharpe
+                      << ", trades " << ac.trades << ")\n"
+                      << "                                      fin   " << af.dSharpe()
+                      << " (strat " << af.sharpe << " vs B&H " << af.bhSharpe
+                      << ", trades " << af.trades << ")\n"
+                      << "                                      decale " << as.dSharpe()
+                      << " (strat " << as.sharpe << " vs B&H " << as.bhSharpe
+                      << ", trades " << as.trades << ")\n";
+            std::cout << "  DD reduit (canon) : DD strat " << ac.dd << " % vs DD B&H "
+                      << ac.bhdd << " % (reduit mais < 50 %, clause DoD NON atteinte)\n";
+
+            std::cout << "  Multi-univers (fin, tous gates sur le MEME " << ix.nom << ") :";
+            const std::pair<const char*, const char*> univ[] = {
+                {"QQQ", SWINGBOT_QQQ_MAX_CSV}, {"SPY", SWINGBOT_SPY_MAX_CSV},
+                {"IWM", SWINGBOT_IWM_MAX_CSV}, {"MDY", SWINGBOT_MDY_MAX_CSV} };
+            for (const auto& u : univ) {
+                const auto agg = agrege(VixRegimeWalkForward(cfgIdx(),
+                    { u.second, ix.csv }, 550, 400, 400).run());
+                std::cout << "  " << u.first << " dS=" << agg.dSharpe();
+            }
+            std::cout << "\n";
+
+            double best = -1e9; int bR = 0; double bM = 0.0;
+            for (int rl : {63, 126, 252}) for (double mm : ix.mults) {
+                VixRegimeConfig c = cfgIdx(); c.refLookback = rl; c.thresholdMult = mm;
+                const double ds = agrege(VixRegimeWalkForward(c, qi, 550, 400, 400).run()).dSharpe();
+                if (ds > best) { best = ds; bR = rl; bM = mm; }
+            }
+            std::cout << "  Balayage refLookback x seuil : meilleur rl=" << bR << " / m=" << bM
+                      << " -> dSharpe OOS " << best
+                      << (best > 0.0 ? "  (CANDIDAT)" : "  (aucun candidat)") << "\n";
+
+            // Monte-Carlo size-aware (D45) sur les trades OOS poolés (canonique).
+            std::vector<TradeRecord> pool;
+            double annees = 0.0;
+            for (const auto& w : VixRegimeWalkForward(cfgIdx(), qi, 750, 500, 500).run()) {
+                for (const auto& t : w.oos.trades) pool.push_back(t);
+                if (w.oos.equityDates.size() >= 2) {
+                    const long d0 = daysFromCivil(w.oos.equityDates.front());
+                    const long d1 = daysFromCivil(w.oos.equityDates.back());
+                    if (d1 > d0) annees += static_cast<double>(d1 - d0) / 365.25;
+                }
+            }
+            if (!pool.empty()) {
+                MonteCarlo mc(10'000.0, /*graine=*/42, /*chemins=*/2000);
+                const auto rmc = mc.run(pool, annees);
+                std::cout << "  Monte-Carlo size-aware (canon, seed 42, 2000 chemins) : cagrP50 "
+                          << rmc.cagrP50 << " %  ddP95 " << rmc.ddP95 << " %\n";
+            }
+        }
+
+        std::cout << "\n  VERDICT 22.3 : AUCUN EDGE — ni le prix du risque de queue (SKEW) ni la\n"
+                  << "  vol de la vol (VVIX) ne battent le B&H sur le Sharpe OOS : dSharpe < 0 sur\n"
+                  << "  les 3 pavages, les 4 actifs et TOUS les reglages des deux balayages\n"
+                  << "  (SKEW : meilleur -0,08 ; VVIX : meilleur -0,25 ; monotone — moins le filtre\n"
+                  << "  intervient, moins il perd : la limite « toujours long » EST le B&H).\n"
+                  << "  Aucun candidat > 0 -> grille resserree sans objet (8t.1/8t.3). Le SKEW\n"
+                  << "  churne (300-343 stints OOS) et concentre les pertes (MC ddP95 62,5 %).\n"
+                  << "  Gate FERME. Prod paper. Les deux hypotheses du chantier (r'') sont soldees.\n";
+    }
+
     std::cout << "\n";
     return 0;
 }
