@@ -103,3 +103,9 @@ $RECYCLE.BIN/
 # car les verrous OOS de la famille term-structure VIX/VIX3M en dépendent.
 # SIGNAL de régime, jamais tradé ; Adj Close == Close (indice sans dividende).
 !VIX3M_max.csv
+# Indices CBOE dérivés de la surface d'options ^SKEW ~1990+ et ^VVIX ~2007+
+# (Sprint 22, item 22.0) : versionnés car les verrous OOS des familles
+# skew-regime / vvix-regime en dépendent. SIGNAUX de régime, jamais tradés ;
+# Adj Close == Close (indices sans dividende).
+!SKEW_max.csv
+!VVIX_max.csv
