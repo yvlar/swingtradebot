@@ -1,4 +1,5 @@
 #pragma once
+#include "backtest/ExecutionStats.hpp"
 #include "brokers/CsvDataFeed.hpp"
 #include "brokers/PaperBroker.hpp"
 #include "bot/Logger.hpp"
@@ -86,6 +87,9 @@ struct BacktestResult {
     int    takeProfitCount  = 0;
     int    trailingCount    = 0;
     int    signalCount      = 0;
+    // Frais totaux payés (commissions + frais réglementaires, achat ET vente)
+    // — Sprint 23, item 23.3. Toujours renseigné par runRange (0 avant).
+    double totalFees        = 0.0;
     std::vector<double>      equityCurve;
     std::vector<std::string> equityDates;
     std::vector<TradeRecord> trades;
@@ -114,6 +118,25 @@ public:
         , commissionPct_(commissionPct)
         , slippageBps_(slippageBps)
         , halfSpreadBps_(halfSpreadBps)
+    {}
+
+    // Constructeur « modèle de coûts » (Sprint 23, item 23.3) : le PaperBroker
+    // est construit avec l'ExecutionCostConfig (commission %, par action,
+    // minimum/plafond par ordre, frais réglementaires). Le constructeur
+    // historique ci-dessus reste le chemin des goldens — inchangé.
+    Backtester(
+        SwingConfig                config,
+        const std::string&         csvPath,
+        double                     initialCapital,
+        const ExecutionCostConfig& couts
+    )
+        : config_(std::move(config))
+        , csvPath_(csvPath)
+        , initialCapital_(initialCapital)
+        , commissionPct_(couts.commissionPct)
+        , slippageBps_(couts.slippageBps)
+        , halfSpreadBps_(couts.halfSpreadBps)
+        , costModel_(couts)
     {}
 
     // ── Exécution ─────────────────────────────────────────────────────────────
@@ -145,8 +168,12 @@ public:
                                       config_.smaTrendPeriod + 30);
 
         auto feed   = std::make_shared<ReplayDataFeed>(csv, lookback, startIdx);
-        auto broker = std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
-                                                    slippageBps_, halfSpreadBps_);
+        // Chemin « modèle de coûts » (23.3) si configuré, sinon chemin
+        // historique — arithmétique des goldens inchangée.
+        auto broker = costModel_
+            ? std::make_shared<PaperBroker>(initialCapital_, *costModel_)
+            : std::make_shared<PaperBroker>(initialCapital_, commissionPct_,
+                                            slippageBps_, halfSpreadBps_);
         auto logger = std::make_shared<NullLogger>();
 
         // Une seule instance de stratégie pour tout le backtest (D6 : elle était
@@ -160,6 +187,16 @@ public:
         bot.setExitObserver([&broker](const std::string& reason) {
             broker->setLastExitReason(reason);
         });
+        // Instrumentation 23.1 (opt-in) : collecteur nul par défaut — les
+        // goldens ne branchent rien et le cycle reste strictement identique.
+        if (stats_) {
+            bot.setSignalObserver([this](const Signal& s) {
+                stats_->recordSignal(s);
+            });
+            bot.setEntryObserver([this](const EntryDecision& d) {
+                stats_->recordEntry(d);
+            });
+        }
 
         for (size_t i = startIdx; i < endIdx; ++i) {
             const Bar& bar = allBars[i];
@@ -172,6 +209,13 @@ public:
             // Warmup local : on n'ouvre aucune position sur les `warmup`
             // premières barres DE LA FENÊTRE (i < startIdx + warmup)
             if (i < startIdx + static_cast<size_t>(warmup)) continue;
+
+            // Instrumentation 23.1 : déploiement du capital relevé à chaque
+            // barre post-warmup (même instant que le snapshot d'équité).
+            if (stats_) {
+                const double pv = broker->portfolioValue();
+                stats_->recordBar(pv - broker->cash(), pv);
+            }
 
             broker->incrementHoldDays();
 
@@ -198,9 +242,11 @@ public:
         // local devient l'index de warmup relatif au sous-vecteur.
         std::vector<Bar> subBars(allBars.begin() + startIdx,
                                  allBars.begin() + endIdx);
-        return computeMetrics(broker->cash(), subBars,
-                              broker->equityCurve(), broker->equityDates(),
-                              broker->trades(), warmup);
+        auto r = computeMetrics(broker->cash(), subBars,
+                                broker->equityCurve(), broker->equityDates(),
+                                broker->trades(), warmup);
+        r.totalFees = broker->totalFees();   // frais cumulés (23.2/23.3)
+        return r;
     }
 
     // ── Rapport console ───────────────────────────────────────────────────────
@@ -307,8 +353,16 @@ private:
     double      commissionPct_;
     double      slippageBps_;
     double      halfSpreadBps_;
+    // Modèle de coûts général (23.3) : absent = chemin historique (goldens).
+    std::optional<ExecutionCostConfig> costModel_;
+    // Instrumentation 23.1 : nul par défaut (aucune observation).
+    ExecutionStats* stats_ = nullptr;
 
 public:
+    // Collecteur d'instrumentation 23.1 (opt-in) : pointeur externe possédé
+    // par l'appelant, nul par défaut — le chemin des goldens n'observe rien.
+    void setStatsCollector(ExecutionStats* stats) { stats_ = stats; }
+
     // Public pour les tests unitaires des métriques : permet de vérifier
     // chaque formule (drawdown, Sharpe, profit factor…) sur des données
     // synthétiques, sans dépendre du backtest golden complet

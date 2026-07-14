@@ -161,6 +161,13 @@ add_executable(unit_tests
         tests/unit/test_bot_state_health_unit.cpp
         tests/unit/test_gateway_auth_monitor_unit.cpp
         tests/unit/test_temp_path_unit.cpp
+        tests/unit/test_execution_cost_model_unit.cpp
+        tests/unit/test_execution_stats_unit.cpp
+        tests/unit/test_net_buy_hold_unit.cpp
+        tests/unit/test_fractional_sizing_unit.cpp
+        tests/unit/test_small_account_feasibility_unit.cpp
+        tests/unit/test_small_account_stress_unit.cpp
+        tests/unit/test_block_bootstrap_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
@@ -207,6 +214,7 @@ add_executable(integration_tests
         tests/integration/test_coint_pairs_oos_integration.cpp
         tests/integration/test_skew_regime_oos_integration.cpp
         tests/integration/test_vvix_regime_oos_integration.cpp
+        tests/integration/test_small_account_feasibility_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})

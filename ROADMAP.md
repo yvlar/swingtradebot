@@ -14,9 +14,9 @@
 | FinTech      | 88        | 38                           |
 | Production   | 78        | 35                           |
 
-- **Dernière mise à jour** : 2026-07-11 (Sprint 22 — **Chantier (r'') : indices dérivés d'options SKEW/VVIX**, ouvert par décision utilisateur explicite = SORTIE du mode maintenance (RUNBOOK §8.5, conditions 1-6) avec périmètre entièrement pré-décidé (données/fournisseur/budget/licence/hypothèses/benchmark). À l'ouverture : baseline 818/818 verte (aucune dérive) ET CI du SHA `374f64c` (run `29134734275`) constatée VERTE — caveat §8.4 du Sprint 21 LEVÉ. **22.0** porte de données : `SKEW_max.csv` (9117 barres 1990+) + `VVIX_max.csv` (4895 barres 2007+) via le script INCHANGÉ, gate qualité vert ; **22.1** verdict SKEW verrouillé (7 verrous `SkewRegimeOosIntegration`) : AUCUN EDGE — dSharpe OOS −0,68/−0,55/−0,67 sur les 3 pavages, meilleur des 12 réglages −0,08, churn 300-343 stints, MC ddP95 62,5 % (pire queue de la famille) ; **22.2** verdict VVIX verrouillé (7 verrous `VvixRegimeOosIntegration`) : AUCUN EDGE — dSharpe −0,61/−0,62/−0,66, meilleur des 9 réglages −0,25 (caveat axe 2007+ sans dot-com, classe D57) ; **22.3** section 22 du `validate` (chiffres = verrous, sections 1-21 byte-identiques) ; **22.4** clôture + D61. AUCUN candidat dSharpe > 0 → grille resserrée sans objet, gate de confirmation FERMÉ. Moteur du Sprint 14 réutilisé TEL QUEL (zéro code moteur nouveau). 818 → **832/832 verts**. Goldens byte-identiques, `config/prod.json` intact, verrou live intact. La famille « niveau d'indice vs sa médiane » est soldée sur 4 signaux (vol réalisée, VIX, SKEW, VVIX) ; le volet GRATUIT du §5.4 est épuisé)
-- **Mise à jour précédente** : 2026-07-10 (Sprint 21 — **Maintenance technique D59 + D60**, sprint de maintenance au sens de `RUNBOOK.md` §8.2 (preuve objective = journaux CI du run `29094492121`), ouvert par décision utilisateur explicite SANS sortir du mode maintenance : **21.0** diff D60 APPLIQUÉ à `CLAUDE.md` (TSan bloquant, six jobs CI) ; **21.1** flake d'isolation D59 CORRIGÉ — helper `tests/support/TempPath.hpp` (nom = préfixe + PID + compteur + tick), test rouge d'abord, 9 fixtures migrées. 814 → 818/818 verts. Validation CI du SHA final `374f64c` : constatée VERTE à l'ouverture du Sprint 22 — clôture entièrement validée)
-- **Sprint courant** : — **MODE MAINTENANCE ACTIF (retour à la clôture du Sprint 22, 2026-07-11)** — le Sprint 22 s'est clos sans candidat (D61 : aucun dSharpe > 0, gate de confirmation jamais approché) → conformément à sa définition (item 22.4, décision utilisateur à l'ouverture), SwingBot RETOURNE au mode maintenance décidé au Sprint 20 (décision (e)) : banc d'essai paper-only en veille, régi par `RUNBOOK.md` §8 (baseline verte au fil de l'eau ; toute modification exige une preuve objective, reproductible et documentée — test rouge lorsqu'applicable — et un item de sprint dédié). Le mode maintenance est un ÉTAT TERMINAL TEMPORAIRE, pas un sprint vide : tant qu'il est actif et qu'aucun nouveau sprint n'a été défini par décision utilisateur, `prompt-executer-sprint.md` ne doit PAS être lancé. Réouverture UNIQUEMENT par décision utilisateur explicite (précédent : l'ouverture du Sprint 22 a suivi exactement ce chemin — décisions de périmètre rendues par l'utilisateur AVANT tout code) ; options connues au backlog : (a'') finitions Production (clang-tidy ciblé, test de contrat cross-feed — reliquats D25/Sprint 17, constats préparatoires D58, conventions à décider par l'utilisateur avant tout code) ou (r''') données alternatives PAYANTES ou d'une autre classe — le volet gratuit du §5.4 est ÉPUISÉ par le Sprint 22 (D61 : SKEW et VVIX réfutés) ; un pas de plus exige chaînes d'options réelles / IV par strike / put-call OI (fournisseur, budget, licence, type de données, hypothèse et benchmark prédéfinis — décisions utilisateur). Prod reste paper — la DoD d'edge n'est pas atteinte et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
+- **Dernière mise à jour** : 2026-07-14 (Sprint 23 — **Faisabilité d'un petit compte de 1 000 $**, ouvert et clos par décision utilisateur explicite (sortie TEMPORAIRE du mode maintenance, périmètre pré-décidé : simulation/paper-only, `config/prod.json` byte-identique, fractions STRICTEMENT offline). Baseline 832/832 verte (SHA `62aa240`). **23.0-23.1** scénarios 1 000 $ à risque 0,5/1/2 % + instrumentation des rejets par OBSERVATEURS opt-in (quantité zéro ≠ cash insuffisant ≠ risk-manager, aucun parsing de logs) ; **23.3** modèle de coûts configurable (%, par action, minimum/plafond par ordre, frais réglementaires — scénario A reproduit le golden AU CENTIME) ; **23.4** B&H NET (coûts 2 côtés + actions entières + cash résiduel : +207,69 % net vs +226,12 % brut) ; **23.2/23.5** rapport de faisabilité à verdict déterministe + contre-factuel fractionnaire analytique ; **23.6** stress séquences de pertes composées/gaps/slippage ; **23.7** Monte-Carlo par BLOCS (IID historique intact) ; **23.8** verdicts verrouillés (8 verrous `SmallAccountFeasibilityIntegration`) : risque 0,5 % INEXPLOITABLE (0/861 entrées), 1 % FRACTIONS_POTENTIELLEMENT_NECESSAIRES (3/764, 99,6 % bloquées), 2 % EXPLOITABLE_ACTIONS_ENTIERES (22/22) mais alpha net −192 pt — ET au dernier close QQQ (~600 $) AUCUN risque testé ne peut ouvrir une position (D62). AUCUN EDGE DÉMONTRÉ — SwingBot RESTE PAPER-ONLY. 832 → **899/899 verts**. Goldens byte-identiques, `config/prod.json` intact, verrou live intact, brokers IBKR/Alpaca inchangés (quantités entières). RETOUR AUTOMATIQUE au mode maintenance)
+- **Mise à jour précédente** : 2026-07-11 (Sprint 22 — **Chantier (r'') : indices dérivés d'options SKEW/VVIX**, ouvert par décision utilisateur explicite = SORTIE du mode maintenance (RUNBOOK §8.5). **22.0** porte de données SKEW/VVIX ; **22.1/22.2** verdicts verrouillés : AUCUN EDGE (D61, aucun candidat dSharpe > 0) ; **22.3** section 22 du `validate` ; **22.4** clôture. 818 → 832/832 verts. La famille « niveau d'indice vs sa médiane » est soldée sur 4 signaux ; le volet GRATUIT du §5.4 est épuisé)
+- **Sprint courant** : — **MODE MAINTENANCE ACTIF (retour AUTOMATIQUE à la clôture du Sprint 23, 2026-07-14)** — conformément à la décision d'ouverture du Sprint 23 (« sortie temporaire du mode maintenance uniquement pour le périmètre défini »), SwingBot RETOURNE au mode maintenance décidé au Sprint 20 (décision (e)) : banc d'essai paper-only en veille, régi par `RUNBOOK.md` §8 (baseline verte au fil de l'eau ; toute modification exige une preuve objective, reproductible et documentée — test rouge lorsqu'applicable — et un item de sprint dédié). Le mode maintenance est un ÉTAT TERMINAL TEMPORAIRE, pas un sprint vide : tant qu'il est actif et qu'aucun nouveau sprint n'a été défini par décision utilisateur, `prompt-executer-sprint.md` ne doit PAS être lancé. Réouverture UNIQUEMENT par décision utilisateur explicite (précédents : Sprints 22 et 23). Options connues au backlog : (a'') finitions Production (clang-tidy ciblé, contrat cross-feed — reliquats D25/Sprint 17, constats D58), (r''') données alternatives PAYANTES ou d'une autre classe (le volet gratuit du §5.4 est ÉPUISÉ, D61), ou (s) support des fractions d'action dans la simulation/les brokers (D62 — refonte des types de quantité int, décisions utilisateur préalables requises). Prod reste paper — la DoD d'edge n'est pas atteinte (confirmé une 11e fois par le Sprint 23 : alpha net −192 pt) et le verrou `LiveTradingStaysDisapprovedUntilEdgeDoD` reste intact
 
 > ### ⚠️ Rentabilité : le premier candidat d'edge (8b.1) est RÉFUTÉ hors-grille (Sprint 8-ter)
 > Les notes ci-dessus mesurent la **sûreté** et la **correction** du moteur, pas sa
@@ -1389,8 +1389,226 @@ Bugs disqualifiants pour l'argent réel. Chaque item : test rouge → fix → te
 | D59 | 🟠 | (Sprint 20, correctif post-revue finale) **Flake d'isolation des tests DbLogger en CI : collision de nom de fichier SQLite entre processus ctest parallèles.** Run CI `29094492121` (SHA `c2d58e9`, diff DOCS-ONLY par rapport au run vert précédent `29093941345` sur `15d5f24` — même code C++) : `Unit.DbLoggerUnit.Log200EntriesNoError` et `Unit.DbLoggerUnit.RecordTradeNoThrow` échouent avec « SQLite exec: database is locked » levée dans `SetUp()` (812/814, job « Build Linux + ctest » rouge, les 5 autres jobs verts). Cause identifiée en lecture seule : `tests/unit/test_db_logger_unit.cpp:21-22` nomme la base `unit_db_<steady_clock ns>.db` — horodatage SANS composante PID ni répertoire par test : deux processus démarrés dans le même tick peuvent ouvrir le MÊME fichier. Non reproduit localement (suites DbLogger ×30, -j16) — collision rare. Le correctif (nom incluant le PID, ou répertoire temporaire unique par test) est une modification de `tests/unit/` HORS du périmètre documentaire → **un nouveau sprint technique est requis**. Preuve objective au sens de RUNBOOK §8.2 : les journaux CI du run `29094492121` | ✅ Corrigé au Sprint 21 (`893db4d` fixtures SQLite + `d361667` généralisation) — helper `tests/support/TempPath.hpp` (nom PID+compteur+tick), contrat verrouillé par la suite `TempPathUnit` (test rouge d'abord) |
 | D60 | 🟡 | (Sprint 20, correctif post-revue finale) **`CLAUDE.md` contredit la CI réelle sur le TSan ciblé.** Texte obsolète (`CLAUDE.md:50`) : « a targeted TSan pass over the concurrent suites (`WsServer|Watchdog|BotState`, non-blocking) » ; comportement réel : le job `tsan` de `.github/workflows/ci.yml:198-231` est **BLOQUANT** depuis l'item 17.2 (commentaire explicite dans le workflow, aucun `continue-on-error`). Risque d'interprétation : un exécuteur croyant le TSan non bloquant pourrait juger un échec TSan sans conséquence et déclarer une validation à tort. Obsolescence connexe constatée au passage : la même phrase annonce « four jobs » alors que la CI en compte SIX (cppcheck et couverture ajoutés au Sprint 17). `CLAUDE.md` est un fichier de règles : conformément à la gouvernance (pas d'auto-amendement), le correctif n'est PAS appliqué — un diff minimal est PROPOSÉ au changelog du Sprint 20 et attend une approbation utilisateur explicite | ✅ APPLIQUÉ au Sprint 21 (`617221f`) — décision utilisateur explicite à l'ouverture du sprint, commit dédié citant la décision (TSan bloquant + six jobs, corrections liées appliquées ensemble comme proposé) |
 | D61 | 🟡 | (Sprint 22) **Les DEUX hypothèses du chantier (r'') à coût zéro — indices CBOE dérivés de la surface d'options — sont RÉFUTÉES : ni le prix du risque de queue (^SKEW) ni la vol de la vol (^VVIX) ne battent le B&H en Sharpe OOS ; la famille « niveau d'un indice vs sa propre médiane glissante » est désormais soldée sur QUATRE signaux (vol réalisée D50, VIX D51, SKEW, VVIX).** Moteur du Sprint 14 réutilisé TEL QUEL (aucun nouveau code moteur). **SKEW** (axe QQQ∩SKEW 6797 barres 1999+, dot-com/2008 COUVERTS — plage de balayage resserrée {0,95;1;1,05;1,1}, l'indice étant borné ~100-183) : dSharpe OOS −0,68/−0,55/−0,67 sur les 3 pavages, alpha −23,2/−12,0/−25,3, aucun edge sur les 4 actifs, meilleur des 12 réglages = rl 63/seuil 1,10 → −0,08 ; le signal lissé CHURNE (300-343 stints OOS contre 216 pour le VIX) et concentre les pertes (MC size-aware cagrP50 +1,64 %, ddP95 62,5 % — la PIRE queue de la famille). PIRE que le régime VIX : le prix de queue est plus bruité que le niveau de vol. **VVIX** (axe QQQ∩VVIX 4895 barres 2007+ — caveat classe D57 : PAS de dot-com, 2008 couvert ; balayage vol-like {0,8;1;1,2}) : dSharpe OOS −0,61/−0,62/−0,66, alpha −22,5/−19,7/−24,1, aucun edge sur les 4 actifs, meilleur des 9 réglages = rl 63/seuil 1,2 → −0,25 ; les seuils stricts (0,8) tombent à 5-7 trades (quasi toujours-cash, dSharpe −1,5 à −1,8) ; MC cagrP50 +4,97 %, ddP95 35,7 % — même profil que le VIX (D51). Monotonie commune : moins le filtre intervient, moins il perd — la limite « toujours long » EST le B&H. AUCUN candidat dSharpe > 0 dans les deux balayages → grille resserrée SANS OBJET (8t.1/8t.3), gate de confirmation FERMÉ sans avoir été approché. | Consigné (verrous `SkewRegimeOosIntegration` ×7 / `VvixRegimeOosIntegration` ×7) ; le volet GRATUIT du §5.4 est soldé — un pas de plus exige des données PAYANTES (chaînes d'options réelles, IV par strike, put/call OI : fournisseur/budget/licence = décision utilisateur) ou une autre classe de données alternatives |
+| D62 | 🟡 | (Sprint 23) **La contrainte d'action entière DOMINE le compte de 1 000 $ — et la faisabilité observée à risque 2 % est un artefact de prix historique.** Mesures verrouillées (`SmallAccountFeasibilityIntegration`, QQQ.csv 2019-2026, coûts scénario A) : à risque 0,5 % le compte ne peut JAMAIS trader (861/861 rejets quantité zéro — budget de risque 5 $ contre ≥ 7 $ de risque par action) ; à 1 % il exécute 3 entrées sur 764 tentatives (99,6 % bloquées) ; à 2 % il exécute 22/22 MAIS uniquement parce que l'historique 2019-2021 cotait 150-400 $ : au dernier close de la série (600,50 $), AUCUN des trois risques ne peut ouvrir une position (2 % → budget 20 $ < 30 $ de risque par action ; la séquence de stress est bloquée 10/10). Le contre-factuel fractionnaire analytique (23.5, STRICTEMENT offline) chiffre la perte : 11,3 points de déploiement perdus par la troncature même dans le scénario exécutable, 761-861 signaux bloqués UNIQUEMENT par la contrainte entière aux risques prudents. Conclusion : opérer 1 000 $ au prix ACTUEL du QQQ exigerait le support des fractions d'action — soit une simulation fractionnaire complète, soit les brokers (IBKR/Alpaca les offrent en réel). Les deux exigent une refonte des types de quantité `int` de `IBroker::submitBuy/submitSell` et du sizing : chantier HORS du périmètre 23 (décision d'ouverture : aucune fraction côté live), à ouvrir par décision utilisateur | Consigné (backlog option (s)) — le rapport 23 conclut « fractions potentiellement nécessaires » ; aucun sprint affecté tant que le mode maintenance dure |
+| D63 | 🟢 | (Sprint 23) **Le bootstrap par blocs alourdit la queue de drawdown vs l'IID sur les trades du petit compte — les grappes de pertes comptent.** Sur les 22 trades du scénario 1 000 $/risque 2 % (7,12 ans, graine 42, 2 000 chemins) : DD p95 IID 5,27 % contre 6,68 % en blocs de 3 (+27 % relatif) — l'IID, en détruisant l'autocorrélation, sous-estime le risque de queue quand les pertes arrivent groupées (régimes) ; en blocs de 10, 4,39 % (2 blocs par chemin → diversité réduite, le chemin ressemble à l'observé). Le MC IID historique reste INCHANGÉ (goldens verts) — la variante blocs (`BlockBootstrap.hpp`, ordre interne conservé, longueur de chemin = n trades) est un COMPLÉMENT validé sur séquence synthétique en grappes avant lecture des vrais chiffres (leçon D45 appliquée avant coup). Caveat : 22 trades est une petite base — la fourchette 4,4-6,7 % est indicative, pas prédictive | Consigné (verrou `MonteCarloIidVsBlocksIsLocked`) — pour les futurs verdicts de queue, lire IID ET blocs |
 
 ## Changelog
+
+### Sprint 23 — Faisabilité d'un petit compte de 1 000 $ (2026-07-14)
+
+**Décision du propriétaire (verbatim, consignée à l'ouverture)** :
+> J'approuve l'ouverture du Sprint 23 — Faisabilité d'un petit compte de 1 000 $.
+> Le travail demeure exclusivement en simulation et en paper trading.
+> Aucune activation du trading réel n'est autorisée.
+> `liveTradingApproved` doit rester à `false`.
+> Le test `LiveTradingStaysDisapprovedUntilEdgeDoD` doit rester intact.
+> Cette décision autorise la sortie temporaire du mode maintenance uniquement
+> pour le périmètre défini dans ce prompt.
+
+À la clôture du Sprint 23, SwingBot retourne AUTOMATIQUEMENT au mode
+maintenance, sauf nouvelle décision explicite du propriétaire.
+
+**Contexte** : le propriétaire n'a jamais tradé en réel et commencerait avec un
+capital TOTAL de 1 000 $. Avec la config prod (risque 2 %, stop 5 %,
+`maxCapitalUsagePct` 95 %), la taille théorique maximale d'une position est
+d'environ 400 $ — certains signaux peuvent produire une quantité de ZÉRO action
+entière. Le but du sprint n'est PAS une nouvelle stratégie : c'est de mesurer la
+FAISABILITÉ (opérationnelle, pas la rentabilité) des stratégies existantes avec
+1 000 $, net de coûts, actions entières, et de dire si les fractions d'action
+seraient nécessaires. Les stratégies déjà réfutées doivent rester réfutées dans
+ce contexte (aucune re-baseline sans décision utilisateur).
+
+**Baseline à l'ouverture** : **832/832 verte** (SHA `62aa240`, build Debug
+−Werror sans warning, Linux Ubuntu 24.04 paquets système sans vcpkg,
+`ctest -N` = 832 = tableau de bord, suite complète en 31 s). CI de master pour
+`62aa240` : verte (PR #37 fusionnée — le SHA de tête EST la clôture validée du
+Sprint 22).
+
+**Commits** (ordre chronologique = ordre d'exécution) :
+- `be99ef9` docs : ouverture Sprint 23 — faisabilité compte 1000 $ (décision utilisateur, sortie temporaire du mode maintenance)
+- `c3eb52a` feat(backtest) : modèle de coûts configurable petit compte (item 23.3)
+- `7ef7abd` feat(backtest) : scénarios de capital et instrumentation des rejets (items 23.0-23.1)
+- `2d734a9` feat(backtest) : benchmark buy-and-hold net de coûts (item 23.4)
+- `7dc3e90` feat(backtest) : rapport de faisabilité 1000 $ + analyse offline des fractions (items 23.2, 23.5)
+- `0dad4ce` feat(backtest) : stress petit compte — séquences de pertes et gaps (item 23.6)
+- `d81ed84` feat(backtest) : bootstrap Monte-Carlo par blocs (item 23.7)
+- `ab66961` test(backtest) : section 23 du validate + verrous intégration faisabilité compte 1000 $ (items 23.2, 23.8)
+- (clôture) docs : verdict final, D62/D63, rétrospective, retour au mode maintenance
+
+**Items** (dépendances : 23.1→23.0 ; 23.2→23.0/23.1/23.3/23.4 ; 23.4→23.3 ;
+23.5→23.1 ; 23.6→23.3 ; 23.8→tous) :
+- [x] **23.0** Scénarios de capital et de risque → `7ef7abd`
+  Capital initial 1 000 $ réellement injecté dans le backtester
+  (`include/backtest/BackTester.hpp` accepte déjà `initialCapital` ;
+  `include/bot/RiskManager.hpp` dimensionne depuis le cash) ; risques
+  0,5 %/1 %/2 % fournis par `SmallAccountScenario` (structure offline),
+  JAMAIS par `config/prod.json`. Acceptation SATISFAITE : les trois niveaux
+  tournent au harnais ; l'ancien comportement 10 000 $ intact (le scénario A
+  redonne le golden 11 932,57 $ AU CENTIME) ; goldens inchangés ; le verrou
+  `InitialCapitalDrivesSharesAndReturn` démontre l'influence du capital
+  (rendement 15,56 % à 1 000 $ contre 19,33 % à 10 000 $, taille moyenne
+  1,18 contre 16,09 actions).
+- [x] **23.1** Instrumentation des signaux non exécutables → `7ef7abd`
+  Compteurs
+  `buySignalsGenerated`, `sellSignalsGenerated`, `entriesAttempted`,
+  `entriesExecuted`, `entriesRejectedZeroQuantity`,
+  `entriesRejectedInsufficientCash`, `entriesRejectedRiskManager`,
+  `averagePositionValue`, `averageCapitalDeployedPct`,
+  `maximumCapitalDeployedPct`, `averageIdleCashPct` via OBSERVATEURS optionnels
+  (seam nul par défaut = moteur inchangé, même approche que `setExitObserver`
+  `include/bot/TradingBot.hpp:333`). Acceptation : chaque rejet a une raison
+  explicite ; quantité zéro comptée SANS créer d'ordre ; aucun parsing de logs ;
+  déterministe ; visible dans `validate` ; tests unitaires par raison de rejet ;
+  verrou d'intégration du verdict 1 000 $ sur les CSV du dépôt.
+- [x] **23.2** Rapport `SmallAccountFeasibilityReport` → `7dc3e90` + `ab66961`
+  Par niveau de risque :
+  capital initial/final, rendement, alpha vs benchmark, drawdown max, compteurs
+  23.1, frais totaux/% du capital/par aller-retour ; verdict déterministe
+  {`INEXPLOITABLE_ACTIONS_ENTIERES`, `EXPLOITABLE_MAIS_CONTRAINT`,
+  `EXPLOITABLE_ACTIONS_ENTIERES`, `FRACTIONS_POTENTIELLEMENT_NECESSAIRES`} à
+  seuils DOCUMENTÉS dans le code. Acceptation : faisabilité ≠ rentabilité (un
+  scénario peut être exécutable ET sans edge) ; verdicts verrouillés par tests ;
+  nouvelle section du `validate`.
+- [x] **23.3** Modèle de coûts configurable → `c3eb52a`
+  Abstraction {`commissionPct`,
+  `commissionPerShare`, `minimumCommissionPerOrder`,
+  `maximumCommissionPerOrder` (option), `slippageBps`, `halfSpreadBps`,
+  `regulatoryFee` fixe/proportionnel (option)} ; scénario A = historique
+  conservateur EXACT (0,1 %/côté + 2 bps + 0,5 bp —
+  `include/backtest/BackTester.hpp:103`, `include/brokers/PaperBroker.hpp:44`),
+  B = faible commission sans minimum, C = stress petit compte avec minimum par
+  ordre (hypothèse de stress, PAS un tarif réel ; valeurs centralisées).
+  Acceptation : anciens appels compatibles ; scénario A reproduit les goldens ;
+  une commission minimale peut dominer une petite transaction ; achat ET vente
+  comptés ; frais exposés au rapport ; tests unitaires au centime.
+- [x] **23.4** Benchmark brut et net → `2d734a9`
+  `buyHoldGrossReturnPct` (métrique
+  historique conservée, `include/backtest/BackTester.hpp:329`) +
+  `buyHoldNetReturnPct` (coût d'achat initial + vente finale, même modèle de
+  coûts, actions ENTIÈRES quand le scénario l'est, cash résiduel inclus dans la
+  valeur finale, même capital initial). Acceptation : brut/net clairement
+  étiquetés ; tests synthétiques vérifiables à la main ; verdict d'edge sur
+  comparaison documentée.
+- [x] **23.5** Analyse des fractions d'action STRICTEMENT offline → `7dc3e90`
+  Aucun type
+  de quantité broker live modifié (`include/core/Interfaces.hpp` : `submitBuy/
+  submitSell(int qty)` INTACTS, IBKR/Alpaca intacts) ; contre-factuel ANALYTIQUE
+  réutilisant signal/prix/capital/formule de risque :
+  `theoreticalFractionalQuantity`, `integerQuantity`, `integerDeploymentPct`,
+  `fractionalDeploymentPct`, `lostDeploymentPctDueToIntegerConstraint`,
+  `signalsBlockedOnlyByIntegerConstraint`. Acceptation : étiqueté théorique/
+  offline ; test sur l'exemple 1 000 $, risque 1 %, stop 5 %, prix élevé ; le
+  rapport conclut sur la nécessité des fractions.
+- [x] **23.6** Tests de survie du petit compte → `0dad4ce`
+  Séquences de 5 et 10 pertes au
+  stop en COMPOSITION réelle (pas `n × risque initial`) →
+  `capitalRemaining`/`drawdownPct`/`capitalLossPct` par niveau de risque ; gaps
+  défavorables (stop −5 % rempli à −6/−8/−10 %, coûts inclus) ; stress slippage
+  2/5/10/25 bps (scénarios de stress, PAS des prédictions). Acceptation :
+  déterministe ; par niveau de risque ; aucune modification de stratégie ; aucun
+  déclenchement live ; risques dépassant les 5/10/20 $ planifiés identifiés.
+- [x] **23.7** Monte-Carlo par blocs → `d81ed84`
+  Bootstrap par BLOCS de transactions
+  consécutives (paramètres `blockSize`/`paths`/`seed`, ordre interne des blocs
+  conservé), COMPLÉMENT du MC IID historique
+  (`include/backtest/MonteCarlo.hpp:27` inchangé, goldens
+  `MonteCarloIntegration` inchangés). Acceptation : l'ancien MC produit
+  exactement les mêmes résultats ; reproductible à graine fixe ; tests unitaires
+  sur séquence synthétique ; rapport comparatif IID vs blocs ; drawdown p95 du
+  compte 1 000 $ affiché.
+- [x] **23.8** Verdict final → `ab66961` + (ce commit)
+  Réponses explicites aux 10 questions du sprint
+  (exécutable ? à quel risque ? % de signaux bloqués ? coût total ? fractions
+  nécessaires ? survie 5/10 pertes ? DD p95 IID ? DD p95 blocs ? edge net ?
+  paper-only ?). Si aucun edge : « AUCUN EDGE DÉMONTRÉ. LE CAPITAL DE 1 000 $ NE
+  JUSTIFIE PAS UNE ACTIVATION DU TRADING RÉEL. SWINGBOT RESTE PAPER-ONLY. »
+  Clôture : suite complète + `validate`, retour AUTOMATIQUE au mode maintenance,
+  PR vers master (pas de fusion sans revue du propriétaire).
+
+**Contraintes non négociables (rappel)** : jamais de trading réel, de marge, de
+levier, d'options, de vente à découvert, de compte financé ni de secret commité ;
+`liveTradingApproved` reste `false` ; `LiveTradingStaysDisapprovedUntilEdgeDoD`
+intact ; `config/prod.json` byte-identique ; goldens historiques inchangés (toute
+re-baseline interdite sans décision utilisateur) ; prompts gouvernés et DoD
+intacts ; fractions d'action STRICTEMENT offline (IBKR/Alpaca inchangés).
+Toutes RESPECTÉES à la clôture (vérifié : `git diff` de `config/prod.json`
+vide, verrou live vert, prompts intacts, `submitBuy/submitSell(int)` inchangés).
+
+**Verdicts (mesurés 2026-07-14, figés par les 8 verrous
+`SmallAccountFeasibilityIntegration`)** — QQQ.csv total-return 2019-2026,
+config prod, coûts scénario A (0,1 %/côté + 2,5 bps), capital 1 000 $ :
+- **Risque 0,5 %** : `INEXPLOITABLE_ACTIONS_ENTIERES` — 861 signaux BUY, 861
+  rejets quantité zéro, 0 entrée, capital intact (budget de risque 5 $ contre
+  ≥ 7 $ de risque par action sur toute la série).
+- **Risque 1 %** : `FRACTIONS_POTENTIELLEMENT_NECESSAIRES` — 3 entrées sur 764
+  tentatives (99,6 % bloquées par la contrainte entière), final 1 040,76 $.
+- **Risque 2 %** : `EXPLOITABLE_ACTIONS_ENTIERES` — 22/22 entrées (les mêmes
+  signaux que le golden), final 1 155,60 $ (+15,56 %), frais 14,48 $ (1,45 %
+  du capital ; 44 $ soit 4,4 % au stress C — un minimum par ordre DOMINE),
+  déploiement moyen 28,7 % contre 40 % théorique fractionnaire (11,3 points
+  perdus par la troncature), DD max 5,28 %. MAIS : faisabilité ≠ rentabilité —
+  alpha net **−192,13 pt** vs B&H net (+15,56 % contre +207,69 %).
+- **B&H 1 000 $** : brut +226,12 % / net +207,69 % (coûts 2 côtés + actions
+  entières + cash résiduel — l'écart de 18 pts est le « coût » réel du B&H).
+- **Le constat qui gouverne tout (D62)** : la faisabilité du risque 2 % est un
+  ARTEFACT DE PRIX — l'historique 2019-2021 cotait 150-400 $ ; au dernier
+  close (600,50 $), AUCUN risque testé ne peut ouvrir une position (2 % →
+  budget 20 $ < 30 $ de risque par action). Un compte de 1 000 $ qui
+  démarrerait AUJOURD'HUI ne peut pas exécuter la stratégie en actions
+  entières, à aucun niveau de risque prudent.
+- **Stress (scénario A, prix 100 $)** : 5 pertes → −8,35 %, 10 pertes →
+  −16,18 % (composition réelle, SOUS le naïf 20 % — le re-sizing entier
+  amortit) ; gap −10 % au lieu du stop −5 % → perte 40,86 $ = 2× la perte
+  planifiée (20 $) ; slippage 2→25 bps → −31 $ de capital final.
+- **Monte-Carlo (22 trades, 7,12 ans, graine 42, 2 000 chemins)** : IID DD p95
+  5,27 % ; blocs de 3 : 6,68 % (les grappes de pertes ALOURDISSENT la queue,
+  +27 % relatif) ; blocs de 10 : 4,39 %. MC IID historique INCHANGÉ (goldens
+  verts). Caveat : 22 trades est une petite base — ces DD sont indicatifs.
+- **Verdict final (23.8)** : AUCUN EDGE DÉMONTRÉ. LE CAPITAL DE 1 000 $ NE
+  JUSTIFIE PAS UNE ACTIVATION DU TRADING RÉEL. SWINGBOT RESTE PAPER-ONLY.
+
+**Tests** : 832 → **899/899 verts** (+59 unitaires : ExecutionCostModelUnit 15,
+ExecutionStatsUnit 9, NetBuyHoldUnit 7, FractionalSizingUnit 5,
+SmallAccountFeasibilityUnit 7, SmallAccountStressUnit 9, BlockBootstrapUnit 7 ;
++8 intégration : SmallAccountFeasibilityIntegration). DoD vérifiée localement :
+Debug ET Release 899/899, ASan+UBSan suite complète 899/899, TSan ciblé
+(WsServer|Watchdog|BotState) 75/75, cppcheck vert (commande CI exacte),
+couverture gcovr 97,6 % de lignes sur include/ (seuil 95 % — en hausse vs
+97,2 % à la pose du gate). Sections 1-22 du `validate` inchangées.
+
+**Rétrospective** :
+1. *Découpage* : bon — le modèle de coûts (23.3) AVANT l'instrumentation a
+   évité de re-toucher deux fois le PaperBroker ; chaque item = un commit
+   atomique avec ses tests ; la préservation des goldens a été PROUVÉE au fil
+   de l'eau (le scénario A redonne 11 932,570159 $ au micro-centime via le
+   chemin neuf — meilleure preuve possible que l'ancien chemin est intact).
+2. *Prompts du workflow* : suffisants, AUCUN diff proposé. Le prompt du sprint
+   imposait des seuils de verdict « documentés » sans les fixer : ils ont été
+   choisis (blocage ≥ 50 % → fractions ; tout blocage ou ≥ 15 pts de
+   déploiement perdus → contraint) et consignés dans le code
+   (`SmallAccountFeasibility.hpp`) ET ici — re-calibrables par simple décision
+   utilisateur, pas de re-baseline cachée.
+3. *À détecter plus tôt / garde-fous* : (a) le P&L des TradeRecords du chemin
+   « modèle de coûts » inclut la commission d'ACHAT (sinon un minimum par
+   ordre serait invisible au rapport), là où le chemin historique ne compte
+   que la vente (convention D22 des goldens) — divergence DOCUMENTÉE dans le
+   code, verrouillée par test, à unifier seulement si un sprint futur
+   re-baseline les goldens ; (b) la classification quantité-zéro/cash repose
+   sur le sizing historique — le vol-sizing 8o.2 (désactivé en prod) peut
+   sous-classer, noté dans TradingBot.hpp ; (c) leçon D45 réappliquée AVANT
+   coup cette fois : le MC par blocs a été validé sur séquence synthétique en
+   grappes (le test prouve qu'il mesure bien ce qu'il prétend) avant de lire
+   ses chiffres sur les vrais trades.
+4. *Notes /100* : **toutes inchangées** — Architecture 90 (=) : seams
+   d'observation opt-in et scénarios de coûts sont des AJOUTS propres,
+   aucune interface live touchée ; Qualité 94 (=) : +67 tests, mais la
+   méthodologie (rouge→vert, verrous, calculs manuels) est celle déjà notée ;
+   FinTech 88 (=) : le réalisme des coûts progresse (minimum par ordre,
+   B&H net) mais aucun mécanisme de trading nouveau n'est validé ;
+   Production 78 (=) : rien de déployable n'a changé. **Rentabilité 28 (=)**
+   par construction : le sprint MESURE la faisabilité, il ne cherche pas
+   d'edge — l'alpha net −192 pt confirme une 11e fois le verdict paper-only ;
+   la note ne bougera qu'avec un edge absolu net de coûts (DoD inchangée).
 
 ### Sprint 22 — Chantier (r'') : indices dérivés d'options SKEW/VVIX (2026-07-11)
 

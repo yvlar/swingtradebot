@@ -1,5 +1,7 @@
 #pragma once
 #include "core/Interfaces.hpp"
+#include "backtest/ExecutionCostModel.hpp"
+#include <optional>
 #include <vector>
 #include <numeric>
 #include <algorithm>
@@ -51,6 +53,19 @@ public:
         , fillPenaltyPct_((slippageBps + halfSpreadBps) / 10'000.0)
     {}
 
+    // Constructeur « modèle de coûts » (Sprint 23, item 23.3) : active le
+    // chemin de coûts configurable (commission %, par action, minimum/plafond
+    // par ordre, frais réglementaires). Le constructeur historique ci-dessus
+    // reste le chemin par défaut, byte-identique — les goldens ne passent
+    // JAMAIS par ici.
+    PaperBroker(double initialCapital, const ExecutionCostConfig& couts)
+        : initialCapital_(initialCapital)
+        , cash_(initialCapital)
+        , commissionPct_(couts.commissionPct)
+        , fillPenaltyPct_(couts.fillPenaltyFraction())
+        , costCfg_(couts)
+    {}
+
     // ── Implémentation IBroker ────────────────────────────────────────────────
 
     std::optional<Order> submitBuy(const std::string& symbol, int qty) override {
@@ -59,19 +74,45 @@ public:
         // Fill dégradé : un achat au marché paie slippage + demi-spread (D22),
         // appliqués sur le prix d'EXÉCUTION (open i+1 en backtest — B2)
         double price = fillPrice_.value_or(*currentPrice_) * (1.0 + fillPenaltyPct_);
-        double cost  = price * qty * (1.0 + commissionPct_);
+        double cost;
+        double commission;
 
-        if (cost > cash_) {
-            // Ajuste la quantité au cash disponible
-            qty = static_cast<int>(cash_ / (price * (1.0 + commissionPct_)));
-            if (qty <= 0) return std::nullopt;
+        if (costCfg_) {
+            // Chemin « modèle de coûts » (23.3) : commission générale (%, par
+            // action, minimum/plafond, frais réglementaires) AJOUTÉE au notionnel.
+            commission = costCfg_->commissionForOrder(price, qty);
+            cost       = price * qty + commission;
+            if (cost > cash_) {
+                // La commission n'est pas linéaire (minimum par ordre) : borne
+                // haute par le cash puis décrémentation jusqu'à tenir dedans.
+                qty = std::min(qty, static_cast<int>(cash_ / price));
+                while (qty > 0) {
+                    commission = costCfg_->commissionForOrder(price, qty);
+                    cost       = price * qty + commission;
+                    if (cost <= cash_) break;
+                    --qty;
+                }
+                if (qty <= 0) return std::nullopt;
+            }
+        } else {
+            // Chemin HISTORIQUE (goldens) : commission proportionnelle pure —
+            // arithmétique inchangée au bit près.
             cost = price * qty * (1.0 + commissionPct_);
+            if (cost > cash_) {
+                // Ajuste la quantité au cash disponible
+                qty = static_cast<int>(cash_ / (price * (1.0 + commissionPct_)));
+                if (qty <= 0) return std::nullopt;
+                cost = price * qty * (1.0 + commissionPct_);
+            }
+            commission = price * qty * commissionPct_;
         }
 
         // Équité totale à l'entrée : à plat (avant achat), équité = cash pur.
         // Sert à calculer la fraction déployée du trade (D45, sizing MC).
         entryEquity_ = cash_;
         cash_ -= cost;
+        totalFees_        += commission;   // cumul des frais (rapport 23.2)
+        openBuyCommission_ = commission;   // commission d'achat de LA position ouverte
         position_ = Position{symbol, qty, price, price * qty, 0.0};
         currentBuyDate_ = fillDate_.value_or(currentDate_);
 
@@ -89,9 +130,20 @@ public:
 
         // Fill dégradé : une vente au marché concède slippage + demi-spread (D22),
         // sur le prix d'EXÉCUTION (open i+1 en backtest — B2)
-        double price    = fillPrice_.value_or(*currentPrice_) * (1.0 - fillPenaltyPct_);
-        double proceeds = price * qty * (1.0 - commissionPct_);
+        double price = fillPrice_.value_or(*currentPrice_) * (1.0 - fillPenaltyPct_);
+        double commission;
+        double proceeds;
+        if (costCfg_) {
+            // Chemin « modèle de coûts » (23.3) : commission générale déduite.
+            commission = costCfg_->commissionForOrder(price, qty);
+            proceeds   = price * qty - commission;
+        } else {
+            // Chemin HISTORIQUE (goldens) : arithmétique inchangée.
+            commission = price * qty * commissionPct_;
+            proceeds   = price * qty * (1.0 - commissionPct_);
+        }
         cash_ += proceeds;
+        totalFees_ += commission;
 
         // Enregistre le trade complété
         TradeRecord trade;
@@ -100,9 +152,13 @@ public:
         trade.buyPrice   = position_->avgPrice;
         trade.sellPrice  = price;
         trade.shares     = qty;
-        // P&L net de la commission de vente (cohérent avec le débit du cash)
-        trade.pnl        = (price - position_->avgPrice) * qty
-                           - price * qty * commissionPct_;
+        // P&L : chemin historique = net de la SEULE commission de vente
+        // (convention D22, cohérente avec les goldens). Chemin modèle de
+        // coûts = net des DEUX côtés — un minimum par ordre doit être visible
+        // dans le P&L du trade, sinon il serait invisible au rapport 23.2.
+        trade.pnl        = costCfg_
+            ? (price - position_->avgPrice) * qty - commission - openBuyCommission_
+            : (price - position_->avgPrice) * qty - price * qty * commissionPct_;
         trade.pnlPct     = (price - position_->avgPrice) / position_->avgPrice * 100.0;
         // Fraction déployée (D45) : capital investi à l'entrée / équité d'entrée.
         // Garde entryEquity_ > 0 → sinon 1.0 (plein déploiement par défaut).
@@ -170,6 +226,9 @@ public:
     double initialCapital()                   const { return initialCapital_; }
     double cash()                             const { return cash_; }
     bool   inPosition()                       const { return position_.has_value(); }
+    // Frais cumulés (commissions + frais réglementaires, achat ET vente) —
+    // simple COMPTEUR pour le rapport 23.2, aucun effet sur le trading.
+    double totalFees()                        const { return totalFees_; }
 
     // Enregistre un point de la courbe d'équité
     void equitySnapshot(double value, const std::string& date) {
@@ -192,6 +251,10 @@ private:
     double                   cash_;
     double                   commissionPct_;
     double                   fillPenaltyPct_; // (slippage + demi-spread) en fraction
+    // Modèle de coûts général (23.3) : absent = chemin historique (goldens).
+    std::optional<ExecutionCostConfig> costCfg_;
+    double                   totalFees_ = 0.0;         // frais cumulés (23.2)
+    double                   openBuyCommission_ = 0.0; // commission d'achat de la position ouverte
     std::optional<Position>  position_;
     std::optional<double>    currentPrice_;
     std::optional<double>    fillPrice_;      // prix d'exécution (B2), sinon close courant
