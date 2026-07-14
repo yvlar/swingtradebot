@@ -109,6 +109,10 @@ private:
         Signal signal = strategy_->evaluate(bars);
         double price  = bars.back().close;
 
+        // Instrumentation 23.1 (observation pure, AUCUN effet sur le cycle) :
+        // compte les signaux tels qu'émis par la stratégie, position ou pas.
+        if (signalObserver_) signalObserver_(signal);
+
         logger_->info(
             bars.back().date + " │ $" + std::to_string(static_cast<int>(price)) +
             " │ " + signalStr(signal) + " │ " + signal.reason
@@ -259,10 +263,32 @@ private:
                 riskCfg_.volSizingAtrRef    // ≤ 0 = sizing historique
             );
             if (shares <= 0) {
+                // Instrumentation 23.1 : distinguer la QUANTITÉ ZÉRO (le budget
+                // de risque vaut moins d'UNE action entière — la contrainte
+                // d'action entière bloque) du CASH INSUFFISANT (même une seule
+                // action ne tient pas dans le cash utilisable). La quantité
+                // fractionnaire théorique départage : ≥ 1 → le risque
+                // autorisait au moins une action, c'est le capital qui manque.
+                // (Classification exacte avec le sizing historique — le
+                // vol-sizing 8o.2, désactivé en prod, peut sous-classer.)
+                if (entryObserver_) {
+                    const double fractionnaire =
+                        (price > 0 && riskCfg_.stopLossPct > 0)
+                            ? account.cash * riskCfg_.riskPerTradePct
+                                  / (price * riskCfg_.stopLossPct)
+                            : 0.0;
+                    entryObserver_({bars.back().date, price, account.cash, shares,
+                                    fractionnaire >= 1.0
+                                        ? EntryOutcome::RejetCashInsuffisant
+                                        : EntryOutcome::RejetQuantiteZero});
+                }
                 logger_->warn("Cash insuffisant pour ouvrir une position — aucun ordre émis");
                 return true;
             }
             if (!riskManager_->isTradeAllowed(account, pos, price, shares)) {
+                if (entryObserver_)
+                    entryObserver_({bars.back().date, price, account.cash, shares,
+                                    EntryOutcome::RejetRiskManager});
                 logger_->warn("Trade non autorisé par le risk manager");
                 return true;
             }
@@ -275,6 +301,9 @@ private:
             if (order.has_value() && order->status == OrderStatus::FILLED) {
                 double fillPrice = order->price    > 0 ? order->price    : price;
                 int    fillQty   = order->quantity > 0 ? order->quantity : shares;
+                if (entryObserver_)
+                    entryObserver_({bars.back().date, price, account.cash, fillQty,
+                                    EntryOutcome::Executee});
                 state_.inPosition  = true;
                 state_.buyPrice    = fillPrice;
                 state_.peakPrice   = fillPrice;
@@ -294,6 +323,9 @@ private:
                 logger_->warn("Ordre d'achat en attente d'exécution — "
                               "réconciliation au prochain cycle");
             } else {
+                if (entryObserver_)
+                    entryObserver_({bars.back().date, price, account.cash, shares,
+                                    EntryOutcome::RejetOrdreNonExecute});
                 logger_->error("Ordre d'achat non exécuté (" + orderStatusStr(order) + ")");
             }
         }
@@ -349,6 +381,19 @@ public:
         haltObserver_ = std::move(obs);
     }
 
+    // Seams d'INSTRUMENTATION (Sprint 23, item 23.1) — observation pure pour
+    // le harnais de validation offline, nulles par défaut (zéro effet moteur) :
+    // • signalObserver_ : chaque signal émis par la stratégie (BUY/SELL/HOLD) ;
+    // • entryObserver_  : le sort de chaque TENTATIVE d'entrée (sizing atteint)
+    //   avec sa raison explicite (EntryOutcome) — un signal donnant zéro action
+    //   est notifié SANS qu'aucun ordre ne soit créé.
+    void setSignalObserver(std::function<void(const Signal&)> obs) {
+        signalObserver_ = std::move(obs);
+    }
+    void setEntryObserver(std::function<void(const EntryDecision&)> obs) {
+        entryObserver_ = std::move(obs);
+    }
+
     // Raison du kill-switch ARMÉ pour la séance courante (vide = non armé). Accès
     // en lecture seule pour l'observabilité (item 15.1) : contrairement à
     // haltObserver_ (déclenché sur front, dédupliqué), c'est un état de NIVEAU —
@@ -372,6 +417,8 @@ private:
     std::function<void(const std::string&)> exitObserver_;
     std::function<void(const TradeFill&)>   tradeObserver_;
     std::function<void(const std::string&)> haltObserver_;
+    std::function<void(const Signal&)>        signalObserver_;  // 23.1
+    std::function<void(const EntryDecision&)> entryObserver_;   // 23.1
     std::string lastHaltNotified_;   // dédup des notifications kill-switch (A6)
 
     // ── Compteurs du kill-switch (item 18) ────────────────────────────────────

@@ -1,4 +1,5 @@
 #pragma once
+#include "backtest/ExecutionStats.hpp"
 #include "brokers/CsvDataFeed.hpp"
 #include "brokers/PaperBroker.hpp"
 #include "bot/Logger.hpp"
@@ -186,6 +187,16 @@ public:
         bot.setExitObserver([&broker](const std::string& reason) {
             broker->setLastExitReason(reason);
         });
+        // Instrumentation 23.1 (opt-in) : collecteur nul par défaut — les
+        // goldens ne branchent rien et le cycle reste strictement identique.
+        if (stats_) {
+            bot.setSignalObserver([this](const Signal& s) {
+                stats_->recordSignal(s);
+            });
+            bot.setEntryObserver([this](const EntryDecision& d) {
+                stats_->recordEntry(d);
+            });
+        }
 
         for (size_t i = startIdx; i < endIdx; ++i) {
             const Bar& bar = allBars[i];
@@ -198,6 +209,13 @@ public:
             // Warmup local : on n'ouvre aucune position sur les `warmup`
             // premières barres DE LA FENÊTRE (i < startIdx + warmup)
             if (i < startIdx + static_cast<size_t>(warmup)) continue;
+
+            // Instrumentation 23.1 : déploiement du capital relevé à chaque
+            // barre post-warmup (même instant que le snapshot d'équité).
+            if (stats_) {
+                const double pv = broker->portfolioValue();
+                stats_->recordBar(pv - broker->cash(), pv);
+            }
 
             broker->incrementHoldDays();
 
@@ -337,8 +355,14 @@ private:
     double      halfSpreadBps_;
     // Modèle de coûts général (23.3) : absent = chemin historique (goldens).
     std::optional<ExecutionCostConfig> costModel_;
+    // Instrumentation 23.1 : nul par défaut (aucune observation).
+    ExecutionStats* stats_ = nullptr;
 
 public:
+    // Collecteur d'instrumentation 23.1 (opt-in) : pointeur externe possédé
+    // par l'appelant, nul par défaut — le chemin des goldens n'observe rien.
+    void setStatsCollector(ExecutionStats* stats) { stats_ = stats; }
+
     // Public pour les tests unitaires des métriques : permet de vérifier
     // chaque formule (drawdown, Sharpe, profit factor…) sur des données
     // synthétiques, sans dépendre du backtest golden complet

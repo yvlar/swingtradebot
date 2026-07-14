@@ -106,6 +106,26 @@ struct RiskConfig {
     KillSwitchConfig killSwitch;    // garde-fous de coupure (item 18)
 };
 
+// ─── Instrumentation des tentatives d'entrée (Sprint 23, item 23.1) ──────────
+// Sort d'UNE tentative d'entrée (le sizing a été atteint) — chaque rejet a une
+// raison EXPLICITE, comptée sans parsing de logs. Émis par TradingBot via un
+// observateur optionnel (seam nul par défaut : aucun effet sur le moteur).
+enum class EntryOutcome {
+    Executee,               // ordre soumis et FILLED
+    RejetQuantiteZero,      // budget de risque < 1 action entière → AUCUN ordre créé
+    RejetCashInsuffisant,   // pas même UNE action achetable avec le cash utilisable
+    RejetRiskManager,       // isTradeAllowed a refusé le trade
+    RejetOrdreNonExecute    // ordre soumis mais non FILLED (REJECTED/échec)
+};
+
+struct EntryDecision {
+    std::string  date;                  // date de la barre de décision
+    double       price  = 0.0;          // prix de décision (close courant)
+    double       cash   = 0.0;          // cash disponible au moment du sizing
+    int          shares = 0;            // quantité entière calculée par le sizing
+    EntryOutcome outcome = EntryOutcome::RejetQuantiteZero;
+};
+
 // ─── BotState — état de position du bot ──────────────────────────────────────
 // Persisté via IStateStore pour survivre aux redémarrages (sinon une position
 // ouverte deviendrait orpheline : plus de stop-loss, plus de suivi).
