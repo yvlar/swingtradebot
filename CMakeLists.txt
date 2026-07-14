@@ -214,6 +214,7 @@ add_executable(integration_tests
         tests/integration/test_coint_pairs_oos_integration.cpp
         tests/integration/test_skew_regime_oos_integration.cpp
         tests/integration/test_vvix_regime_oos_integration.cpp
+        tests/integration/test_small_account_feasibility_integration.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(integration_tests PRIVATE ${COMMON_INCLUDES})

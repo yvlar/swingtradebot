@@ -19,6 +19,9 @@
 #include <vector>
 
 #include "backtest/BackTester.hpp"
+#include "backtest/BlockBootstrap.hpp"
+#include "backtest/SmallAccountFeasibility.hpp"
+#include "backtest/SmallAccountStress.hpp"
 #include "backtest/WalkForward.hpp"
 #include "backtest/GridOptimizer.hpp"
 #include "backtest/MonteCarlo.hpp"
@@ -1394,6 +1397,219 @@ int main() {
                   << "  Aucun candidat > 0 -> grille resserree sans objet (8t.1/8t.3). Le SKEW\n"
                   << "  churne (300-343 stints OOS) et concentre les pertes (MC ddP95 62,5 %).\n"
                   << "  Gate FERME. Prod paper. Les deux hypotheses du chantier (r'') sont soldees.\n";
+    }
+
+    // ── 23. FAISABILITÉ PETIT COMPTE 1 000 $ (Sprint 23) ─────────────────────
+    // Décision utilisateur 2026-07-14 : mesurer HONNÊTEMENT si les stratégies
+    // existantes sont utilisables avec 1 000 $ (risques 0,5/1/2 %, actions
+    // entières, coûts, stress) — faisabilité OPÉRATIONNELLE ≠ rentabilité.
+    // Tout est offline/simulation ; config/prod.json n'est jamais modifié
+    // (les scénarios portent leur propre risque). Verrous CI dans
+    // test_small_account_feasibility_integration.cpp.
+    titre("SECTION 23 — FAISABILITE PETIT COMPTE 1 000 $ (Sprint 23)");
+    {
+        const double capital = 1'000.0;
+        const double risques[] = {0.005, 0.01, 0.02};
+
+        std::vector<SmallAccountFeasibilityReport> rapports;
+        for (double risque : risques) {
+            SmallAccountScenario sc;
+            sc.initialCapital  = capital;
+            sc.riskPerTradePct = risque;
+            sc.couts           = ExecutionCostConfig::historiqueConservateur();
+            rapports.push_back(runSmallAccountScenario(cfg, qqq, sc));
+        }
+
+        std::cout << std::fixed << std::setprecision(2);
+        for (const auto& r : rapports) {
+            std::cout << "\nSCENARIO RISQUE " << std::setprecision(1)
+                      << r.scenario.riskPerTradePct * 100.0 << " %\n"
+                      << std::setprecision(2)
+                      << "  Capital initial : " << r.initialCapital << " $\n"
+                      << "  Capital final : " << r.finalValue << " $ ("
+                      << r.totalReturnPct << " %)\n"
+                      << "  B&H brut / net : " << r.buyHoldGrossReturnPct
+                      << " % / " << r.buyHoldNetReturnPct << " %\n"
+                      << "  Alpha net : " << r.alphaNetPct << " pt\n"
+                      << "  Signaux BUY : " << r.stats.buySignalsGenerated
+                      << " | tentatives : " << r.stats.entriesAttempted << "\n"
+                      << "  Entrees executees : " << r.stats.entriesExecuted << "\n"
+                      << "  Entrees rejetees quantite zero : "
+                      << r.stats.entriesRejectedZeroQuantity << "\n"
+                      << "  Entrees rejetees cash insuffisant : "
+                      << r.stats.entriesRejectedInsufficientCash << "\n"
+                      << "  Valeur moyenne d'une position : "
+                      << r.averagePositionValue << " $\n"
+                      << "  Capital moyen deploye : "
+                      << r.stats.averageCapitalDeployedPct() << " % (max "
+                      << r.stats.maximumCapitalDeployedPct() << " %)\n"
+                      << "  Cash moyen inutilise : "
+                      << r.stats.averageIdleCashPct() << " %\n"
+                      << "  Frais totaux : " << r.totalFees << " $ ("
+                      << r.feesPctOfInitialCapital << " % du capital ; "
+                      << r.avgFeesPerRoundTrip << " $/aller-retour)\n"
+                      << "  Drawdown maximal : " << r.maxDrawdownPct << " %\n"
+                      << "  Verdict operationnel : "
+                      << feasibilityVerdictLabel(r.verdict) << "\n"
+                      << "  Edge net demontre : "
+                      << (r.edgeNetDemontre ? "OUI" : "NON") << "\n";
+        }
+
+        std::cout << "\nCOMPARAISON ACTIONS ENTIERES / FRACTIONS THEORIQUES (offline)\n";
+        for (const auto& r : rapports) {
+            const auto& f = r.fractional;
+            std::cout << "  risque " << std::setprecision(1)
+                      << r.scenario.riskPerTradePct * 100.0 << " % : "
+                      << std::setprecision(2)
+                      << "qte entiere moy " << f.avgIntegerQuantity
+                      << " vs fractionnaire " << f.avgTheoreticalFractionalQuantity
+                      << " | deploiement " << f.integerDeploymentPct << " % vs "
+                      << f.fractionalDeploymentPct << " % (perdu "
+                      << f.lostDeploymentPctDueToIntegerConstraint
+                      << " pt) | bloques uniquement par la contrainte entiere : "
+                      << f.signalsBlockedOnlyByIntegerConstraint << "/"
+                      << f.signalsAnalyzed << "\n";
+        }
+
+        // Sensibilité au modèle de coûts (item 23.3) — scénarios A/B/C
+        std::cout << "\nSENSIBILITE AU MODELE DE COUTS (risque 2 %)\n";
+        const std::pair<const char*, ExecutionCostConfig> modeles[] = {
+            {"A historique ", ExecutionCostConfig::historiqueConservateur()},
+            {"B faible comm", ExecutionCostConfig::faibleCommission()},
+            {"C stress min ", ExecutionCostConfig::stressPetitCompte()},
+        };
+        for (const auto& m : modeles) {
+            SmallAccountScenario sc;
+            sc.initialCapital = capital; sc.riskPerTradePct = 0.02;
+            sc.couts = m.second;
+            const auto r = runSmallAccountScenario(cfg, qqq, sc);
+            std::cout << "  " << m.first << " : final " << r.finalValue
+                      << " $ | frais " << r.totalFees << " $ ("
+                      << r.feesPctOfInitialCapital << " %) | executees "
+                      << r.stats.entriesExecuted << "\n";
+        }
+
+        // Stress slippage (item 23.6) — niveaux, pas des prédictions
+        std::cout << "\nSTRESS SLIPPAGE (risque 2 %, scenario A, bps par cote)\n";
+        for (double bps : {2.0, 5.0, 10.0, 25.0}) {
+            SmallAccountScenario sc;
+            sc.initialCapital = capital; sc.riskPerTradePct = 0.02;
+            sc.couts = ExecutionCostConfig::historiqueConservateur();
+            sc.couts.slippageBps = bps;
+            const auto r = runSmallAccountScenario(cfg, qqq, sc);
+            std::cout << "  " << std::setw(4) << std::setprecision(0) << bps
+                      << " bps : final " << std::setprecision(2) << r.finalValue
+                      << " $ | frais " << r.totalFees << " $\n";
+        }
+
+        // Stress séquences de pertes (item 23.6) — composition réelle. Deux
+        // prix de référence : 100 $ (synthétique, isole la composition) et le
+        // DERNIER close QQQ (réalité du compte qui commencerait aujourd'hui).
+        std::cout << "\nSTRESS 5 ET 10 PERTES (composition reelle, scenario A)\n";
+        CsvDataFeed csvQqq(qqq);
+        const double dernierClose = csvQqq.allBars().back().close;
+        for (double prixRef : {100.0, dernierClose}) {
+            std::cout << "  prix de reference " << std::setprecision(2)
+                      << prixRef << " $ :\n";
+            for (double risque : risques) {
+                for (int n : {5, 10}) {
+                    const auto s = simulateLossSequence(
+                        capital, risque, cfg.stopLossPct, n, prixRef,
+                        ExecutionCostConfig::historiqueConservateur());
+                    std::cout << "    risque " << std::setprecision(1)
+                              << risque * 100 << " %, " << std::setw(2) << n
+                              << " pertes : capital restant "
+                              << std::setprecision(2) << s.capitalRemaining
+                              << " $ (perte " << s.capitalLossPct << " %, "
+                              << s.tradesExecuted << " executes, "
+                              << s.tradesBlocked << " bloques)\n";
+                }
+            }
+        }
+
+        // Stress gaps (item 23.6) : fill au-delà du stop — la perte réelle
+        // DÉPASSE la perte planifiée (5/10/20 $), c'est ce que le rapport
+        // doit identifier.
+        std::cout << "\nSTRESS GAP (stop -5 %, fill au-dela, prix 100 $, scenario A)\n";
+        for (double risque : risques) {
+            for (double gap : {0.06, 0.08, 0.10}) {
+                const auto g = simulateGapExit(
+                    capital, risque, cfg.stopLossPct, gap, 100.0,
+                    ExecutionCostConfig::historiqueConservateur());
+                std::cout << "  risque " << std::setprecision(1) << risque * 100
+                          << " %, gap -" << std::setprecision(0) << gap * 100
+                          << " % : perte " << std::setprecision(2);
+                if (g.executed)
+                    std::cout << g.lossDollars << " $ (planifiee "
+                              << g.plannedLossDollars << " $"
+                              << (g.lossDollars > g.plannedLossDollars
+                                      ? ", DEPASSEMENT" : "") << ")\n";
+                else
+                    std::cout << "— (aucune action entiere financable)\n";
+            }
+        }
+
+        // Monte-Carlo IID vs blocs (item 23.7) — trades du scénario 2 %
+        std::cout << "\nMONTE-CARLO IID VS BLOCS (trades du scenario risque 2 %, graine 42)\n";
+        const auto& trades2 = rapports[2].backtest.trades;
+        double annees23 = 0.0;
+        if (rapports[2].backtest.equityDates.size() >= 2)
+            annees23 = (daysFromCivil(rapports[2].backtest.equityDates.back()) -
+                        daysFromCivil(rapports[2].backtest.equityDates.front()))
+                       / 365.25;
+        std::cout << "  " << trades2.size() << " trades, "
+                  << std::setprecision(2) << annees23 << " ans\n";
+        const auto iid23 = MonteCarlo(capital, 42, 2000).run(trades2, annees23);
+        std::cout << "  IID      : CAGR p50 " << iid23.cagrP50 << " % | DD p50 "
+                  << iid23.ddP50 << " % | DD p95 " << iid23.ddP95 << " %\n";
+        double ddP95Blocs = 0.0;
+        for (size_t bloc : {size_t{3}, size_t{5}, size_t{10}}) {
+            const auto b = BlockBootstrapMonteCarlo(capital, bloc, 42, 2000)
+                               .run(trades2, annees23);
+            if (bloc == 3) ddP95Blocs = b.ddP95;
+            std::cout << "  blocs " << std::setw(2) << bloc << " : CAGR p50 "
+                      << b.cagrP50 << " % | DD p50 " << b.ddP50
+                      << " % | DD p95 " << b.ddP95 << " %\n";
+        }
+
+        // Verdict final (item 23.8) — les 10 réponses explicites du sprint
+        std::cout << "\nVERDICT FINAL (item 23.8)\n"
+                  << "  1. Executable en actions entieres ? OUI, mais UNIQUEMENT a"
+                     " risque 2 % (22/22 entrees) —\n"
+                  << "     et seulement parce que l'historique 2019-2021 cotait"
+                     " 150-400 $ ; au dernier close ("
+                  << std::setprecision(2) << dernierClose
+                  << " $), AUCUN scenario ne peut trader.\n"
+                  << "  2. Niveau de risque : 2 % (1 % marginal : "
+                  << rapports[1].stats.entriesExecuted << "/"
+                  << rapports[1].stats.entriesAttempted
+                  << " tentatives ; 0,5 % : zero entree).\n"
+                  << "  3. Signaux bloques : "
+                  << rapports[0].stats.entriesRejectedZeroQuantity << "/"
+                  << rapports[0].stats.entriesAttempted << " (0,5 %), "
+                  << rapports[1].stats.entriesRejectedZeroQuantity << "/"
+                  << rapports[1].stats.entriesAttempted << " (1 %), "
+                  << rapports[2].stats.entriesRejectedZeroQuantity << "/"
+                  << rapports[2].stats.entriesAttempted << " (2 %).\n"
+                  << "  4. Cout total : " << rapports[2].feesPctOfInitialCapital
+                  << " % du capital (scenario A) ; 4,40 % au stress C — un"
+                     " minimum par ordre peut dominer.\n"
+                  << "  5. Fractions necessaires ? OUI pour tout risque <= 1 %"
+                     " ET au prix actuel du QQQ pour tous les risques testes.\n"
+                  << "  6. Sequences de pertes (2 %, prix 100 $) : 5 pertes ->"
+                     " -8,35 % ; 10 pertes -> -16,18 % (composition reelle,"
+                     " sous le naif 20 %).\n"
+                  << "  7. Drawdown p95 IID : " << iid23.ddP95 << " %.\n"
+                  << "  8. Drawdown p95 blocs (3) : " << ddP95Blocs << " %.\n"
+                  << "  9. Edge absolu net de couts : NON — alpha net "
+                  << rapports[2].alphaNetPct << " pt vs B&H net (meilleur"
+                     " scenario) ; les strategies refutees RESTENT refutees.\n"
+                  << "  10. Paper trading : OUI, obligatoire.\n"
+                  << "\n"
+                  << "  AUCUN EDGE DEMONTRE.\n"
+                  << "  LE CAPITAL DE 1 000 $ NE JUSTIFIE PAS UNE ACTIVATION DU"
+                     " TRADING REEL.\n"
+                  << "  SWINGBOT RESTE PAPER-ONLY.\n";
     }
 
     std::cout << "\n";
