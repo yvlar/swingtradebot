@@ -167,6 +167,7 @@ add_executable(unit_tests
         tests/unit/test_fractional_sizing_unit.cpp
         tests/unit/test_small_account_feasibility_unit.cpp
         tests/unit/test_small_account_stress_unit.cpp
+        tests/unit/test_block_bootstrap_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
