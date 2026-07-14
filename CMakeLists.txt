@@ -161,6 +161,7 @@ add_executable(unit_tests
         tests/unit/test_bot_state_health_unit.cpp
         tests/unit/test_gateway_auth_monitor_unit.cpp
         tests/unit/test_temp_path_unit.cpp
+        tests/unit/test_execution_cost_model_unit.cpp
         ${BOT_SOURCES}
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
